@@ -15,11 +15,15 @@ backend/
 ├── app.py              # Flask entry point (application factory)
 ├── requirements.txt
 ├── .env                # secrets (gitignored) — see .env.example
-├── agent/              # LangChain classifier: user input → visualization schema
-├── scenes/             # Manim scene classes, one file per pattern group
+├── agent/
+│   └── classifier.py   # LangChain classifier: NL question → visualization schema
+├── scenes/
+│   ├── array_scene.py      # BubbleSortScene (render pipeline smoke test)
+│   └── calculus_scene.py   # FunctionPlotScene, LimitScene, TangentLineScene,
+│                           # RiemannSumScene, CriticalPointsScene
 ├── renderer/worker.py  # Thread pool + subprocess Manim runner, in-memory job state
 ├── schemas/types.py    # Pydantic models for each visualization type
-├── tests/              # pytest, run with: pytest backend/tests/ -v
+├── tests/              # pytest — see Testing section
 └── media/              # Rendered videos served at /media/<path> (gitignored)
 ```
 
@@ -33,58 +37,148 @@ source venv/bin/activate             # Git Bash
 # Install deps
 pip install -r backend/requirements.txt
 
-# Run tests (always before committing)
-pytest backend/tests/ -v
+# Run fast unit tests (no Manim/API needed)
+pytest backend/tests/ -v -m "not integration"
+
+# Run full suite including renders + real API calls (slow)
+pytest backend/tests/ -v -m integration
 
 # Run Flask dev server
 cd backend && python app.py
 ```
 
-## API
+## API — Frontend contract
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/health` | Liveness check |
-| POST | `/render` | Submit render job — body: `{"scene": "...", "params": {...}}` → `{"job_id": "..."}` |
-| GET | `/status/<job_id>` | Poll job — returns `{"status": "pending\|done\|error", "url": "...", "error": "..."}` |
-| GET | `/media/<path>` | Serve rendered video file |
+Base URL (dev): `http://localhost:5000`
 
-## Render flow
+### Primary endpoint — natural language question
 
-1. POST `/render` → `renderer/worker.py` spawns daemon thread, returns `job_id` immediately
-2. Thread writes params to `media/temp/<job_id>.json`, calls `manim -ql` via subprocess
-3. Scene reads params via `MANIM_JOB_ID` env var → `media/temp/<job_id>.json`
-4. On completion, job state updates to `done` with video URL
-5. Frontend polls `/status/<job_id>` until done, then renders `<video src={url} />`
+```
+POST /ask
+Content-Type: application/json
+
+{ "question": "show me the derivative of sin(x) at x = 1" }
+```
+
+Response `202`:
+```json
+{ "job_id": "uuid-string", "scene": "tangent_line" }
+```
+
+Response `400` — missing question:
+```json
+{ "error": "question is required" }
+```
+
+Response `422` — classifier failure:
+```json
+{ "error": "classification failed: <reason>" }
+```
+
+---
+
+### Poll for render status
+
+```
+GET /status/<job_id>
+```
+
+Response while rendering:
+```json
+{ "status": "pending", "url": null, "error": null }
+```
+
+Response on success:
+```json
+{ "status": "done", "url": "/media/videos/calculus_scene/480p15/TangentLineScene.mp4", "error": null }
+```
+
+Response on failure:
+```json
+{ "status": "error", "url": null, "error": "description of what went wrong" }
+```
+
+---
+
+### Serve video
+
+```
+GET /media/<path>          → video/mp4 stream
+```
+
+Use the `url` field from the status response directly as the `src` for a `<video>` tag.
+
+---
+
+### Direct render (bypass agent, for testing)
+
+```
+POST /render
+{ "scene": "limit", "params": { "expression": "sin(x)/x", "limit_point": 0, "domain": [-5, 5] } }
+```
+
+Response `202`: `{ "job_id": "uuid-string" }`
+
+---
+
+### Health check
+
+```
+GET /health  →  { "status": "ok" }
+```
+
+---
+
+## Typical frontend flow
+
+```
+1. User types question
+2. POST /ask  →  receive job_id
+3. Poll GET /status/<job_id> every 1–2s
+4. When status === "done" → render <video src={url} autoPlay loop />
+5. When status === "error" → show error message
+```
+
+Polling recommendation: 1-second interval, 90-second timeout, show a loading spinner.
+
+---
 
 ## Scene types
 
-Each scene class lives in `backend/scenes/` and reads its config from the temp JSON file.
+| Scene key | Covers |
+|-----------|--------|
+| `function_plot` | General function graphing, evaluate at a point |
+| `limit` | One/two-sided limits, continuity, L'Hospital's rule |
+| `tangent_line` | Derivative, tangent line, secant → tangent animation |
+| `riemann_sum` | Riemann sums animating toward definite integral |
+| `critical_points` | Max/min, first/second derivative tests |
 
-| Scene key | File | Class | Covers |
-|-----------|------|-------|--------|
-| `bubble_sort` | `array_scene.py` | `BubbleSortScene` | Sorting visualization (render pipeline test) |
-| `function_plot` | `calculus_scene.py` | `FunctionPlotScene` | General function graphing |
-| `limit` | `calculus_scene.py` | `LimitScene` | One/two-sided limits, continuity, L'Hospital |
-| `tangent_line` | `calculus_scene.py` | `TangentLineScene` | Derivative, tangent line, Newton's method |
-| `riemann_sum` | `calculus_scene.py` | `RiemannSumScene` | Riemann sums → definite integral |
-| `critical_points` | `calculus_scene.py` | `CriticalPointsScene` | Max/min, first/second derivative tests |
-
-To add a new scene: implement the class, register it in `renderer/worker.py::SCENE_REGISTRY`.
+To add a new scene: implement the class in `scenes/`, register in `renderer/worker.py::SCENE_REGISTRY`.
 
 ## Environment variables
 
 ```
-OPENROUTER_API_KEY=      # OpenRouter key for LangChain
+OPENROUTER_API_KEY=      # OpenRouter key
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_MODEL=mistralai/mistral-7b-instruct:free
+OPENROUTER_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
 ```
 
 ## Testing
 
-- **Always run `pytest backend/tests/ -v` before committing**
-- Unit tests mock subprocess and threading — no Manim install needed to run
-- Integration tests (render pipeline) are marked slow and run separately
+```
+pytest backend/tests/ -v -m "not integration"   # fast, no external deps (~1s)
+pytest backend/tests/ -v -m integration          # slow: real Manim + real API
+```
+
+| File | What it tests |
+|------|--------------|
+| `test_routes.py` | Flask route shapes and status codes |
+| `test_renderer.py` | Worker job state, unknown scene handling |
+| `test_classifier.py` | LLM classification (mocked + real API) |
+| `test_calculus_scenes.py` | Each Manim scene actually renders |
+| `test_integration.py` | Full pipeline: /ask → render → video on disk |
+
+**Always run unit tests before committing.**
 
 ## Git workflow
 
@@ -92,15 +186,12 @@ Branch: `Jacob_MAMIN_Implementation`
 Remote: `origin` → `https://github.com/JacobTDang/Annie.git`
 
 ```bash
-# Stage and commit
 git add backend/
-git commit -m "short imperative description of what changed"
-
-# Push to your branch
+git commit -m "short imperative description"
 git push origin Jacob_MAMIN_Implementation
 ```
 
-- Commit messages: short imperative subject line (e.g. `add RiemannSumScene`, `fix render output path`)
+- Commit messages: short imperative subject line
 - No AI attribution in commits
 - Always run tests before pushing
 - Open a PR to `main` when a phase is complete
