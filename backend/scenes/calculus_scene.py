@@ -55,61 +55,19 @@ def _y_range(func, domain: list) -> list:
 
 def _make_axes(domain: list, yr: list, x_len: float = 9.0, y_len: float = 5.5) -> Axes:
     x_step = max(1, round((domain[1] - domain[0]) / 8))
-    # include_numbers=False — avoids LaTeX tick rendering; we add Text labels manually
     return Axes(
         x_range=[domain[0], domain[1], x_step],
         y_range=yr,
         x_length=x_len,
         y_length=y_len,
-        axis_config={"color": WHITE, "include_numbers": False},
+        axis_config={"color": WHITE, "include_numbers": True, "font_size": 20},
         tips=False,
     )
 
 
-def _axis_labels(ax: Axes, x_lbl: str = "x", y_lbl: str = "y") -> VGroup:
-    """Text-based axis labels — no LaTeX."""
-    xl = Text(x_lbl, font_size=22).next_to(ax.x_axis.get_end(), RIGHT, buff=0.15)
-    yl = Text(y_lbl, font_size=22).next_to(ax.y_axis.get_end(), UP, buff=0.15)
-    return VGroup(xl, yl)
-
-
-def _tick_labels(ax: Axes, domain: list, yr: list) -> VGroup:
-    """Integer tick marks using Text — no LaTeX required."""
-    group = VGroup()
-    x_step = max(1, round((domain[1] - domain[0]) / 8))
-    y_step = yr[2]
-
-    for xv in np.arange(
-        math.ceil(domain[0] / x_step) * x_step,
-        domain[1] + x_step * 0.01,
-        x_step,
-    ):
-        if abs(xv) < 1e-9:
-            continue
-        s = str(int(xv)) if xv == int(xv) else f"{xv:.1f}"
-        lbl = Text(s, font_size=16).next_to(ax.c2p(xv, 0), DOWN, buff=0.12)
-        group.add(lbl)
-
-    for yv in np.arange(
-        math.ceil(yr[0] / y_step) * y_step,
-        yr[1] + y_step * 0.01,
-        y_step,
-    ):
-        if abs(yv) < 1e-9:
-            continue
-        s = str(int(yv)) if yv == int(yv) else f"{yv:.1f}"
-        lbl = Text(s, font_size=16).next_to(ax.c2p(0, yv), LEFT, buff=0.12)
-        group.add(lbl)
-
-    return group
-
-
-def _t(text: str, size: int = 28, **kw) -> Text:
-    return Text(text, font_size=size, **kw)
-
-
-def _expr_str(expr) -> str:
-    return sp.pretty(expr, use_unicode=True)
+def _num(v: float) -> str:
+    """Format a float for use inside a MathTex string."""
+    return str(int(v)) if v == int(v) else str(round(v, 4))
 
 
 # ---------------------------------------------------------------------------
@@ -126,12 +84,11 @@ class FunctionPlotScene(Scene):
         expr, f, _ = _parse(expression)
         yr = _y_range(f, domain)
         ax = _make_axes(domain, yr)
-        ax_lbl = _axis_labels(ax)
-        ticks = _tick_labels(ax, domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
         graph = ax.plot(f, x_range=domain, color=BLUE, use_smoothing=True)
-        title = _t("f(x) = " + _expr_str(expr), size=30).to_edge(UP)
+        title = MathTex(r"f(x) = " + sp.latex(expr), font_size=36).to_edge(UP)
 
-        self.play(Create(ax), Write(ax_lbl), Write(ticks))
+        self.play(Create(ax), Write(labels))
         self.play(Write(title))
         self.play(Create(graph), run_time=2)
 
@@ -139,7 +96,10 @@ class FunctionPlotScene(Scene):
             xp = float(x_point)
             yp = _safe_eval(f, xp)
             dot = Dot(ax.c2p(xp, yp), color=YELLOW, radius=0.1)
-            coord = _t(f"({xp}, {yp:.2f})", size=20).next_to(dot, UR, buff=0.1)
+            coord = MathTex(
+                r"\left(" + _num(xp) + r",\ " + f"{yp:.2f}" + r"\right)",
+                font_size=24,
+            ).next_to(dot, UR, buff=0.1)
             self.play(FadeIn(dot), Write(coord))
 
         self.wait(1)
@@ -161,23 +121,27 @@ class LimitScene(Scene):
         try:
             lim_val = sp.limit(expr, x_sym, limit_pt)
             lim_float = float(lim_val)
-            lim_str = _expr_str(lim_val)
+            lim_tex = sp.latex(lim_val)
         except Exception:
             lim_val = None
             lim_float = None
-            lim_str = "DNE"
+            lim_tex = r"\text{DNE}"
 
         yr = _y_range(f, domain)
         ax = _make_axes(domain, yr)
-        ax_lbl = _axis_labels(ax)
-        ticks = _tick_labels(ax, domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
 
         eps = 0.08
         left_graph = ax.plot(f, x_range=[domain[0], limit_pt - eps], color=BLUE)
         right_graph = ax.plot(f, x_range=[limit_pt + eps, domain[1]], color=BLUE)
-        title = _t(f"lim f(x)  as  x → {limit_pt}", size=28).to_edge(UP)
 
-        self.play(Create(ax), Write(ax_lbl), Write(ticks), Write(title))
+        pt_tex = _num(limit_pt)
+        title = MathTex(
+            r"\lim_{x \to " + pt_tex + r"} f(x)",
+            font_size=36,
+        ).to_edge(UP)
+
+        self.play(Create(ax), Write(labels), Write(title))
         self.play(Create(left_graph), Create(right_graph), run_time=1.5)
 
         lt = ValueTracker(domain[0])
@@ -185,7 +149,7 @@ class LimitScene(Scene):
             ax.c2p(lt.get_value(), _safe_eval(f, lt.get_value())),
             color=YELLOW, radius=0.1,
         ))
-        left_tag = _t(f"x → {limit_pt}⁻", size=20, color=YELLOW).to_corner(UL)
+        left_tag = MathTex(r"x \to " + pt_tex + r"^-", font_size=24, color=YELLOW).to_corner(UL)
         self.add(left_dot)
         self.play(Write(left_tag))
         self.play(lt.animate.set_value(limit_pt - eps), run_time=2.5)
@@ -196,7 +160,7 @@ class LimitScene(Scene):
             ax.c2p(rt.get_value(), _safe_eval(f, rt.get_value())),
             color=RED, radius=0.1,
         ))
-        right_tag = _t(f"x → {limit_pt}⁺", size=20, color=RED).to_corner(UR)
+        right_tag = MathTex(r"x \to " + pt_tex + r"^+", font_size=24, color=RED).to_corner(UR)
         self.add(right_dot)
         self.play(Write(right_tag))
         self.play(rt.animate.set_value(limit_pt + eps), run_time=2.5)
@@ -204,7 +168,10 @@ class LimitScene(Scene):
 
         if lim_float is not None:
             limit_dot = Dot(ax.c2p(limit_pt, lim_float), color=WHITE, radius=0.12)
-            result = _t(f"lim f(x) = {lim_str}  as  x → {limit_pt}", size=24).to_edge(DOWN)
+            result = MathTex(
+                r"\lim_{x \to " + pt_tex + r"} f(x) = " + lim_tex,
+                font_size=30,
+            ).to_edge(DOWN)
             self.play(FadeIn(limit_dot), Write(result))
 
         self.wait(1)
@@ -228,10 +195,9 @@ class TangentLineScene(Scene):
 
         yr = _y_range(f, domain)
         ax = _make_axes(domain, yr)
-        ax_lbl = _axis_labels(ax)
-        ticks = _tick_labels(ax, domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
         graph = ax.plot(f, x_range=domain, color=BLUE)
-        title = _t("f(x) = " + _expr_str(expr), size=28).to_edge(UP)
+        title = MathTex(r"f(x) = " + sp.latex(expr), font_size=34).to_edge(UP)
         dot = Dot(ax.c2p(x_pt, y0), color=YELLOW, radius=0.1)
 
         h_max = min(2.0, (domain[1] - domain[0]) * 0.35)
@@ -246,17 +212,20 @@ class TangentLineScene(Scene):
             )
 
         line = always_redraw(secant_line)
-        line_label = always_redraw(lambda: _t(
+        line_label = always_redraw(lambda: Text(
             "secant" if h.get_value() > 0.05 else "tangent",
-            size=22, color=YELLOW,
+            font_size=22, color=YELLOW,
         ).to_corner(UR))
 
-        self.play(Create(ax), Write(ax_lbl), Write(ticks))
+        self.play(Create(ax), Write(labels))
         self.play(Write(title), Create(graph))
         self.play(FadeIn(dot), Create(line), Write(line_label))
         self.play(h.animate.set_value(0.01), run_time=4, rate_func=smooth)
 
-        slope_label = _t(f"f'({x_pt}) = {_expr_str(slope_sym)}", size=24).to_edge(DOWN)
+        slope_label = MathTex(
+            r"f'\!\left(" + _num(x_pt) + r"\right) = " + sp.latex(slope_sym),
+            font_size=28,
+        ).to_edge(DOWN)
         self.play(Write(slope_label))
         self.wait(1.5)
 
@@ -280,21 +249,22 @@ class RiemannSumScene(Scene):
         yr = _y_range(f, domain)
         yr[0] = min(yr[0], -0.3)
         ax = _make_axes(domain, yr)
-        ax_lbl = _axis_labels(ax)
-        ticks = _tick_labels(ax, domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
         graph = ax.plot(f, x_range=domain, color=BLUE)
 
         try:
             exact = float(sp.integrate(expr, (x_sym, domain[0], domain[1])))
             exact_str = f"{exact:.4f}"
         except Exception:
-            exact_str = "?"
+            exact_str = r"\cdots"
 
-        title = _t(
-            f"∫ {_expr_str(expr)} dx  [{domain[0]}, {domain[1]}]", size=26,
+        a_tex, b_tex = _num(domain[0]), _num(domain[1])
+        title = MathTex(
+            r"\int_{" + a_tex + r"}^{" + b_tex + r"} " + sp.latex(expr) + r"\, dx",
+            font_size=34,
         ).to_edge(UP)
 
-        self.play(Create(ax), Write(ax_lbl), Write(ticks), Write(title))
+        self.play(Create(ax), Write(labels), Write(title))
         self.play(Create(graph), run_time=1.5)
 
         dx0 = (domain[1] - domain[0]) / n_start
@@ -303,7 +273,7 @@ class RiemannSumScene(Scene):
             input_sample_type=manim_method,
             color=BLUE, fill_opacity=0.5,
         )
-        n_label = _t(f"n = {n_start}", size=22).to_corner(DR)
+        n_label = MathTex(f"n = {n_start}", font_size=26).to_corner(DR)
         self.play(FadeIn(rects), Write(n_label))
         self.wait(0.5)
 
@@ -314,7 +284,7 @@ class RiemannSumScene(Scene):
                 input_sample_type=manim_method,
                 color=BLUE, fill_opacity=0.5,
             )
-            new_label = _t(f"n = {n_new}", size=22).to_corner(DR)
+            new_label = MathTex(f"n = {n_new}", font_size=26).to_corner(DR)
             self.play(
                 Transform(rects, new_rects),
                 Transform(n_label, new_label),
@@ -322,7 +292,7 @@ class RiemannSumScene(Scene):
             )
             self.wait(0.3)
 
-        exact_label = _t(f"= {exact_str}", size=24).next_to(title, DOWN)
+        exact_label = MathTex(r"= " + exact_str, font_size=28).next_to(title, DOWN)
         self.play(Write(exact_label))
         self.wait(1)
 
@@ -358,22 +328,22 @@ class CriticalPointsScene(Scene):
         ax_f = Axes(
             x_range=[domain[0], domain[1], x_step],
             y_range=yr_f, x_length=8, y_length=2.6,
-            axis_config={"color": WHITE, "include_numbers": False},
+            axis_config={"color": WHITE, "include_numbers": True, "font_size": 16},
             tips=False,
         ).shift(UP * 1.9)
 
         ax_fp = Axes(
             x_range=[domain[0], domain[1], x_step],
             y_range=yr_fp, x_length=8, y_length=2.6,
-            axis_config={"color": WHITE, "include_numbers": False},
+            axis_config={"color": WHITE, "include_numbers": True, "font_size": 16},
             tips=False,
         ).shift(DOWN * 1.9)
 
         graph_f = ax_f.plot(f, x_range=domain, color=BLUE)
         graph_fp = ax_fp.plot(f_prime, x_range=domain, color=GREEN)
 
-        lbl_f = _t("f(x)", size=20, color=BLUE).next_to(ax_f, LEFT)
-        lbl_fp = _t("f'(x)", size=20, color=GREEN).next_to(ax_fp, LEFT)
+        lbl_f = MathTex(r"f(x)", font_size=22, color=BLUE).next_to(ax_f, LEFT)
+        lbl_fp = MathTex(r"f'(x)", font_size=22, color=GREEN).next_to(ax_fp, LEFT)
 
         self.play(Create(ax_f), Create(ax_fp), Write(lbl_f), Write(lbl_fp))
         self.play(Create(graph_f), Create(graph_fp), run_time=2)
@@ -386,7 +356,7 @@ class CriticalPointsScene(Scene):
             s2 = float(d2_expr.subs(x_sym, cp).evalf())
             kind = "inflection" if abs(s2) < 1e-8 else ("local max" if s2 < 0 else "local min")
 
-            cp_label = _t(kind, size=18, color=RED).next_to(dot_f, UP, buff=0.1)
+            cp_label = Text(kind, font_size=18, color=RED).next_to(dot_f, UP, buff=0.1)
             self.play(FadeIn(dot_f), FadeIn(dot_fp))
             self.play(Write(cp_label))
 
