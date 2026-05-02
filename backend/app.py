@@ -1,0 +1,42 @@
+import os
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
+from renderer.worker import get_job, submit_render
+
+
+def create_app(testing: bool = False) -> Flask:
+    app = Flask(__name__)
+    app.config["TESTING"] = testing
+    CORS(app)
+
+    @app.get("/health")
+    def health():
+        return jsonify({"status": "ok"})
+
+    @app.post("/render")
+    def render():
+        body = request.get_json(silent=True) or {}
+        scene = body.get("scene")
+        params = body.get("params", {})
+        if not scene:
+            return jsonify({"error": "scene is required"}), 400
+        job_id = submit_render(scene, params)
+        return jsonify({"job_id": job_id}), 202
+
+    @app.get("/status/<job_id>")
+    def status(job_id):
+        job = get_job(job_id)
+        if job is None:
+            return jsonify({"error": "job not found"}), 404
+        return jsonify(job)
+
+    @app.get("/media/<path:filename>")
+    def serve_media(filename):
+        media_dir = os.path.join(os.path.dirname(__file__), "media")
+        return send_from_directory(media_dir, filename)
+
+    return app
+
+
+if __name__ == "__main__":
+    create_app().run(debug=True, port=5000)

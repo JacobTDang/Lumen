@@ -1,0 +1,11 @@
+flask
+flask-cors
+manim
+openai
+langchain
+langchain-openai
+numpy
+sympy
+python-dotenv
+pytest
+pytest-mock
