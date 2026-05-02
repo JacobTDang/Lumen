@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 from pydantic import BaseModel, field_validator
 
 
@@ -86,6 +86,67 @@ class SurfacePlotSchema(BaseModel):
     expression: str
     x_domain: List[float] = [-3.0, 3.0]
     y_domain: List[float] = [-3.0, 3.0]
+    caption: str = ""
+
+
+# ---------------------------------------------------------------------------
+# DSA schemas
+# ---------------------------------------------------------------------------
+
+class ArrayPointerSchema(BaseModel):
+    scene: Literal["array_pointer"] = "array_pointer"
+    array: List[Union[int, str]]
+    algorithm: Literal["binary_search", "two_pointers", "palindrome"] = "binary_search"
+    target: Optional[int] = None
+    caption: str = ""
+
+
+class SlidingWindowSchema(BaseModel):
+    scene: Literal["sliding_window"] = "sliding_window"
+    array: List[Union[int, str]]
+    algorithm: Literal["max_subarray_fixed", "longest_unique_substring"] = "max_subarray_fixed"
+    k: Optional[int] = 3
+    caption: str = ""
+
+
+class LinkedListSchema(BaseModel):
+    scene: Literal["linked_list"] = "linked_list"
+    values: List[int]
+    algorithm: Literal["reverse", "find_middle", "merge_sorted"] = "reverse"
+    values2: Optional[List[int]] = None
+    caption: str = ""
+
+
+class TreeTraversalSchema(BaseModel):
+    scene: Literal["tree_traversal"] = "tree_traversal"
+    values: List[Optional[int]]
+    algorithm: Literal["inorder", "preorder", "postorder", "bfs", "dfs", "height"] = "bfs"
+    caption: str = ""
+
+
+class GraphSchema(BaseModel):
+    scene: Literal["graph_traversal"] = "graph_traversal"
+    num_nodes: int
+    edges: List[List[int]]
+    start_node: int = 0
+    algorithm: Literal["bfs", "dfs", "has_cycle"] = "bfs"
+    directed: bool = False
+    caption: str = ""
+
+
+class DPArraySchema(BaseModel):
+    scene: Literal["dp_array"] = "dp_array"
+    algorithm: Literal["fibonacci", "climbing_stairs", "house_robber", "coin_change"]
+    n: Optional[int] = 8
+    coins: Optional[List[int]] = None
+    amount: Optional[int] = None
+    caption: str = ""
+
+
+class StackQueueSchema(BaseModel):
+    scene: Literal["stack_queue"] = "stack_queue"
+    operations: List[str]
+    structure: Literal["stack", "queue"] = "stack"
     caption: str = ""
 
 
@@ -228,6 +289,13 @@ VisualizationSchema = (
     | ContourSchema
     | VectorFieldSchema
     | PartialDerivativeSchema
+    | ArrayPointerSchema
+    | SlidingWindowSchema
+    | LinkedListSchema
+    | TreeTraversalSchema
+    | GraphSchema
+    | DPArraySchema
+    | StackQueueSchema
 )
 
 
