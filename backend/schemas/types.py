@@ -89,6 +89,122 @@ class SurfacePlotSchema(BaseModel):
     caption: str = ""
 
 
+# ---------------------------------------------------------------------------
+# Arithmetic schemas
+# ---------------------------------------------------------------------------
+
+class NumberLineSchema(BaseModel):
+    scene: Literal["number_line"] = "number_line"
+    mode: Literal["addition", "subtraction", "inequality", "absolute_value"] = "addition"
+    values: List[float]
+    domain: List[float] = [-2.0, 12.0]
+    inequality_sign: str = ">"
+    caption: str = ""
+
+
+class FractionSchema(BaseModel):
+    scene: Literal["fraction"] = "fraction"
+    mode: Literal["represent", "compare", "add", "subtract"] = "represent"
+    fractions: List[List[int]]
+    caption: str = ""
+
+
+class AreaModelSchema(BaseModel):
+    scene: Literal["area_model"] = "area_model"
+    mode: Literal["integer", "algebraic"] = "integer"
+    a: str
+    b: str
+    caption: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Algebra extension schemas
+# ---------------------------------------------------------------------------
+
+class InequalitySchema(BaseModel):
+    scene: Literal["inequality"] = "inequality"
+    expression: str
+    domain: List[float] = [-10.0, 10.0]
+    caption: str = ""
+
+
+class ExponentialSchema(BaseModel):
+    scene: Literal["exponential"] = "exponential"
+    expression: str
+    domain: List[float] = [-3.0, 5.0]
+    show_key_points: bool = True
+    caption: str = ""
+
+
+class TransformationSchema(BaseModel):
+    scene: Literal["transformation"] = "transformation"
+    base_expression: str
+    transformed_expression: str
+    domain: List[float] = [-5.0, 5.0]
+    caption: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Calculus extension schemas
+# ---------------------------------------------------------------------------
+
+class VolumeRevolutionSchema(BaseModel):
+    scene: Literal["volume_revolution"] = "volume_revolution"
+    expression: str
+    domain: List[float]
+    n_disks: int = 8
+    caption: str = ""
+
+
+class TaylorSeriesSchema(BaseModel):
+    scene: Literal["taylor_series"] = "taylor_series"
+    expression: str
+    center: float = 0.0
+    max_terms: int = 5
+    domain: List[float] = [-5.0, 5.0]
+    caption: str = ""
+
+
+class FTCSchema(BaseModel):
+    scene: Literal["ftc"] = "ftc"
+    expression: str
+    domain: List[float] = [-1.0, 5.0]
+    start: float = 0.0
+    caption: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Calc 3 extension schemas
+# ---------------------------------------------------------------------------
+
+class ContourSchema(BaseModel):
+    scene: Literal["contour"] = "contour"
+    expression: str
+    x_domain: List[float] = [-3.0, 3.0]
+    y_domain: List[float] = [-3.0, 3.0]
+    num_levels: int = 8
+    caption: str = ""
+
+
+class VectorFieldSchema(BaseModel):
+    scene: Literal["vector_field"] = "vector_field"
+    x_expression: str
+    y_expression: str
+    domain: List[float] = [-3.0, 3.0]
+    show_streamlines: bool = False
+    caption: str = ""
+
+
+class PartialDerivativeSchema(BaseModel):
+    scene: Literal["partial_derivative"] = "partial_derivative"
+    expression: str
+    variable: Literal["x", "y"] = "x"
+    fixed_value: float = 0.0
+    x_domain: List[float] = [-3.0, 3.0]
+    y_domain: List[float] = [-3.0, 3.0]
+    caption: str = ""
+
+
 VisualizationSchema = (
     BubbleSortSchema
     | FunctionPlotSchema
@@ -100,6 +216,18 @@ VisualizationSchema = (
     | QuadraticSchema
     | TrigUnitCircleSchema
     | SurfacePlotSchema
+    | NumberLineSchema
+    | FractionSchema
+    | AreaModelSchema
+    | InequalitySchema
+    | ExponentialSchema
+    | TransformationSchema
+    | VolumeRevolutionSchema
+    | TaylorSeriesSchema
+    | FTCSchema
+    | ContourSchema
+    | VectorFieldSchema
+    | PartialDerivativeSchema
 )
 
 

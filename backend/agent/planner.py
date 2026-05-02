@@ -41,11 +41,64 @@ PRE-CALCULUS / TRIG:
   trig_unit_circle — animates unit circle with live sin/cos projections
     params: {"angle": float, "animate_rotation": bool}
 
+CALCULUS EXTENDED:
+  volume_revolution — disk method for solids of revolution around x-axis
+    params: {"expression": str, "domain": [float, float], "n_disks": int}
+    use for: volume of revolution, disk/washer method, solids of revolution, Calc 2
+
+  taylor_series — partial sums converging to a target function
+    params: {"expression": str, "center": float, "max_terms": int, "domain": [float, float]}
+    use for: Taylor/Maclaurin series, polynomial approximation, infinite series
+
+  ftc — Fundamental Theorem Part 1: growing area traces out F(x) = ∫_a^x f(t)dt
+    params: {"expression": str, "domain": [float, float], "start": float}
+    use for: FTC, accumulation function, area-antiderivative connection
+
 CALCULUS 3 / MULTIVARIABLE:
   surface_plot — 3D surface z=f(x,y) with rotating camera, colored by height
     params: {"expression": str, "x_domain": [float, float], "y_domain": [float, float]}
     use for: multivariable functions, Calc 3, paraboloids, saddle points,
              3D surface visualization, any question involving z = f(x, y)
+
+  contour — level curves of z=f(x,y) colored by height
+    params: {"expression": str, "x_domain": [float, float], "y_domain": [float, float], "num_levels": int}
+    use for: level curves, contour maps, topographic view of a function
+
+  vector_field — 2D vector field with arrows or streamlines
+    params: {"x_expression": str, "y_expression": str, "domain": [float, float], "show_streamlines": bool}
+    use for: vector fields, gradient fields, flow visualization, Calc 3/DiffEq
+
+  partial_derivative — 3D surface with vertical cross-section showing partial derivative as slope
+    params: {"expression": str, "variable": "x"|"y", "fixed_value": float,
+             "x_domain": [float, float], "y_domain": [float, float]}
+    use for: partial derivatives, multivariable slopes, Calc 3
+
+ARITHMETIC:
+  number_line — animate addition, subtraction, inequalities, or absolute value on a number line
+    params: {"mode": "addition"|"subtraction"|"inequality"|"absolute_value",
+             "values": [float, ...], "domain": [float, float], "inequality_sign": str}
+    use for: K-8 arithmetic, basic operations, number sense, inequalities, absolute value
+
+  fraction — visual fraction bars for representing, comparing, adding, or subtracting fractions
+    params: {"mode": "represent"|"compare"|"add"|"subtract", "fractions": [[num, denom], ...]}
+    use for: fractions, equivalent fractions, adding/subtracting fractions, comparing fractions
+
+  area_model — rectangle area model for multiplication or algebraic expansion
+    params: {"mode": "integer"|"algebraic", "a": str, "b": str}
+    use for: multiplication, FOIL, distributive property, polynomial products
+
+ALGEBRA EXTENDED:
+  inequality — solve and shade inequality solution on number line
+    params: {"expression": str, "domain": [float, float]}
+    use for: linear/quadratic inequalities, solution sets, interval notation
+
+  exponential — plot exponential growth/decay with doubling/half-life markers
+    params: {"expression": str, "domain": [float, float], "show_key_points": bool}
+    use for: exponential functions, growth/decay, doubling time, half-life, e^x, compound interest
+
+  transformation — show a function transformation: shift, reflect, or stretch
+    params: {"base_expression": str, "transformed_expression": str, "domain": [float, float]}
+    use for: function transformations, horizontal/vertical shifts, reflections, stretches
 
 Expression syntax (sympy/Python): x**2  sin(x)  cos(x)  exp(x)  log(x)  sqrt(x)  tan(x)  pi  E
 
@@ -67,7 +120,11 @@ Respond with ONLY valid JSON — no markdown fences, no explanation:
 
 _VALID_TOOLS = {
     "function_plot", "limit", "tangent_line", "riemann_sum", "critical_points",
-    "linear_function", "quadratic", "trig_unit_circle", "surface_plot",
+    "volume_revolution", "taylor_series", "ftc",
+    "linear_function", "quadratic", "trig_unit_circle",
+    "surface_plot", "contour", "vector_field", "partial_derivative",
+    "number_line", "fraction", "area_model",
+    "inequality", "exponential", "transformation",
 }
 
 

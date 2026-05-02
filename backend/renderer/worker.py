@@ -17,19 +17,37 @@ _QUALITY_2D  = "-qm"
 _QUALITY_DIR_2D = "720p30"
 _QUALITY_3D  = "-ql"
 _QUALITY_DIR_3D = "480p15"
-_3D_SCENES   = {"surface_plot"}
+_3D_SCENES   = {"surface_plot", "partial_derivative"}
 
 SCENE_REGISTRY = {
-    "bubble_sort":      ("scenes/array_scene.py",    "BubbleSortScene"),
-    "function_plot":    ("scenes/calculus_scene.py", "FunctionPlotScene"),
-    "limit":            ("scenes/calculus_scene.py", "LimitScene"),
-    "tangent_line":     ("scenes/calculus_scene.py", "TangentLineScene"),
-    "riemann_sum":      ("scenes/calculus_scene.py", "RiemannSumScene"),
-    "critical_points":  ("scenes/calculus_scene.py", "CriticalPointsScene"),
-    "linear_function":  ("scenes/algebra_scene.py",  "LinearFunctionScene"),
-    "quadratic":        ("scenes/algebra_scene.py",  "QuadraticScene"),
-    "trig_unit_circle": ("scenes/trig_scene.py",     "TrigUnitCircleScene"),
-    "surface_plot":     ("scenes/threed_scene.py",   "SurfacePlotScene"),
+    # Core
+    "bubble_sort":        ("scenes/array_scene.py",       "BubbleSortScene"),
+    # Calculus
+    "function_plot":      ("scenes/calculus_scene.py",    "FunctionPlotScene"),
+    "limit":              ("scenes/calculus_scene.py",    "LimitScene"),
+    "tangent_line":       ("scenes/calculus_scene.py",    "TangentLineScene"),
+    "riemann_sum":        ("scenes/calculus_scene.py",    "RiemannSumScene"),
+    "critical_points":    ("scenes/calculus_scene.py",    "CriticalPointsScene"),
+    "volume_revolution":  ("scenes/calculus_scene.py",    "VolumeRevolutionScene"),
+    "taylor_series":      ("scenes/calculus_scene.py",    "TaylorSeriesScene"),
+    "ftc":                ("scenes/calculus_scene.py",    "FTCScene"),
+    # Algebra
+    "linear_function":    ("scenes/algebra_scene.py",     "LinearFunctionScene"),
+    "quadratic":          ("scenes/algebra_scene.py",     "QuadraticScene"),
+    "inequality":         ("scenes/algebra_scene.py",     "InequalityScene"),
+    "exponential":        ("scenes/algebra_scene.py",     "ExponentialScene"),
+    "transformation":     ("scenes/algebra_scene.py",     "TransformationScene"),
+    # Arithmetic
+    "number_line":        ("scenes/arithmetic_scene.py",  "NumberLineScene"),
+    "fraction":           ("scenes/arithmetic_scene.py",  "FractionScene"),
+    "area_model":         ("scenes/arithmetic_scene.py",  "AreaModelScene"),
+    # Trig
+    "trig_unit_circle":   ("scenes/trig_scene.py",        "TrigUnitCircleScene"),
+    # 3D / Calc 3
+    "surface_plot":       ("scenes/threed_scene.py",      "SurfacePlotScene"),
+    "contour":            ("scenes/threed_scene.py",      "ContourScene"),
+    "vector_field":       ("scenes/threed_scene.py",      "VectorFieldScene"),
+    "partial_derivative": ("scenes/threed_scene.py",      "PartialDerivativeScene"),
 }
 
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
