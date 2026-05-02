@@ -37,6 +37,14 @@ SCENE_REGISTRY = {
     "inequality":         ("scenes/algebra_scene.py",     "InequalityScene"),
     "exponential":        ("scenes/algebra_scene.py",     "ExponentialScene"),
     "transformation":     ("scenes/algebra_scene.py",     "TransformationScene"),
+    # DSA
+    "array_pointer":   ("scenes/dsa_scene.py", "ArrayPointerScene"),
+    "sliding_window":  ("scenes/dsa_scene.py", "SlidingWindowScene"),
+    "linked_list":     ("scenes/dsa_scene.py", "LinkedListScene"),
+    "tree_traversal":  ("scenes/dsa_scene.py", "TreeTraversalScene"),
+    "graph_traversal": ("scenes/dsa_scene.py", "GraphScene"),
+    "dp_array":        ("scenes/dsa_scene.py", "DPArrayScene"),
+    "stack_queue":     ("scenes/dsa_scene.py", "StackQueueScene"),
     # Arithmetic
     "number_line":        ("scenes/arithmetic_scene.py",  "NumberLineScene"),
     "fraction":           ("scenes/arithmetic_scene.py",  "FractionScene"),

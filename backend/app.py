@@ -6,7 +6,9 @@ from flask_cors import CORS
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-from agent.planner import plan
+from agent.classifier import classify_domain
+from agent.dsa_planner import plan_dsa
+from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
 
 
@@ -25,14 +27,16 @@ def create_app(testing: bool = False) -> Flask:
         question = body.get("question", "").strip()
         if not question:
             return jsonify({"error": "question is required"}), 400
+        domain = classify_domain(question)
         try:
-            lesson = plan(question)
+            lesson = plan_dsa(question) if domain == "dsa" else plan_math(question)
         except Exception as e:
             return jsonify({"error": f"planning failed: {e}"}), 422
         job_id = submit_lesson(lesson.steps)
         return jsonify({
             "job_id":      job_id,
             "concept":     lesson.concept,
+            "domain":      domain,
             "scene_count": len(lesson.steps),
         }), 202
 
