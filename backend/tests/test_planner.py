@@ -101,7 +101,8 @@ def test_plan_empty_steps_raises(mocker):
 
 def test_ask_returns_new_fields(client, mocker):
     from schemas.types import StepPlan, LessonPlan
-    mocker.patch("app.plan", return_value=LessonPlan(
+    mocker.patch("app.classify_domain", return_value="math")
+    mocker.patch("app.plan_math", return_value=LessonPlan(
         concept="derivative", level="calculus",
         steps=[StepPlan(tool="function_plot", params={"expression": "x**2", "domain": [-4, 4]}, caption="")],
     ))

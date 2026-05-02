@@ -129,6 +129,14 @@ _VALID_TOOLS = {
 
 
 def _build_llm() -> ChatOpenAI:
+    # Use Groq if key is available, fall back to OpenRouter
+    if os.environ.get("GROQ_API_KEY"):
+        return ChatOpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=os.environ["GROQ_API_KEY"],
+            model=os.environ.get("GROQ_PLANNER_MODEL", "llama-3.3-70b-versatile"),
+            temperature=0,
+        )
     return ChatOpenAI(
         base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         api_key=os.environ["OPENROUTER_API_KEY"],
