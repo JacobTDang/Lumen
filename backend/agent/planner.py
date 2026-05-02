@@ -137,19 +137,30 @@ def _build_llm() -> ChatOpenAI:
     )
 
 
-def plan(question: str) -> LessonPlan:
+def plan(question: str, max_retries: int = 3) -> LessonPlan:
     llm = _build_llm()
-    response = llm.invoke([
+    messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=question),
-    ])
+    ]
 
-    raw = response.content.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    raw = raw.strip()
-
-    data = json.loads(raw)
+    last_error: Exception = RuntimeError("no attempts made")
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = llm.invoke(messages)
+            raw = response.content.strip()
+            if not raw:
+                raise ValueError(f"Model returned empty response (attempt {attempt})")
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            raw = raw.strip()
+            data = json.loads(raw)
+            break  # success
+        except Exception as e:
+            last_error = e
+            if attempt == max_retries:
+                raise ValueError(f"Planner failed after {max_retries} attempts: {last_error}") from last_error
+            continue
 
     steps = []
     for s in data.get("steps", []):
