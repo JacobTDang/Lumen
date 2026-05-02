@@ -431,3 +431,211 @@ class CriticalPointsScene(Scene):
             self.play(Write(cp_label))
 
         self.wait(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Scene 6 — Volume of Revolution (disk method, 2-D side view)
+# ---------------------------------------------------------------------------
+
+class VolumeRevolutionScene(Scene):
+    def construct(self):
+        p = _load_params()
+        expression = p.get("expression", "sqrt(x)")
+        domain     = p.get("domain",     [0, 4])
+        n_disks    = int(p.get("n_disks", 8))
+        cap        = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+        yr = _y_range(f, domain)
+        # Extend below axis so mirrored disks show symmetry
+        yr[0] = min(yr[0], -yr[1] * 0.4)
+        ax     = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=CURVE_COLOR)
+        area   = ax.get_area(graph, x_range=domain, color=CURVE_COLOR, opacity=0.25)
+
+        title = MathTex(
+            r"V = \pi\int_{" + _num(domain[0]) + r"}^{" + _num(domain[1]) + r"}[f(x)]^2\,dx",
+            font_size=30,
+        ).to_edge(UP, buff=0.3)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+        self.play(Create(ax), Write(labels))
+        self.play(Write(title))
+        self.play(Create(graph), FadeIn(area), run_time=1.5)
+        self.wait(0.3)
+
+        # Representative disks — ellipses mimicking perspective
+        dx = (domain[1] - domain[0]) / n_disks
+        disk_xs = np.linspace(domain[0] + dx / 2, domain[1] - dx / 2, n_disks)
+        disks = VGroup()
+        for xd in disk_xs:
+            r = _safe_eval(f, float(xd))
+            if r <= 0:
+                continue
+            disk_h = 2 * r * ax.y_axis.unit_size
+            disk_w = dx * ax.x_axis.unit_size * 0.8
+            disk = Ellipse(
+                width=disk_w, height=disk_h,
+                color=YELLOW, fill_color=YELLOW, fill_opacity=0.22,
+                stroke_width=1.5,
+            )
+            disk.move_to(ax.c2p(float(xd), 0))
+            disks.add(disk)
+
+        self.play(FadeIn(disks), run_time=1.5)
+        self.wait(0.3)
+
+        try:
+            vol = float(sp.pi * sp.integrate(expr ** 2, (x_sym, domain[0], domain[1])))
+            vol_str = f"{vol:.4f}"
+        except Exception:
+            vol_str = r"?"
+
+        self.play(FadeIn(_result_box(r"V = " + vol_str, 28).to_edge(DOWN, buff=0.55)))
+        self.wait(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Scene 7 — Taylor Series
+# ---------------------------------------------------------------------------
+
+class TaylorSeriesScene(Scene):
+    def construct(self):
+        p = _load_params()
+        expression = p.get("expression", "sin(x)")
+        center     = float(p.get("center",    0.0))
+        max_terms  = int(p.get("max_terms",   5))
+        domain     = p.get("domain",          [-5, 5])
+        cap        = p.get("caption", "")
+
+        x_sym = sp.Symbol("x")
+        expr  = sp.sympify(expression)
+        f_target = sp.lambdify(x_sym, expr, modules=["numpy"])
+
+        # Pre-compute partial sums
+        partial_sums  = []
+        partial_exprs = []
+        for n in range(1, max_terms + 1):
+            try:
+                s = expr.series(x_sym, center, n + 1).removeO()
+            except Exception:
+                s = expr
+            partial_sums.append(sp.lambdify(x_sym, s, modules=["numpy"]))
+            partial_exprs.append(s)
+
+        yr = _y_range(f_target, domain)
+        ax = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+
+        target_graph = ax.plot(f_target, x_range=domain, color=CURVE_COLOR, stroke_width=2.5)
+        title = MathTex(r"f(x) = " + _clip_latex(expr), font_size=32, color=CURVE_COLOR)
+        title.to_edge(UP, buff=0.3)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(target_graph), run_time=1.5)
+        self.wait(0.3)
+
+        approx = ax.plot(partial_sums[0], x_range=domain, color=CRITICAL_COLOR, stroke_width=2)
+        n_lbl  = MathTex(r"T_1", font_size=26, color=CRITICAL_COLOR).to_corner(UR, buff=0.3)
+        self.play(Create(approx), Write(n_lbl))
+
+        for i, psum in enumerate(partial_sums[1:], start=2):
+            new_approx = ax.plot(psum, x_range=domain, color=CRITICAL_COLOR, stroke_width=2)
+            new_lbl    = MathTex(f"T_{i}", font_size=26, color=CRITICAL_COLOR).to_corner(UR, buff=0.3)
+            self.play(Transform(approx, new_approx), Transform(n_lbl, new_lbl), run_time=0.8)
+            self.wait(0.25)
+
+        poly_tex = _clip_latex(partial_exprs[-1], max_chars=32)
+        self.play(FadeIn(
+            _result_box(r"T_{" + str(max_terms) + r"}(x) \approx " + poly_tex, 22)
+            .to_edge(DOWN, buff=0.55)
+        ))
+        self.wait(1.2)
+
+
+# ---------------------------------------------------------------------------
+# Scene 8 — Fundamental Theorem of Calculus (Part 1)
+# ---------------------------------------------------------------------------
+
+class FTCScene(Scene):
+    def construct(self):
+        p = _load_params()
+        expression = p.get("expression", "x**2 - 2*x + 2")
+        domain     = p.get("domain",     [-0.5, 4])
+        start      = float(p.get("start", 0.0))
+        cap        = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+        t_sym = sp.Symbol("t")
+        expr_t = expr.subs(x_sym, t_sym)
+
+        def compute_F(xv: float) -> float:
+            try:
+                return float(sp.integrate(expr_t, (t_sym, start, xv)))
+            except Exception:
+                from scipy import integrate as sci
+                result, _ = sci.quad(f, start, xv)
+                return result
+
+        yr_f = _y_range(f, domain)
+        F_xs = np.linspace(domain[0], domain[1], 60)
+        F_ys = [compute_F(float(x)) for x in F_xs]
+        F_finite = [y for y in F_ys if math.isfinite(y)]
+        F_lo = min(F_finite) if F_finite else -5
+        F_hi = max(F_finite) if F_finite else 5
+        F_pad = max((F_hi - F_lo) * 0.2, 0.5)
+
+        ax_f = Axes(
+            x_range=[domain[0], domain[1], max(1, round((domain[1]-domain[0])/8))],
+            y_range=yr_f, x_length=8, y_length=2.5,
+            axis_config={"color": WHITE, "include_numbers": True, "font_size": 16},
+            tips=False,
+        ).shift(UP * 1.85)
+
+        ax_F = Axes(
+            x_range=[domain[0], domain[1], max(1, round((domain[1]-domain[0])/8))],
+            y_range=[F_lo - F_pad, F_hi + F_pad, max(1, round((F_hi-F_lo+2*F_pad)/6))],
+            x_length=8, y_length=2.5,
+            axis_config={"color": WHITE, "include_numbers": True, "font_size": 16},
+            tips=False,
+        ).shift(DOWN * 1.85)
+
+        graph_f = ax_f.plot(f, x_range=domain, color=CURVE_COLOR)
+        graph_F = ax_F.plot(compute_F, x_range=[start, domain[1]], color=DERIV_COLOR)
+        graph_F.set_stroke(opacity=0)  # hidden until revealed
+
+        lbl_f = MathTex(r"f(x)", font_size=20, color=CURVE_COLOR).next_to(ax_f, LEFT, buff=0.3)
+        lbl_F = MathTex(r"F(x)=\int_a^x f(t)\,dt", font_size=16, color=DERIV_COLOR)
+        lbl_F.next_to(ax_F, LEFT, buff=0.1)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+        self.play(Create(ax_f), Create(ax_F), Write(lbl_f), Write(lbl_F))
+        self.play(Create(graph_f), run_time=1.5)
+        self.wait(0.3)
+
+        x_tracker = ValueTracker(start)
+
+        area = always_redraw(lambda: (
+            ax_f.get_area(graph_f,
+                          x_range=[start, max(x_tracker.get_value(), start + 0.05)],
+                          color=CURVE_COLOR, opacity=0.35)
+        ))
+        self.add(area)
+
+        # Reveal F(x) curve progressively alongside area growth
+        self.play(
+            x_tracker.animate.set_value(domain[1]),
+            Create(graph_F),
+            run_time=5, rate_func=linear,
+        )
+        graph_F.set_stroke(opacity=1)
+
+        self.play(FadeIn(
+            _result_box(r"F'(x) = f(x)", 30).to_edge(DOWN, buff=0.55)
+        ))
+        self.wait(1.0)

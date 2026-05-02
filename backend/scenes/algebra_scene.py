@@ -253,3 +253,177 @@ class QuadraticScene(Scene):
             self.play(FadeIn(roots_box))
 
         self.wait(1.0)
+
+
+# ---------------------------------------------------------------------------
+# InequalityScene
+# ---------------------------------------------------------------------------
+
+class InequalityScene(Scene):
+    def construct(self):
+        p = _load_params()
+        expression = p.get("expression", "x + 2 > 5")
+        domain     = p.get("domain",     [-10, 10])
+        cap        = p.get("caption", "")
+
+        import re
+        m = re.search(r"(>=|<=|>|<)", expression)
+        if m:
+            op = m.group(1)
+            lhs_str, rhs_str = expression.split(op, 1)
+        else:
+            op, lhs_str, rhs_str = ">", expression, "0"
+
+        x_sym = sp.Symbol("x")
+        try:
+            lhs = sp.sympify(lhs_str.strip())
+            rhs = sp.sympify(rhs_str.strip())
+            diff_expr = lhs - rhs
+            bpts = [float(b.evalf()) for b in sp.solve(diff_expr, x_sym) if b.is_real]
+        except Exception:
+            bpts = [5.0]
+
+        nl = NumberLine(
+            x_range=[domain[0], domain[1], max(1, round((domain[1]-domain[0])/10))],
+            length=10, color=WHITE,
+            include_numbers=True, include_tip=True,
+            tip_width=0.15, font_size=20,
+        ).center()
+
+        ineq_tex = expression.replace(">=", r"\geq").replace("<=", r"\leq")
+        title = MathTex(ineq_tex, font_size=40).to_edge(UP, buff=0.3)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+        self.play(Create(nl), Write(title))
+
+        strict = op in (">", "<")
+        for bp in bpts:
+            if domain[0] <= bp <= domain[1]:
+                if strict:
+                    pt = Circle(radius=0.13, color=RED, stroke_width=2.5, fill_opacity=0)
+                    pt.move_to(nl.n2p(bp))
+                else:
+                    pt = Dot(nl.n2p(bp), color=RED, radius=0.13)
+                self.play(FadeIn(pt))
+
+        bp = bpts[0] if bpts else 0.0
+        try:
+            test_x = bp + 1
+            lhs_v = float(lhs.subs(x_sym, test_x))
+            rhs_v = float(rhs.subs(x_sym, test_x))
+            shade_right = {">": lhs_v > rhs_v, "<": lhs_v < rhs_v,
+                           ">=": lhs_v >= rhs_v, "<=": lhs_v <= rhs_v}.get(op, True)
+        except Exception:
+            shade_right = True
+
+        shade = Line(
+            nl.n2p(bp if shade_right else domain[0]),
+            nl.n2p(domain[1] if shade_right else bp),
+            color=BLUE, stroke_width=9,
+        )
+        self.play(Create(shade))
+        self.play(FadeIn(_result_box(ineq_tex, 30).to_edge(DOWN, buff=0.55)))
+        self.wait(1.0)
+
+
+# ---------------------------------------------------------------------------
+# ExponentialScene
+# ---------------------------------------------------------------------------
+
+class ExponentialScene(Scene):
+    def construct(self):
+        p = _load_params()
+        expression      = p.get("expression",      "2**x")
+        domain          = p.get("domain",           [-3, 5])
+        show_key_points = p.get("show_key_points",  True)
+        cap             = p.get("caption", "")
+
+        expr, f, _ = _parse(expression)
+        yr     = _y_range(f, domain)
+        ax     = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=BLUE, use_smoothing=True)
+        title  = MathTex(r"f(x) = " + sp.latex(expr), font_size=34).to_edge(UP, buff=0.3)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+        self.play(Create(ax), Write(labels))
+        self.play(Write(title))
+        self.play(Create(graph), run_time=2)
+
+        if show_key_points:
+            is_growth = _safe_eval(f, domain[1]) > _safe_eval(f, domain[0])
+            y0 = max(_safe_eval(f, 0.0), 1e-9)
+            mults = [2, 4, 8] if is_growth else [0.5, 0.25]
+            key_xs = []
+            for mult in mults:
+                target = y0 * mult
+                lo, hi = domain[0], domain[1]
+                for _ in range(60):
+                    mid = (lo + hi) / 2
+                    if _safe_eval(f, mid) < target:
+                        lo = mid
+                    else:
+                        hi = mid
+                kx = (lo + hi) / 2
+                if domain[0] < kx < domain[1]:
+                    key_xs.append(kx)
+
+            if key_xs:
+                dashes = VGroup(*[
+                    DashedLine(ax.c2p(kx, 0), ax.c2p(kx, _safe_eval(f, kx)),
+                               color=GRAY, stroke_width=1.5)
+                    for kx in key_xs
+                ])
+                dots = VGroup(*[
+                    Dot(ax.c2p(kx, _safe_eval(f, kx)), color=YELLOW, radius=0.1)
+                    for kx in key_xs
+                ])
+                self.play(Create(dashes), FadeIn(dots))
+                msg = "doubles at each step" if is_growth else "halves at each step"
+                self.play(Write(Text(msg, font_size=22, color=YELLOW).to_corner(UR, buff=0.3)))
+
+        self.wait(1.0)
+
+
+# ---------------------------------------------------------------------------
+# TransformationScene
+# ---------------------------------------------------------------------------
+
+class TransformationScene(Scene):
+    def construct(self):
+        p = _load_params()
+        base_str  = p.get("base_expression",       "x**2")
+        trans_str = p.get("transformed_expression", "(x-2)**2 + 3")
+        domain    = p.get("domain",                 [-5, 5])
+        cap       = p.get("caption", "")
+
+        base_expr,  f_base,  _ = _parse(base_str)
+        trans_expr, f_trans, _ = _parse(trans_str)
+
+        yr = [
+            min(_y_range(f_base, domain)[0], _y_range(f_trans, domain)[0]),
+            max(_y_range(f_base, domain)[1], _y_range(f_trans, domain)[1]),
+            max(_y_range(f_base, domain)[2], _y_range(f_trans, domain)[2]),
+        ]
+
+        ax     = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+
+        base_graph  = ax.plot(f_base,  x_range=domain, color=GRAY,
+                              stroke_width=2, stroke_opacity=0.5)
+        trans_graph = ax.plot(f_trans, x_range=domain, color=BLUE, stroke_width=2.5)
+
+        lbl_base  = MathTex(r"f(x) = " + sp.latex(base_expr),  font_size=26, color=GRAY)
+        lbl_trans = MathTex(r"g(x) = " + sp.latex(trans_expr), font_size=26, color=BLUE)
+        lbl_base.to_edge(UP, buff=0.3)
+        lbl_trans.next_to(lbl_base, DOWN, buff=0.1)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+        self.play(Create(ax), Write(labels))
+        self.play(Create(base_graph), Write(lbl_base))
+        self.wait(0.5)
+        self.play(Create(trans_graph), Write(lbl_trans), run_time=2)
+        self.wait(1.0)
