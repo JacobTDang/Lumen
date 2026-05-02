@@ -81,6 +81,14 @@ class TrigUnitCircleSchema(BaseModel):
     caption: str = ""
 
 
+class SurfacePlotSchema(BaseModel):
+    scene: Literal["surface_plot"] = "surface_plot"
+    expression: str
+    x_domain: List[float] = [-3.0, 3.0]
+    y_domain: List[float] = [-3.0, 3.0]
+    caption: str = ""
+
+
 VisualizationSchema = (
     BubbleSortSchema
     | FunctionPlotSchema
@@ -91,6 +99,7 @@ VisualizationSchema = (
     | LinearFunctionSchema
     | QuadraticSchema
     | TrigUnitCircleSchema
+    | SurfacePlotSchema
 )
 
 

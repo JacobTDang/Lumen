@@ -1,15 +1,26 @@
 import json
 import os
-import shutil
 import subprocess
 import sys
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 _jobs: dict = {}
 
+# ---------------------------------------------------------------------------
+# Quality settings
+# 2D scenes use medium quality (720p30); 3D surface is kept at low (480p15)
+# because surface renders are significantly slower.
+# ---------------------------------------------------------------------------
+_QUALITY_2D  = "-qm"
+_QUALITY_DIR_2D = "720p30"
+_QUALITY_3D  = "-ql"
+_QUALITY_DIR_3D = "480p15"
+_3D_SCENES   = {"surface_plot"}
+
 SCENE_REGISTRY = {
-    "bubble_sort":      ("scenes/array_scene.py",   "BubbleSortScene"),
+    "bubble_sort":      ("scenes/array_scene.py",    "BubbleSortScene"),
     "function_plot":    ("scenes/calculus_scene.py", "FunctionPlotScene"),
     "limit":            ("scenes/calculus_scene.py", "LimitScene"),
     "tangent_line":     ("scenes/calculus_scene.py", "TangentLineScene"),
@@ -18,6 +29,7 @@ SCENE_REGISTRY = {
     "linear_function":  ("scenes/algebra_scene.py",  "LinearFunctionScene"),
     "quadratic":        ("scenes/algebra_scene.py",  "QuadraticScene"),
     "trig_unit_circle": ("scenes/trig_scene.py",     "TrigUnitCircleScene"),
+    "surface_plot":     ("scenes/threed_scene.py",   "SurfacePlotScene"),
 }
 
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +62,14 @@ def _run_render(job_id: str, scene_type: str, params: dict):
     os.makedirs(_TEMP_DIR, exist_ok=True)
     params_path = os.path.join(_TEMP_DIR, f"{job_id}.json")
 
+    # Each job gets its own media directory — enables parallel rendering
+    # without output file collisions between jobs of the same scene class.
+    is_3d         = scene_type in _3D_SCENES
+    quality_flag  = _QUALITY_3D  if is_3d else _QUALITY_2D
+    quality_dir   = _QUALITY_DIR_3D if is_3d else _QUALITY_DIR_2D
+    job_media_dir = os.path.join(_MEDIA_DIR, "jobs", job_id)
+    os.makedirs(job_media_dir, exist_ok=True)
+
     try:
         with open(params_path, "w") as f:
             json.dump(params, f)
@@ -57,9 +77,10 @@ def _run_render(job_id: str, scene_type: str, params: dict):
         scene_file, scene_class = SCENE_REGISTRY[scene_type]
 
         result = subprocess.run(
-            [sys.executable, "-m", "manim", "-ql", "--media_dir", "media",
+            [sys.executable, "-m", "manim", quality_flag,
+             "--media_dir", job_media_dir,
              "--disable_caching", scene_file, scene_class],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=180,
             cwd=_BACKEND_DIR,
             env={**os.environ, "MANIM_JOB_ID": job_id, "MANIM_TEMP_DIR": _TEMP_DIR},
         )
@@ -69,17 +90,17 @@ def _run_render(job_id: str, scene_type: str, params: dict):
             return
 
         scene_stem = os.path.splitext(os.path.basename(scene_file))[0]
-        video_path = f"videos/{scene_stem}/480p15/{scene_class}.mp4"
-        full_path  = os.path.join(_MEDIA_DIR, video_path)
+        video_rel  = f"jobs/{job_id}/videos/{scene_stem}/{quality_dir}/{scene_class}.mp4"
+        full_path  = os.path.join(_MEDIA_DIR, video_rel)
 
         if not os.path.exists(full_path):
             _jobs[job_id] = {"status": "error", "url": None, "error": "output file not found after render"}
             return
 
-        _jobs[job_id] = {"status": "done", "url": f"/media/{video_path}", "error": None}
+        _jobs[job_id] = {"status": "done", "url": f"/media/{video_rel}", "error": None}
 
     except subprocess.TimeoutExpired:
-        _jobs[job_id] = {"status": "error", "url": None, "error": "render timed out after 120s"}
+        _jobs[job_id] = {"status": "error", "url": None, "error": "render timed out after 180s"}
     except Exception as e:
         _jobs[job_id] = {"status": "error", "url": None, "error": str(e)}
     finally:
@@ -88,11 +109,10 @@ def _run_render(job_id: str, scene_type: str, params: dict):
 
 
 # ---------------------------------------------------------------------------
-# Multi-scene lesson API
+# Multi-scene lesson API  (parallel rendering)
 # ---------------------------------------------------------------------------
 
 def submit_lesson(steps: list) -> str:
-    """Submit a multi-step lesson plan. Returns a lesson job_id."""
     lesson_id = str(uuid.uuid4())
     _jobs[lesson_id] = {"status": "pending", "url": None, "error": None}
     threading.Thread(
@@ -102,7 +122,6 @@ def submit_lesson(steps: list) -> str:
 
 
 def stitch_videos(paths: list[str], out: str):
-    """Concatenate video files using FFmpeg concat demuxer."""
     filelist_path = out + ".txt"
     with open(filelist_path, "w") as fh:
         fh.write("\n".join(f"file '{p}'" for p in paths))
@@ -115,42 +134,42 @@ def stitch_videos(paths: list[str], out: str):
 
 
 def _run_lesson(lesson_id: str, steps: list):
-    steps_dir = os.path.join(_MEDIA_DIR, "steps")
-    os.makedirs(steps_dir, exist_ok=True)
-
-    video_paths = []
-
-    for step in steps:
+    def _render_step(step):
         step_job_id = str(uuid.uuid4())
         _jobs[step_job_id] = {"status": "pending", "url": None, "error": None}
+        _run_render(step_job_id, step.tool, {**step.params, "caption": step.caption})
+        return step_job_id
 
-        # Pass caption into params so scenes can display it
-        params_with_caption = {**step.params, "caption": step.caption}
-        _run_render(step_job_id, step.tool, params_with_caption)
+    # Render all steps in parallel — isolated media dirs prevent collisions
+    max_workers = min(len(steps), 4)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures        = [pool.submit(_render_step, step) for step in steps]
+        step_job_ids   = [f.result() for f in futures]  # preserves submission order
 
-        if _jobs[step_job_id]["status"] == "error":
+    # Check for any render errors
+    for jid in step_job_ids:
+        if _jobs[jid]["status"] == "error":
             _jobs[lesson_id] = {
                 "status": "error", "url": None,
-                "error": f"Step '{step.tool}' failed: {_jobs[step_job_id]['error']}",
+                "error": f"Step failed: {_jobs[jid]['error']}",
             }
             return
 
-        # Copy to a step-specific path before the next render can overwrite
-        original_url  = _jobs[step_job_id]["url"]
-        original_path = os.path.join(_MEDIA_DIR, original_url.removeprefix("/media/"))
-        permanent     = os.path.join(steps_dir, f"{step_job_id}.mp4")
-        shutil.copy2(original_path, permanent)
-        video_paths.append(permanent)
-
-    # Single step — no stitching needed
-    if len(video_paths) == 1:
-        _jobs[lesson_id] = {"status": "done", "url": f"/media/steps/{os.path.basename(video_paths[0])}", "error": None}
+    # Single step — skip FFmpeg, return video URL directly
+    if len(step_job_ids) == 1:
+        _jobs[lesson_id] = {
+            "status": "done", "url": _jobs[step_job_ids[0]]["url"], "error": None,
+        }
         return
 
-    # Stitch
-    lessons_dir  = os.path.join(_MEDIA_DIR, "lessons")
+    # Collect video paths in submission order then stitch
+    video_paths = [
+        os.path.join(_MEDIA_DIR, _jobs[jid]["url"].removeprefix("/media/"))
+        for jid in step_job_ids
+    ]
+    lessons_dir = os.path.join(_MEDIA_DIR, "lessons")
     os.makedirs(lessons_dir, exist_ok=True)
-    output_path  = os.path.join(lessons_dir, f"{lesson_id}.mp4")
+    output_path = os.path.join(lessons_dir, f"{lesson_id}.mp4")
 
     try:
         stitch_videos(video_paths, output_path)

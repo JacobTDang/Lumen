@@ -41,6 +41,12 @@ PRE-CALCULUS / TRIG:
   trig_unit_circle — animates unit circle with live sin/cos projections
     params: {"angle": float, "animate_rotation": bool}
 
+CALCULUS 3 / MULTIVARIABLE:
+  surface_plot — 3D surface z=f(x,y) with rotating camera, colored by height
+    params: {"expression": str, "x_domain": [float, float], "y_domain": [float, float]}
+    use for: multivariable functions, Calc 3, paraboloids, saddle points,
+             3D surface visualization, any question involving z = f(x, y)
+
 Expression syntax (sympy/Python): x**2  sin(x)  cos(x)  exp(x)  log(x)  sqrt(x)  tan(x)  pi  E
 
 Planning rules:
@@ -61,7 +67,7 @@ Respond with ONLY valid JSON — no markdown fences, no explanation:
 
 _VALID_TOOLS = {
     "function_plot", "limit", "tangent_line", "riemann_sum", "critical_points",
-    "linear_function", "quadratic", "trig_unit_circle",
+    "linear_function", "quadratic", "trig_unit_circle", "surface_plot",
 }
 
 
