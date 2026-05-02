@@ -6,8 +6,8 @@ from flask_cors import CORS
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-from agent.classifier import classify
-from renderer.worker import get_job, submit_render
+from agent.planner import plan
+from renderer.worker import get_job, submit_lesson, submit_render
 
 
 def create_app(testing: bool = False) -> Flask:
@@ -21,21 +21,25 @@ def create_app(testing: bool = False) -> Flask:
 
     @app.post("/ask")
     def ask():
-        body = request.get_json(silent=True) or {}
+        body     = request.get_json(silent=True) or {}
         question = body.get("question", "").strip()
         if not question:
             return jsonify({"error": "question is required"}), 400
         try:
-            schema = classify(question)
+            lesson = plan(question)
         except Exception as e:
-            return jsonify({"error": f"classification failed: {e}"}), 422
-        job_id = submit_render(schema.scene, schema.model_dump(exclude={"scene"}))
-        return jsonify({"job_id": job_id, "scene": schema.scene}), 202
+            return jsonify({"error": f"planning failed: {e}"}), 422
+        job_id = submit_lesson(lesson.steps)
+        return jsonify({
+            "job_id":      job_id,
+            "concept":     lesson.concept,
+            "scene_count": len(lesson.steps),
+        }), 202
 
     @app.post("/render")
     def render():
-        body = request.get_json(silent=True) or {}
-        scene = body.get("scene")
+        body   = request.get_json(silent=True) or {}
+        scene  = body.get("scene")
         params = body.get("params", {})
         if not scene:
             return jsonify({"error": "scene is required"}), 400

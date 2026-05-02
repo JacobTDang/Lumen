@@ -5,8 +5,6 @@ __pycache__/
 *.pyo
 .env
 backend/.env.example
-backend/media/videos/
-backend/media/temp/
-backend/media/Tex/
-backend/media/texts/
+backend/media/
+backend/backend/
 .DS_Store

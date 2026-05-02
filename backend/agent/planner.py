@@ -1,0 +1,109 @@
+import json
+import os
+import re
+
+from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+from schemas.types import LessonPlan, StepPlan
+
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+SYSTEM_PROMPT = """You are a math visualization tutor. Given a student's question, create a multi-step visual lesson plan.
+
+Available scene tools:
+
+CALCULUS:
+  function_plot   — graph any function, evaluate at a point
+    params: {"expression": str, "domain": [float, float], "x_point": float|null}
+
+  limit           — animate limit approach from left and right
+    params: {"expression": str, "limit_point": float, "domain": [float, float]}
+
+  tangent_line    — secant line becoming tangent, shows derivative
+    params: {"expression": str, "x_point": float, "domain": [float, float]}
+
+  riemann_sum     — animated rectangles converging to definite integral
+    params: {"expression": str, "domain": [float, float], "n": int, "method": "left"|"right"|"midpoint"}
+
+  critical_points — plots f and f', marks local max/min
+    params: {"expression": str, "domain": [float, float]}
+
+ALGEBRA:
+  linear_function — plots a line with slope triangle and y-intercept; optionally two lines + intersection
+    params: {"expression": str, "domain": [float, float], "second_expression": str|null}
+
+  quadratic       — plots parabola with vertex, roots, axis of symmetry
+    params: {"expression": str, "domain": [float, float]}
+
+PRE-CALCULUS / TRIG:
+  trig_unit_circle — animates unit circle with live sin/cos projections
+    params: {"angle": float, "animate_rotation": bool}
+
+Expression syntax (sympy/Python): x**2  sin(x)  cos(x)  exp(x)  log(x)  sqrt(x)  tan(x)  pi  E
+
+Planning rules:
+- 1 step  : simple/factual questions ("graph X", "what is slope", "plot sin")
+- 2 steps : "what is X and how does it work"
+- 3 steps : "explain why X", "prove X", conceptual understanding
+- 4 steps : "walk me through solving X step by step" (complex multi-concept)
+- Order   : broad overview first → specific detail → result/application
+- Caption : one clear sentence telling the student exactly what to notice in this step
+- Domains : use [-5,5] default; trig on [-6.3,6.3]; zoom in tight for local features
+- Always use syntactically valid sympy expressions
+
+Respond with ONLY valid JSON — no markdown fences, no explanation:
+{"concept": "brief concept name", "level": "arithmetic|algebra|pre_calculus|calculus", "steps": [
+  {"tool": "<scene_key>", "params": {<params>}, "caption": "<one sentence>"},
+  ...
+]}"""
+
+_VALID_TOOLS = {
+    "function_plot", "limit", "tangent_line", "riemann_sum", "critical_points",
+    "linear_function", "quadratic", "trig_unit_circle",
+}
+
+
+def _build_llm() -> ChatOpenAI:
+    return ChatOpenAI(
+        base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        api_key=os.environ["OPENROUTER_API_KEY"],
+        model=os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
+        temperature=0,
+    )
+
+
+def plan(question: str) -> LessonPlan:
+    llm = _build_llm()
+    response = llm.invoke([
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(content=question),
+    ])
+
+    raw = response.content.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    raw = raw.strip()
+
+    data = json.loads(raw)
+
+    steps = []
+    for s in data.get("steps", []):
+        tool = s.get("tool", "")
+        if tool not in _VALID_TOOLS:
+            raise ValueError(f"Unknown tool from planner: {tool!r}")
+        steps.append(StepPlan(
+            tool=tool,
+            params=s.get("params", {}),
+            caption=s.get("caption", ""),
+        ))
+
+    if not steps:
+        raise ValueError("Planner returned no steps")
+
+    return LessonPlan(
+        concept=data.get("concept", ""),
+        level=data.get("level", "calculus"),
+        steps=steps,
+    )

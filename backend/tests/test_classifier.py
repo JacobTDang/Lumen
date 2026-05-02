@@ -125,23 +125,26 @@ def test_ask_missing_question_returns_400(client):
 
 
 def test_ask_returns_job_id_and_scene(client, mocker):
-    mocker.patch(
-        "app.classify",
-        return_value=TangentLineSchema(expression="x**2", x_point=1.0, domain=[-4, 4]),
-    )
-    mocker.patch("app.submit_render", return_value="test-job-id")
+    from schemas.types import LessonPlan, StepPlan
+    mocker.patch("app.plan", return_value=LessonPlan(
+        concept="derivative", level="calculus",
+        steps=[StepPlan(tool="tangent_line",
+                        params={"expression": "x**2", "x_point": 1.0, "domain": [-4, 4]},
+                        caption="")],
+    ))
+    mocker.patch("app.submit_lesson", return_value="test-job-id")
     res = client.post("/ask", json={"question": "derivative of x squared at 1"})
     assert res.status_code == 202
     data = res.get_json()
     assert data["job_id"] == "test-job-id"
-    assert data["scene"] == "tangent_line"
+    assert data["concept"] == "derivative"
 
 
 def test_ask_classifier_failure_returns_422(client, mocker):
-    mocker.patch("app.classify", side_effect=ValueError("bad json from model"))
+    mocker.patch("app.plan", side_effect=ValueError("bad json from model"))
     res = client.post("/ask", json={"question": "some question"})
     assert res.status_code == 422
-    assert "classification failed" in res.get_json()["error"]
+    assert "planning failed" in res.get_json()["error"]
 
 
 # ---------------------------------------------------------------------------

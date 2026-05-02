@@ -1,0 +1,255 @@
+import json
+import math
+import os
+
+import numpy as np
+import sympy as sp
+from manim import *
+
+# ---------------------------------------------------------------------------
+# Shared helpers (mirrors calculus_scene.py)
+# ---------------------------------------------------------------------------
+
+def _load_params() -> dict:
+    job_id = os.environ.get("MANIM_JOB_ID")
+    if job_id:
+        temp_dir = os.environ.get("MANIM_TEMP_DIR", os.path.join("media", "temp"))
+        path = os.path.join(temp_dir, f"{job_id}.json")
+        if os.path.exists(path):
+            with open(path) as f:
+                return json.load(f)
+    return {}
+
+
+def _parse(expression: str):
+    x = sp.Symbol("x")
+    expr = sp.sympify(expression)
+    func = sp.lambdify(x, expr, modules=["numpy"])
+    return expr, func, x
+
+
+def _safe_eval(func, val: float) -> float:
+    try:
+        y = float(func(val))
+        return y if math.isfinite(y) else 0.0
+    except Exception:
+        return 0.0
+
+
+def _y_range(func, domain: list) -> list:
+    xs = np.linspace(domain[0], domain[1], 400)
+    finite = [_safe_eval(func, float(v)) for v in xs]
+    finite = [y for y in finite if math.isfinite(y) and abs(y) < 1e5]
+    if not finite:
+        return [-5.0, 5.0, 1.0]
+    lo, hi = min(finite), max(finite)
+    pad = max((hi - lo) * 0.2, 0.5)
+    lo, hi = lo - pad, hi + pad
+    step = max(1.0, round((hi - lo) / 6))
+    return [lo, hi, step]
+
+
+def _make_axes(domain, yr, x_len=9.0, y_len=5.5):
+    x_step = max(1, round((domain[1] - domain[0]) / 8))
+    return Axes(
+        x_range=[domain[0], domain[1], x_step],
+        y_range=yr,
+        x_length=x_len, y_length=y_len,
+        axis_config={"color": WHITE, "include_numbers": True, "font_size": 20},
+        tips=False,
+    )
+
+
+def _num(v: float) -> str:
+    return str(int(v)) if v == int(v) else str(round(v, 3))
+
+
+def _result_box(tex: str, font_size: int = 28) -> VGroup:
+    label = MathTex(tex, font_size=font_size)
+    box = SurroundingRectangle(
+        label, color=WHITE, fill_color=BLACK,
+        fill_opacity=0.75, buff=0.15, corner_radius=0.1,
+    )
+    return VGroup(box, label)
+
+
+def _caption(text: str) -> Text:
+    return Text(text, font_size=19, color=GRAY, slant=ITALIC).to_edge(DOWN, buff=0.12)
+
+
+# ---------------------------------------------------------------------------
+# LinearFunctionScene
+# ---------------------------------------------------------------------------
+
+class LinearFunctionScene(Scene):
+    def construct(self):
+        p = _load_params()
+        expression        = p.get("expression",        "2*x + 1")
+        domain            = p.get("domain",            [-5, 5])
+        second_expression = p.get("second_expression")
+        cap               = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+
+        # Compute slope and y-intercept
+        slope = float(sp.diff(expr, x_sym).evalf())
+        y_int = float(expr.subs(x_sym, 0).evalf())
+
+        # Y-range from both lines if needed
+        all_funcs = [f]
+        expr2, f2, _ = (None, None, None)
+        if second_expression:
+            expr2, f2, _ = _parse(second_expression)
+            all_funcs.append(f2)
+
+        combined_yr = _y_range(f, domain)
+        if f2:
+            yr2 = _y_range(f2, domain)
+            combined_yr[0] = min(combined_yr[0], yr2[0])
+            combined_yr[1] = max(combined_yr[1], yr2[1])
+
+        ax     = _make_axes(domain, combined_yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=BLUE, stroke_width=3)
+
+        slope_sign = "+" if slope >= 0 else "-"
+        abs_slope  = abs(slope)
+        y_int_sign = "+" if y_int >= 0 else "-"
+        title = MathTex(
+            r"f(x) = " + _num(slope) + r"x\ " + y_int_sign + r"\ " + _num(abs(y_int)),
+            font_size=36,
+        ).to_edge(UP, buff=0.3)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+
+        self.play(Create(ax), Write(labels))
+        self.play(Write(title))
+        self.play(Create(graph), run_time=1.5)
+
+        # Y-intercept dot
+        y_int_dot = Dot(ax.c2p(0, y_int), color=YELLOW, radius=0.12)
+        y_int_label = _result_box(
+            r"y\text{-int} = " + _num(y_int), 24,
+        ).next_to(y_int_dot, UR if y_int >= 0 else DR, buff=0.2)
+        self.play(FadeIn(y_int_dot), FadeIn(y_int_label))
+        self.wait(0.4)
+
+        # Slope triangle (rise over run) — drawn at a visible region
+        run_start_x = max(domain[0] + 0.5, -1.5)
+        run_end_x   = min(run_start_x + 2.0, domain[1] - 0.5)
+        run_y       = _safe_eval(f, run_start_x)
+        rise_y      = _safe_eval(f, run_end_x)
+
+        run_line  = DashedLine(ax.c2p(run_start_x, run_y),  ax.c2p(run_end_x, run_y),  color=GREEN)
+        rise_line = DashedLine(ax.c2p(run_end_x,  run_y),  ax.c2p(run_end_x, rise_y), color=RED)
+
+        run_label  = MathTex(r"\text{run} = " + _num(run_end_x - run_start_x), font_size=20, color=GREEN)
+        run_label.next_to(run_line, DOWN, buff=0.1)
+        rise_label = MathTex(r"\text{rise} = " + _num(round(rise_y - run_y, 3)), font_size=20, color=RED)
+        rise_label.next_to(rise_line, RIGHT, buff=0.1)
+
+        self.play(Create(run_line), Create(rise_line))
+        self.play(Write(run_label), Write(rise_label))
+
+        slope_box = _result_box(
+            r"\text{slope} = \frac{\Delta y}{\Delta x} = " + _num(slope), 26,
+        ).to_edge(DOWN, buff=0.55)
+        self.play(FadeIn(slope_box))
+        self.wait(0.5)
+
+        # Second line + intersection
+        if f2 and expr2 is not None:
+            graph2 = ax.plot(f2, x_range=domain, color=RED, stroke_width=3)
+            self.play(Create(graph2))
+            try:
+                x_int_val = float(sp.solve(expr - expr2, x_sym)[0].evalf())
+                y_int_val = _safe_eval(f, x_int_val)
+                if domain[0] <= x_int_val <= domain[1]:
+                    inter_dot = Dot(ax.c2p(x_int_val, y_int_val), color=WHITE, radius=0.12)
+                    inter_label = _result_box(
+                        r"\text{intersection: } (" + _num(round(x_int_val, 2)) + r",\ " + _num(round(y_int_val, 2)) + r")", 22,
+                    ).to_corner(UR, buff=0.3)
+                    self.play(FadeIn(inter_dot), FadeIn(inter_label))
+            except Exception:
+                pass
+
+        self.wait(1.0)
+
+
+# ---------------------------------------------------------------------------
+# QuadraticScene
+# ---------------------------------------------------------------------------
+
+class QuadraticScene(Scene):
+    def construct(self):
+        p = _load_params()
+        expression = p.get("expression", "x**2 - 4")
+        domain     = p.get("domain",     [-5, 5])
+        cap        = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+
+        # Vertex
+        d_expr = sp.diff(expr, x_sym)
+        try:
+            vx_sym = sp.solve(d_expr, x_sym)[0]
+            vx = float(vx_sym.evalf())
+            vy = float(expr.subs(x_sym, vx_sym).evalf())
+        except Exception:
+            vx, vy = 0.0, float(expr.subs(x_sym, 0).evalf())
+
+        # Roots
+        try:
+            raw_roots = sp.solve(expr, x_sym)
+            real_roots = [float(r.evalf()) for r in raw_roots if r.is_real]
+        except Exception:
+            real_roots = []
+
+        yr = _y_range(f, domain)
+        ax = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=BLUE, stroke_width=3)
+        title  = MathTex(r"f(x) = " + sp.latex(expr), font_size=36).to_edge(UP, buff=0.3)
+
+        if cap:
+            self.play(Write(_caption(cap)))
+
+        self.play(Create(ax), Write(labels))
+        self.play(Write(title))
+        self.play(Create(graph), run_time=2)
+
+        # Axis of symmetry (dashed vertical)
+        if domain[0] <= vx <= domain[1]:
+            sym_line = DashedLine(
+                ax.c2p(vx, yr[0]), ax.c2p(vx, yr[1]),
+                color=GRAY, dash_length=0.15, stroke_width=1.5,
+            )
+            self.play(Create(sym_line))
+
+        # Vertex
+        if domain[0] <= vx <= domain[1]:
+            vertex_dot = Dot(ax.c2p(vx, vy), color=YELLOW, radius=0.12)
+            v_dir = UP if vy < (yr[0] + yr[1]) / 2 else DOWN
+            vertex_label = _result_box(
+                r"\text{vertex} = (" + _num(round(vx, 2)) + r",\ " + _num(round(vy, 2)) + r")", 24,
+            ).next_to(vertex_dot, v_dir, buff=0.2)
+            self.play(FadeIn(vertex_dot))
+            self.play(Indicate(vertex_dot, color=YELLOW, scale_factor=1.4))
+            self.play(FadeIn(vertex_label))
+            self.wait(0.4)
+
+        # Roots
+        root_dots = []
+        for rx in real_roots:
+            if domain[0] <= rx <= domain[1]:
+                rdot = Dot(ax.c2p(rx, 0), color=RED, radius=0.1)
+                root_dots.append(rdot)
+
+        if root_dots:
+            self.play(*[FadeIn(d) for d in root_dots])
+            roots_str = r",\ ".join(_num(round(r, 2)) for r in sorted(real_roots))
+            roots_box = _result_box(r"x = " + roots_str, 26).to_edge(DOWN, buff=0.55)
+            self.play(FadeIn(roots_box))
+
+        self.wait(1.0)

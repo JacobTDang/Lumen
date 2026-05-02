@@ -2,9 +2,14 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, field_validator
 
 
+# ---------------------------------------------------------------------------
+# Visualization schemas (one per scene type)
+# ---------------------------------------------------------------------------
+
 class BubbleSortSchema(BaseModel):
     scene: Literal["bubble_sort"] = "bubble_sort"
     array: List[int]
+    caption: str = ""
 
 
 class FunctionPlotSchema(BaseModel):
@@ -12,6 +17,7 @@ class FunctionPlotSchema(BaseModel):
     expression: str
     domain: List[float] = [-4.0, 4.0]
     x_point: Optional[float] = None
+    caption: str = ""
 
 
 class LimitSchema(BaseModel):
@@ -19,6 +25,7 @@ class LimitSchema(BaseModel):
     expression: str
     limit_point: float
     domain: List[float] = [-5.0, 5.0]
+    caption: str = ""
 
 
 class TangentLineSchema(BaseModel):
@@ -26,6 +33,7 @@ class TangentLineSchema(BaseModel):
     expression: str
     x_point: float
     domain: List[float] = [-4.0, 4.0]
+    caption: str = ""
 
 
 class RiemannSumSchema(BaseModel):
@@ -34,6 +42,7 @@ class RiemannSumSchema(BaseModel):
     domain: List[float]
     n: int = 5
     method: Literal["left", "right", "midpoint"] = "left"
+    caption: str = ""
 
     @field_validator("n")
     @classmethod
@@ -47,6 +56,29 @@ class CriticalPointsSchema(BaseModel):
     scene: Literal["critical_points"] = "critical_points"
     expression: str
     domain: List[float] = [-4.0, 4.0]
+    caption: str = ""
+
+
+class LinearFunctionSchema(BaseModel):
+    scene: Literal["linear_function"] = "linear_function"
+    expression: str
+    domain: List[float] = [-5.0, 5.0]
+    second_expression: Optional[str] = None
+    caption: str = ""
+
+
+class QuadraticSchema(BaseModel):
+    scene: Literal["quadratic"] = "quadratic"
+    expression: str
+    domain: List[float] = [-5.0, 5.0]
+    caption: str = ""
+
+
+class TrigUnitCircleSchema(BaseModel):
+    scene: Literal["trig_unit_circle"] = "trig_unit_circle"
+    angle: float = 0.785
+    animate_rotation: bool = True
+    caption: str = ""
 
 
 VisualizationSchema = (
@@ -56,4 +88,23 @@ VisualizationSchema = (
     | TangentLineSchema
     | RiemannSumSchema
     | CriticalPointsSchema
+    | LinearFunctionSchema
+    | QuadraticSchema
+    | TrigUnitCircleSchema
 )
+
+
+# ---------------------------------------------------------------------------
+# Lesson plan models (planner output)
+# ---------------------------------------------------------------------------
+
+class StepPlan(BaseModel):
+    tool: str
+    params: dict
+    caption: str = ""
+
+
+class LessonPlan(BaseModel):
+    concept: str
+    level: str
+    steps: List[StepPlan]
