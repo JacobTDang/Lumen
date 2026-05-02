@@ -7,7 +7,8 @@ from manim import *
 def _load_params() -> dict:
     job_id = os.environ.get("MANIM_JOB_ID")
     if job_id:
-        params_path = os.path.join("media", "temp", f"{job_id}.json")
+        temp_dir = os.environ.get("MANIM_TEMP_DIR", os.path.join("media", "temp"))
+        params_path = os.path.join(temp_dir, f"{job_id}.json")
         if os.path.exists(params_path):
             with open(params_path) as f:
                 return json.load(f)

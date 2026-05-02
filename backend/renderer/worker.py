@@ -8,7 +8,12 @@ import uuid
 _jobs: dict = {}
 
 SCENE_REGISTRY = {
-    "bubble_sort": ("scenes/array_scene.py", "BubbleSortScene"),
+    "bubble_sort":     ("scenes/array_scene.py",    "BubbleSortScene"),
+    "function_plot":   ("scenes/calculus_scene.py", "FunctionPlotScene"),
+    "limit":           ("scenes/calculus_scene.py", "LimitScene"),
+    "tangent_line":    ("scenes/calculus_scene.py", "TangentLineScene"),
+    "riemann_sum":     ("scenes/calculus_scene.py", "RiemannSumScene"),
+    "critical_points": ("scenes/calculus_scene.py", "CriticalPointsScene"),
 }
 
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -49,7 +54,7 @@ def _run_render(job_id: str, scene_type: str, params: dict):
             text=True,
             timeout=120,
             cwd=_BACKEND_DIR,
-            env={**os.environ, "MANIM_JOB_ID": job_id},
+            env={**os.environ, "MANIM_JOB_ID": job_id, "MANIM_TEMP_DIR": _TEMP_DIR},
         )
 
         if result.returncode != 0:
