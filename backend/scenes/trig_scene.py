@@ -30,8 +30,18 @@ def _result_box(tex: str, font_size: int = 28) -> VGroup:
     return VGroup(box, label)
 
 
-def _caption(text: str) -> Text:
-    return Text(text, font_size=19, color=GRAY, slant=ITALIC).to_edge(DOWN, buff=0.12)
+def _show_title_card(scene, text: str):
+    card = Text(text, font_size=30, color=WHITE).center()
+    scene.play(FadeIn(card), run_time=0.35)
+    scene.wait(1.2)
+    scene.play(FadeOut(card), run_time=0.35)
+
+
+def _caption(text: str) -> VGroup:
+    bg  = Rectangle(width=14.5, height=0.62, fill_color=BLACK,
+                    fill_opacity=0.82, stroke_width=0).to_edge(DOWN, buff=0)
+    txt = Text(text, font_size=22, color=WHITE).to_edge(DOWN, buff=0.14)
+    return VGroup(bg, txt)
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +50,7 @@ def _caption(text: str) -> Text:
 
 class TrigUnitCircleScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p               = _load_params()
         target_angle    = float(p.get("angle",            0.785))
         animate_rotation = bool(p.get("animate_rotation", True))
@@ -62,7 +73,8 @@ class TrigUnitCircleScene(Scene):
         title = Text("Unit Circle", font_size=32).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax), Create(unit_circle), Write(title))
 

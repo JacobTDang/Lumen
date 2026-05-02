@@ -103,6 +103,7 @@ def _caption(text: str) -> Text:
 
 class FunctionPlotScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2")
         domain     = p.get("domain",     [-4, 4])
@@ -117,7 +118,8 @@ class FunctionPlotScene(Scene):
         title = MathTex(r"f(x) = " + _clip_latex(expr), font_size=36).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax), Write(labels))
         self.play(Write(title))
@@ -135,7 +137,8 @@ class FunctionPlotScene(Scene):
             self.play(Indicate(dot, color=HIGHLIGHT_COLOR, scale_factor=1.4))
             self.play(FadeIn(coord))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +147,7 @@ class FunctionPlotScene(Scene):
 
 class LimitScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sin(x)/x")
         limit_pt   = float(p.get("limit_point", 0))
@@ -175,7 +179,8 @@ class LimitScene(Scene):
         ).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax), Write(labels), Write(title))
         self.play(Create(left_graph), Create(right_graph), run_time=1.5)
@@ -217,7 +222,8 @@ class LimitScene(Scene):
             ).to_edge(DOWN, buff=0.55)
             self.play(FadeIn(result))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +232,7 @@ class LimitScene(Scene):
 
 class TangentLineScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2")
         x_pt       = float(p.get("x_point", 1.0))
@@ -264,7 +271,8 @@ class TangentLineScene(Scene):
         ).to_corner(UR, buff=0.3))
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax), Write(labels))
         self.play(Write(title), Create(graph))
@@ -286,6 +294,7 @@ class TangentLineScene(Scene):
 
 class RiemannSumScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2")
         domain     = p.get("domain",     [0, 3])
@@ -316,7 +325,8 @@ class RiemannSumScene(Scene):
         ).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax), Write(labels), Write(title))
         self.play(Create(graph), run_time=1.5)
@@ -346,7 +356,8 @@ class RiemannSumScene(Scene):
 
         exact_label = _result_box(r"= " + exact_str, 28).to_edge(DOWN, buff=0.55)
         self.play(FadeIn(exact_label))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +366,7 @@ class RiemannSumScene(Scene):
 
 class CriticalPointsScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**3 - 3*x")
         domain     = p.get("domain",     [-3, 3])
@@ -405,7 +417,8 @@ class CriticalPointsScene(Scene):
         lbl_fp = MathTex(r"f'(x)",  font_size=20, color=DERIV_COLOR).next_to(ax_fp, LEFT, buff=0.35)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax_f), Create(ax_fp), Write(lbl_f), Write(lbl_fp))
         self.play(Create(graph_f), Create(graph_fp), Create(zero_line), run_time=2)
@@ -430,7 +443,8 @@ class CriticalPointsScene(Scene):
             self.play(Indicate(dot_f, color=CRITICAL_COLOR, scale_factor=1.4))
             self.play(Write(cp_label))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +453,7 @@ class CriticalPointsScene(Scene):
 
 class VolumeRevolutionScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sqrt(x)")
         domain     = p.get("domain",     [0, 4])
@@ -460,7 +475,8 @@ class VolumeRevolutionScene(Scene):
         ).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Create(ax), Write(labels))
         self.play(Write(title))
         self.play(Create(graph), FadeIn(area), run_time=1.5)
@@ -494,7 +510,8 @@ class VolumeRevolutionScene(Scene):
             vol_str = r"?"
 
         self.play(FadeIn(_result_box(r"V = " + vol_str, 28).to_edge(DOWN, buff=0.55)))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -503,6 +520,7 @@ class VolumeRevolutionScene(Scene):
 
 class TaylorSeriesScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sin(x)")
         center     = float(p.get("center",    0.0))
@@ -534,7 +552,8 @@ class TaylorSeriesScene(Scene):
         title.to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Create(ax), Write(labels), Write(title))
         self.play(Create(target_graph), run_time=1.5)
         self.wait(0.3)
@@ -563,6 +582,7 @@ class TaylorSeriesScene(Scene):
 
 class FTCScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2 - 2*x + 2")
         domain     = p.get("domain",     [-0.5, 4])
@@ -613,7 +633,8 @@ class FTCScene(Scene):
         lbl_F.next_to(ax_F, LEFT, buff=0.1)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Create(ax_f), Create(ax_F), Write(lbl_f), Write(lbl_F))
         self.play(Create(graph_f), run_time=1.5)
         self.wait(0.3)
@@ -638,4 +659,5 @@ class FTCScene(Scene):
         self.play(FadeIn(
             _result_box(r"F'(x) = f(x)", 30).to_edge(DOWN, buff=0.55)
         ))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)

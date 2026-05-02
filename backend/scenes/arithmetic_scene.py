@@ -39,8 +39,18 @@ def _result_box(tex: str, font_size: int = 28) -> VGroup:
     return VGroup(box, label)
 
 
-def _caption(text: str) -> Text:
-    return Text(text, font_size=19, color=GRAY, slant=ITALIC).to_edge(DOWN, buff=0.12)
+def _show_title_card(scene, text: str):
+    card = Text(text, font_size=30, color=WHITE).center()
+    scene.play(FadeIn(card), run_time=0.35)
+    scene.wait(1.2)
+    scene.play(FadeOut(card), run_time=0.35)
+
+
+def _caption(text: str) -> VGroup:
+    bg  = Rectangle(width=14.5, height=0.62, fill_color=BLACK,
+                    fill_opacity=0.82, stroke_width=0).to_edge(DOWN, buff=0)
+    txt = Text(text, font_size=22, color=WHITE).to_edge(DOWN, buff=0.14)
+    return VGroup(bg, txt)
 
 
 def _make_fraction_bar(numer: int, denom: int, color=BLUE,
@@ -69,6 +79,7 @@ def _frac_tex(n: int, d: int, font_size: int = 34) -> MathTex:
 
 class NumberLineScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         mode       = p.get("mode",             "addition")
         values     = p.get("values",            [3, 4])
@@ -87,7 +98,8 @@ class NumberLineScene(Scene):
         ).move_to(ORIGIN)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(nl))
 
@@ -202,7 +214,8 @@ class NumberLineScene(Scene):
             ).to_edge(DOWN, buff=0.55)
             self.play(FadeIn(ans))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -211,13 +224,15 @@ class NumberLineScene(Scene):
 
 class FractionScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         mode      = p.get("mode",      "represent")
         fractions = p.get("fractions", [[2, 3]])
         cap       = p.get("caption", "")
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         if mode == "represent":
             n, d = fractions[0]
@@ -304,7 +319,8 @@ class FractionScene(Scene):
                 final_tex = rf"\frac{{{result_n}}}{{{lcd}}}"
             self.play(FadeIn(_result_box(final_tex, 32).to_edge(DOWN, buff=0.55)))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +329,7 @@ class FractionScene(Scene):
 
 class AreaModelScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         mode  = p.get("mode", "integer")
         a_str = str(p.get("a", "4"))
@@ -320,7 +337,8 @@ class AreaModelScene(Scene):
         cap   = p.get("caption", "")
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         if mode == "integer":
             a = max(1, min(int(float(a_str)), 12))
@@ -405,4 +423,5 @@ class AreaModelScene(Scene):
             ans = _result_box(r"= " + sp.latex(product), 32).to_edge(DOWN, buff=0.55)
             self.play(FadeIn(ans))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)

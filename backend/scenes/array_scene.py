@@ -17,6 +17,7 @@ def _load_params() -> dict:
 
 class BubbleSortScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         params = _load_params()
         arr = list(params.get("array", [5, 3, 8, 1, 9, 2]))
         n = len(arr)
@@ -54,6 +55,7 @@ class BubbleSortScene(Scene):
             self.play(cells[n - i - 1][0].animate.set_fill(GREEN_E, opacity=0.7), run_time=0.2)
 
         self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
     def _make_cells(self, arr: list) -> list:
         cells = []

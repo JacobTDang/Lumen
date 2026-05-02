@@ -73,8 +73,18 @@ def _result_box(tex: str, font_size: int = 28) -> VGroup:
     return VGroup(box, label)
 
 
-def _caption(text: str) -> Text:
-    return Text(text, font_size=19, color=GRAY, slant=ITALIC).to_edge(DOWN, buff=0.12)
+def _show_title_card(scene, text: str):
+    card = Text(text, font_size=30, color=WHITE).center()
+    scene.play(FadeIn(card), run_time=0.35)
+    scene.wait(1.2)
+    scene.play(FadeOut(card), run_time=0.35)
+
+
+def _caption(text: str) -> VGroup:
+    bg  = Rectangle(width=14.5, height=0.62, fill_color=BLACK,
+                    fill_opacity=0.82, stroke_width=0).to_edge(DOWN, buff=0)
+    txt = Text(text, font_size=22, color=WHITE).to_edge(DOWN, buff=0.14)
+    return VGroup(bg, txt)
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +93,7 @@ def _caption(text: str) -> Text:
 
 class LinearFunctionScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression        = p.get("expression",        "2*x + 1")
         domain            = p.get("domain",            [-5, 5])
@@ -121,7 +132,8 @@ class LinearFunctionScene(Scene):
         ).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax), Write(labels))
         self.play(Write(title))
@@ -174,7 +186,8 @@ class LinearFunctionScene(Scene):
             except Exception:
                 pass
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +196,7 @@ class LinearFunctionScene(Scene):
 
 class QuadraticScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2 - 4")
         domain     = p.get("domain",     [-5, 5])
@@ -213,7 +227,8 @@ class QuadraticScene(Scene):
         title  = MathTex(r"f(x) = " + sp.latex(expr), font_size=36).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
 
         self.play(Create(ax), Write(labels))
         self.play(Write(title))
@@ -252,7 +267,8 @@ class QuadraticScene(Scene):
             roots_box = _result_box(r"x = " + roots_str, 26).to_edge(DOWN, buff=0.55)
             self.play(FadeIn(roots_box))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +277,7 @@ class QuadraticScene(Scene):
 
 class InequalityScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x + 2 > 5")
         domain     = p.get("domain",     [-10, 10])
@@ -294,7 +311,8 @@ class InequalityScene(Scene):
         title = MathTex(ineq_tex, font_size=40).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Create(nl), Write(title))
 
         strict = op in (">", "<")
@@ -324,7 +342,8 @@ class InequalityScene(Scene):
         )
         self.play(Create(shade))
         self.play(FadeIn(_result_box(ineq_tex, 30).to_edge(DOWN, buff=0.55)))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +352,7 @@ class InequalityScene(Scene):
 
 class ExponentialScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression      = p.get("expression",      "2**x")
         domain          = p.get("domain",           [-3, 5])
@@ -347,7 +367,8 @@ class ExponentialScene(Scene):
         title  = MathTex(r"f(x) = " + sp.latex(expr), font_size=34).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Create(ax), Write(labels))
         self.play(Write(title))
         self.play(Create(graph), run_time=2)
@@ -384,7 +405,8 @@ class ExponentialScene(Scene):
                 msg = "doubles at each step" if is_growth else "halves at each step"
                 self.play(Write(Text(msg, font_size=22, color=YELLOW).to_corner(UR, buff=0.3)))
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +415,7 @@ class ExponentialScene(Scene):
 
 class TransformationScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         base_str  = p.get("base_expression",       "x**2")
         trans_str = p.get("transformed_expression", "(x-2)**2 + 3")
@@ -421,9 +444,11 @@ class TransformationScene(Scene):
         lbl_trans.next_to(lbl_base, DOWN, buff=0.1)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Create(ax), Write(labels))
         self.play(Create(base_graph), Write(lbl_base))
         self.wait(0.5)
         self.play(Create(trans_graph), Write(lbl_trans), run_time=2)
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)

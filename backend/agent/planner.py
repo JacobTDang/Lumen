@@ -111,6 +111,8 @@ Planning rules:
 - Caption : one clear sentence telling the student exactly what to notice in this step
 - Domains : use [-5,5] default; trig on [-6.3,6.3]; zoom in tight for local features
 - Always use syntactically valid sympy expressions
+- Prefer simple clean expressions: x**2 over nested forms
+- Domain should be symmetric and contain the key feature: e.g. [-4,4] for x**2
 
 Respond with ONLY valid JSON — no markdown fences, no explanation:
 {"concept": "brief concept name", "level": "arithmetic|algebra|pre_calculus|calculus", "steps": [

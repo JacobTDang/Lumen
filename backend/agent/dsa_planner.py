@@ -66,6 +66,8 @@ Planning rules:
 - 2 steps : "how does X work" — show the data structure, then the algorithm
 - 3 steps : "explain why X" or "compare X and Y"
 - Caption : one sentence describing what the student should observe in this step
+- Arrays/strings: use short examples with 5-7 elements. Prefer 'racecar' over full problem input strings.
+- Never copy the full example input from a problem statement into the array param.
 - Arrays for binary search MUST be sorted
 - Respond with ONLY valid JSON — no markdown fences
 

@@ -25,13 +25,20 @@ def _load_params() -> dict:
     return {}
 
 
-def _make_cells(values: list, cell_size: float = 0.85) -> list:
-    """Square + label cells (same pattern as BubbleSortScene)."""
+def _make_cells(values: list, cell_size: float = None) -> list:
+    """Square + label cells with adaptive sizing based on array length."""
+    if cell_size is None:
+        n = len(values)
+        cell_size = (1.0  if n <= 4  else
+                     0.85 if n <= 7  else
+                     0.70 if n <= 10 else
+                     max(0.50, 9.0 / n))
+    font = max(16, int(24 * cell_size))
     cells = []
     for v in values:
-        sq = Square(side_length=cell_size, fill_color=BLUE_E, fill_opacity=0.55,
+        sq = Square(side_length=cell_size, fill_color="#1a3a5c", fill_opacity=0.70,
                     stroke_color=WHITE, stroke_width=2)
-        lbl = Text(str(v), font_size=24, color=WHITE)
+        lbl = Text(str(v), font_size=font, color=WHITE)
         cells.append(VGroup(sq, lbl))
     return cells
 
@@ -43,8 +50,18 @@ def _result_box(tex: str, font_size: int = 28) -> VGroup:
     return VGroup(box, label)
 
 
-def _caption(text: str) -> Text:
-    return Text(text, font_size=19, color=GRAY, slant=ITALIC).to_edge(DOWN, buff=0.12)
+def _show_title_card(scene, text: str):
+    card = Text(text, font_size=30, color=WHITE).center()
+    scene.play(FadeIn(card), run_time=0.35)
+    scene.wait(1.2)
+    scene.play(FadeOut(card), run_time=0.35)
+
+
+def _caption(text: str) -> VGroup:
+    bg  = Rectangle(width=14.5, height=0.62, fill_color=BLACK,
+                    fill_opacity=0.82, stroke_width=0).to_edge(DOWN, buff=0)
+    txt = Text(text, font_size=22, color=WHITE).to_edge(DOWN, buff=0.14)
+    return VGroup(bg, txt)
 
 
 def _action_text(msg: str) -> Text:
@@ -289,6 +306,7 @@ def _dp_house_robber_steps(n: int) -> list:
 
 class ArrayPointerScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         array     = p.get("array",     [1, 3, 5, 7, 9, 11, 13])
         algorithm = p.get("algorithm", "binary_search")
@@ -309,7 +327,8 @@ class ArrayPointerScene(Scene):
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
         self.play(FadeIn(row), Write(idx_labels))
         self.wait(0.3)
@@ -324,7 +343,8 @@ class ArrayPointerScene(Scene):
             steps, is_pal = _palindrome_steps(list(array))
             self._run_palindrome(cells, steps, is_pal)
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
     def _ptr(self, label: str, color) -> VGroup:
         arrow = Arrow(DOWN * 0.55, ORIGIN, color=color, buff=0,
@@ -432,6 +452,7 @@ class ArrayPointerScene(Scene):
 
 class SlidingWindowScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         array     = p.get("array",     [2, 1, 5, 1, 3, 2])
         algorithm = p.get("algorithm", "max_subarray_fixed")
@@ -449,7 +470,8 @@ class SlidingWindowScene(Scene):
             steps = _sliding_window_unique_steps(list(array))
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
         self.play(FadeIn(row))
         self.wait(0.3)
@@ -504,7 +526,8 @@ class SlidingWindowScene(Scene):
 
         max_key = "max_val" if algorithm == "max_subarray_fixed" else "max_len"
         self.play(FadeIn(_result_box(f"Max = {steps[-1][max_key]}", 30).to_edge(DOWN, buff=0.55)))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -513,6 +536,7 @@ class SlidingWindowScene(Scene):
 
 class LinkedListScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         values    = p.get("values",    [1, 2, 3, 4, 5])
         algorithm = p.get("algorithm", "reverse")
@@ -525,7 +549,8 @@ class LinkedListScene(Scene):
         title = Text(title_map.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
 
         if algorithm == "reverse":
@@ -535,7 +560,8 @@ class LinkedListScene(Scene):
         elif algorithm == "merge_sorted":
             self._merge_sorted(values, values2 or [])
 
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
     def _build_chain(self, values, y_offset=0):
         """Returns (nodes, arrows) where nodes[i] is VGroup(circle, text)."""
@@ -638,7 +664,8 @@ class LinkedListScene(Scene):
         m_nodes, m_arrows, m_null, m_null_arr = self._build_chain(merged, y_offset=-1.8)
         m_lbl = Text("merged", font_size=18, color=YELLOW).next_to(m_nodes[0], LEFT, buff=0.3)
         self.play(FadeIn(VGroup(*m_nodes, *m_arrows)), Write(m_null), Create(m_null_arr), Write(m_lbl))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -647,6 +674,7 @@ class LinkedListScene(Scene):
 
 class TreeTraversalScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         values    = p.get("values",    [1, 2, 3, 4, 5, 6, 7])
         algorithm = p.get("algorithm", "bfs")
@@ -664,7 +692,7 @@ class TreeTraversalScene(Scene):
         edge_mobs = []
 
         for idx, pos in positions.items():
-            circle = Circle(radius=0.38, fill_color=DARK_GRAY, fill_opacity=0.85,
+            circle = Circle(radius=0.38, fill_color="#1a2744", fill_opacity=0.90,
                              color=WHITE, stroke_width=2)
             lbl    = Text(str(values[idx]), font_size=22, color=WHITE)
             node_mobs[idx] = VGroup(circle, lbl).move_to(pos)
@@ -683,7 +711,8 @@ class TreeTraversalScene(Scene):
         title = Text(algo_names.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
         self.play(Create(VGroup(*edge_mobs)), FadeIn(VGroup(*node_mobs.values())))
         self.wait(0.3)
@@ -717,6 +746,7 @@ class TreeTraversalScene(Scene):
 
 class GraphScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         num_nodes  = int(p.get("num_nodes",  6))
         edges      = p.get("edges",       [[0,1],[0,2],[1,3],[2,4],[3,5]])
@@ -743,7 +773,7 @@ class GraphScene(Scene):
         # Build node mobjects
         node_mobs = []
         for i in range(num_nodes):
-            circle = Circle(radius=0.36, fill_color=DARK_GRAY, fill_opacity=0.85,
+            circle = Circle(radius=0.36, fill_color="#1a2744", fill_opacity=0.90,
                              color=WHITE, stroke_width=2)
             lbl = Text(str(i), font_size=22, color=WHITE)
             node_mobs.append(VGroup(circle, lbl).move_to(positions[i]))
@@ -761,7 +791,8 @@ class GraphScene(Scene):
         title = Text(f"Graph {algorithm.upper()} from node {start_node}", font_size=26).to_edge(UP, buff=0.3)
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
         self.play(Create(VGroup(*edge_mobs)), FadeIn(VGroup(*node_mobs)))
         self.wait(0.3)
@@ -799,7 +830,8 @@ class GraphScene(Scene):
 
         order_str = " → ".join(visit_order)
         self.play(FadeIn(_result_box(f"\\text{{Order: }}{order_str}", 22).to_edge(DOWN, buff=0.55)))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -808,6 +840,7 @@ class GraphScene(Scene):
 
 class DPArrayScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         algorithm = p.get("algorithm", "fibonacci")
         n         = int(p.get("n",     8))
@@ -850,7 +883,8 @@ class DPArrayScene(Scene):
             self.play(Write(house_labels))
 
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
         self.play(FadeIn(row), Write(idx_labels))
         self.wait(0.3)
@@ -887,7 +921,8 @@ class DPArrayScene(Scene):
             self.wait(0.2)
 
         self.play(FadeIn(_result_box(f"\\text{{Answer: }}{dp[-1]}", 30).to_edge(DOWN, buff=0.55)))
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -896,6 +931,7 @@ class DPArrayScene(Scene):
 
 class StackQueueScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         operations = p.get("operations", ["push 3", "push 1", "push 4", "pop", "push 1", "push 5"])
         structure  = p.get("structure",  "stack")
@@ -903,14 +939,16 @@ class StackQueueScene(Scene):
 
         title = Text(f"{structure.upper()} Operations", font_size=30).to_edge(UP, buff=0.3)
         if cap:
-            self.play(Write(_caption(cap)))
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
 
         if structure == "stack":
             self._animate_stack(operations)
         else:
             self._animate_queue(operations)
-        self.wait(1.0)
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
     def _animate_stack(self, operations):
         CELL_H, CELL_W = 0.62, 2.4

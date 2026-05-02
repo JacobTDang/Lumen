@@ -44,6 +44,7 @@ def _caption_3d(text: str) -> Text:
 
 class SurfacePlotScene(ThreeDScene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p          = _load_params()
         expression = p.get("expression", "x**2 + y**2")
         x_domain   = p.get("x_domain",  [-3, 3])
@@ -119,6 +120,7 @@ class SurfacePlotScene(ThreeDScene):
 
 class ContourScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2 + y**2")
         x_domain   = p.get("x_domain",  [-3, 3])
@@ -175,7 +177,7 @@ class ContourScene(Scene):
         self.play(FadeIn(contour_curves), run_time=1.5)
         lv_label = Text(f"{num_levels} level curves", font_size=22, color=YELLOW).to_corner(UR, buff=0.3)
         self.play(Write(lv_label))
-        self.wait(1.0)
+        self.wait(0.8)
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +186,7 @@ class ContourScene(Scene):
 
 class VectorFieldScene(Scene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         x_expression    = p.get("x_expression",    "-y")
         y_expression    = p.get("y_expression",    "x")
@@ -244,6 +247,7 @@ class VectorFieldScene(Scene):
 
 class PartialDerivativeScene(ThreeDScene):
     def construct(self):
+        self.camera.background_color = "#0d1117"
         p = _load_params()
         expression  = p.get("expression",   "x**2 + y**2")
         variable    = p.get("variable",     "x")
@@ -321,4 +325,4 @@ class PartialDerivativeScene(ThreeDScene):
         ).to_corner(UL, buff=0.25)
         self.add_fixed_in_frame_mobjects(d_label)
         self.play(Write(d_label))
-        self.wait(1.0)
+        self.wait(0.8)
