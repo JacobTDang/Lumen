@@ -1531,13 +1531,19 @@ def _lru_cache_steps(operations: list, capacity: int) -> tuple:
     order = []          # head -> tail (head = MRU)
     store = {}          # key -> value
 
+    def _to_int(s):
+        try:
+            return int(s)
+        except (ValueError, TypeError):
+            return s   # keep as string if not parseable
+
     for raw in operations:
         parts = raw.strip().split()
         if not parts:
             continue
         op = parts[0]
         if op == "put" and len(parts) >= 3:
-            k = int(parts[1]); v = int(parts[2])
+            k = _to_int(parts[1]); v = _to_int(parts[2])
             if k in store:
                 store[k] = v
                 order.remove(k)
@@ -1555,7 +1561,7 @@ def _lru_cache_steps(operations: list, capacity: int) -> tuple:
                                "evicted": evicted,
                                "action": f"put({k},{v})" + (f" — evict {evicted}" if evicted is not None else "")})
         elif op == "get" and len(parts) >= 2:
-            k = int(parts[1])
+            k = _to_int(parts[1])
             if k in store:
                 order.remove(k); order.insert(0, k)
                 steps.append({"op": "get", "kind": "hit", "key": k, "val": store[k],

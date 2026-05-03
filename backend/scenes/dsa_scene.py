@@ -76,7 +76,7 @@ def _caption(text: str) -> VGroup:
 
 
 def _action_text(msg: str) -> Text:
-    return Text(msg, font_size=22).to_edge(DOWN, buff=0.55)
+    return Text(msg, font_size=22).to_edge(DOWN, buff=0.95)
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +467,7 @@ class ArrayPointerScene(Scene):
         verdict_lbl = Text(verdict, font_size=30, color=clr_v)
         box = SurroundingRectangle(verdict_lbl, color=WHITE, fill_color=BLACK,
                                     fill_opacity=0.75, buff=0.15, corner_radius=0.1)
-        verdict_group = VGroup(box, verdict_lbl).to_edge(DOWN, buff=1.1)
+        verdict_group = VGroup(box, verdict_lbl).to_edge(DOWN, buff=1.75)
         self.play(FadeIn(verdict_group))
 
 
@@ -551,7 +551,7 @@ class SlidingWindowScene(Scene):
             c[0].set_fill(GREEN, opacity=0.65)
 
         max_key = "max_val" if algorithm == "max_subarray_fixed" else "max_len"
-        self.play(FadeIn(_result_box(f"Max = {steps[-1][max_key]}", 30).to_edge(DOWN, buff=0.55)))
+        self.play(FadeIn(_result_box(f"Max = {steps[-1][max_key]}", 30).to_edge(DOWN, buff=1.75)))
         self.wait(0.8)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
@@ -671,7 +671,7 @@ class LinkedListScene(Scene):
 
         self.play(nodes[slow][0].animate.set_fill(GREEN, opacity=0.85), run_time=0.3)
         self.play(FadeIn(_result_box(f"\\text{{Middle = }}{values[slow]}", 28)
-                         .to_edge(DOWN, buff=0.55)))
+                         .to_edge(DOWN, buff=1.75)))
 
     def _merge_sorted(self, v1, v2):
         n1, a1, _, _ = self._build_chain(v1, y_offset=1.2)
@@ -869,7 +869,7 @@ class GraphScene(Scene):
             order_lbl.scale(13.5 / order_lbl.width)
         order_box = SurroundingRectangle(order_lbl, color=WHITE, fill_color=BLACK,
                                           fill_opacity=0.75, buff=0.15, corner_radius=0.1)
-        self.play(FadeIn(VGroup(order_box, order_lbl).to_edge(DOWN, buff=0.55)))
+        self.play(FadeIn(VGroup(order_box, order_lbl).to_edge(DOWN, buff=1.75)))
         self.wait(0.8)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
@@ -960,7 +960,7 @@ class DPArrayScene(Scene):
             self.play(cells[idx][0].animate.set_fill(GREEN, opacity=0.65), run_time=0.2)
             self.wait(0.2)
 
-        self.play(FadeIn(_result_box(f"\\text{{Answer: }}{dp[-1]}", 30).to_edge(DOWN, buff=0.55)))
+        self.play(FadeIn(_result_box(f"\\text{{Answer: }}{dp[-1]}", 30).to_edge(DOWN, buff=1.75)))
         self.wait(0.8)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
