@@ -1,4 +1,4 @@
-# Annie
+# Lumen
 
 Editorial note-taking web app with Manim-style animations. Highlight a concept in your notes and watch it animate.
 
