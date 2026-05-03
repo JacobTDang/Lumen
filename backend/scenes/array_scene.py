@@ -85,54 +85,63 @@ class MergeSortScene(Scene):
         arr = list(params.get("array", [5, 2, 8, 1, 9, 3, 7, 4]))
         caption = params.get("caption", "")
 
-        # Constrain to a power of two between 2 and 8 — keeps the recursion
-        # tree shallow enough to animate clearly within ~10 seconds.
+        # Constrain to 2-8 elements. Any size in this range works — no
+        # power-of-two requirement (the recursion tree just becomes uneven
+        # for non-powers-of-two, which is fine and educationally accurate).
         n = len(arr)
-        while n > 1 and (n > 8 or (n & (n - 1)) != 0):
-            arr.pop()
-            n = len(arr)
         if n < 2:
             arr = [5, 2, 8, 1, 9, 3, 7, 4]
+            n = 8
+        if n > 8:
+            arr = arr[:8]
             n = 8
 
         title = Text("Merge Sort — divide & merge", font_size=28).to_edge(UP, buff=0.4)
         self.play(FadeIn(title))
 
-        # Build cells
         cells = self._make_cells(arr)
         row = VGroup(*cells).arrange(RIGHT, buff=0.1).center()
         self.play(FadeIn(row))
         self.wait(0.3)
 
+        # Build the recursion tree as a list of levels of (start, end) ranges.
+        # Level 0 is the whole array; each subsequent level splits every
+        # non-trivial range into two halves at the midpoint. Singleton ranges
+        # carry through unchanged.
+        levels: list[list[tuple[int, int]]] = [[(0, n)]]
+        while any(e - s > 1 for s, e in levels[-1]):
+            nxt: list[tuple[int, int]] = []
+            for s, e in levels[-1]:
+                if e - s <= 1:
+                    nxt.append((s, e))
+                else:
+                    m = (s + e) // 2
+                    nxt.append((s, m))
+                    nxt.append((m, e))
+            levels.append(nxt)
+
         # ── Phase 1: progressive splits with vertical dividers ──────────
         #
-        # Each level introduces dividers at the midpoint of every chunk
-        # from the previous level. dividers_by_level[i] holds the dividers
-        # created at split level i+1, so we can fade out exactly the right
-        # set when we merge across them later.
-        levels = int(math.log2(n))
+        # At each split level L, the new dividers are at the midpoints of
+        # every parent range from level L-1 that got split. dividers_by_level
+        # is indexed by L-1 so we can fade out exactly the dividers
+        # introduced when a given pair of children gets merged back.
         dividers_by_level: list[list[Line]] = []
-        all_xs: list[float] = []
-        for level in range(1, levels + 1):
-            chunk = n // (2 ** level)
+        for L in range(1, len(levels)):
             new_div: list[Line] = []
-            for i in range(chunk, n, chunk):
-                # Skip positions that already have a coarser-level divider
-                if i % (chunk * 2) == 0:
-                    continue
-                left  = cells[i - 1].get_right()
-                right = cells[i].get_left()
+            parents = [pr for pr in levels[L - 1] if pr[1] - pr[0] > 1]
+            for s, e in parents:
+                m = (s + e) // 2
+                left  = cells[m - 1].get_right()
+                right = cells[m].get_left()
                 mid_x = (left[0] + right[0]) / 2
-                if any(abs(x - mid_x) < 0.05 for x in all_xs):
-                    continue
                 line = Line(
-                    start=[mid_x, cells[i].get_top()[1] + 0.2, 0],
-                    end  =[mid_x, cells[i].get_bottom()[1] - 0.2, 0],
+                    start=[mid_x, cells[m].get_top()[1] + 0.2, 0],
+                    end  =[mid_x, cells[m].get_bottom()[1] - 0.2, 0],
                     color=YELLOW,
-                    stroke_width=4 if level == 1 else 2,
+                    stroke_width=4 if L == 1 else 2,
                 )
                 new_div.append(line)
-                all_xs.append(mid_x)
             if new_div:
                 self.play(*[Create(d) for d in new_div], run_time=0.4)
                 self.wait(0.15)
@@ -142,17 +151,17 @@ class MergeSortScene(Scene):
 
         # ── Phase 2: bottom-up merges ───────────────────────────────────
         #
-        # merge_level=1 → chunks of 2; merge_level=2 → chunks of 4; etc.
-        # The dividers we fade are those introduced at the matching split
-        # level, so the boundaries dissolve as their halves combine.
-        for merge_level in range(1, levels + 1):
-            chunk = 2 ** merge_level
-            half  = chunk // 2
-            divs_at_level = dividers_by_level[levels - merge_level]
+        # Reverse the split tree: walk levels from deepest to shallowest;
+        # for every parent range that had two children, merge them and fade
+        # the corresponding divider.
+        for L in range(len(levels) - 1, 0, -1):
+            divs_at_level = dividers_by_level[L - 1]
+            parents = [pr for pr in levels[L - 1] if pr[1] - pr[0] > 1]
 
-            for start in range(0, n, chunk):
-                ls, le = start, start + half
-                rs, re = start + half, start + chunk
+            for ps, pe in parents:
+                pm = (ps + pe) // 2
+                ls, le = ps, pm
+                rs, re = pm, pe
                 left_cells  = cells[ls:le]
                 right_cells = cells[rs:re]
 
@@ -163,7 +172,7 @@ class MergeSortScene(Scene):
                     run_time=0.3,
                 )
 
-                # Compute merged order (stable two-finger merge)
+                # Stable two-finger merge
                 lvals = arr[ls:le]
                 rvals = arr[rs:re]
                 merged_src: list[tuple[str, int]] = []
@@ -176,14 +185,13 @@ class MergeSortScene(Scene):
                 while i < len(lvals): merged_src.append(("L", i)); i += 1
                 while j < len(rvals): merged_src.append(("R", j)); j += 1
 
-                # Snapshot the slot positions, then build the new cell list
-                slot_positions = [cells[k].get_center().copy() for k in range(ls, re)]
+                slot_positions = [cells[k].get_center().copy() for k in range(ps, pe)]
                 new_order = [
                     cells[ls + idx] if src == "L" else cells[rs + idx]
                     for src, idx in merged_src
                 ]
 
-                # Lift, swap, drop — the lift makes overlapping moves readable.
+                # Lift, swap, drop — the lift makes overlapping moves readable
                 lift = 0.6
                 self.play(
                     *[c.animate.shift(UP * lift) for c in left_cells + right_cells],
@@ -202,13 +210,13 @@ class MergeSortScene(Scene):
                 )
 
                 # Commit state
-                cells[ls:re] = new_order
-                arr[ls:re] = [lvals[idx] if src == "L" else rvals[idx]
+                cells[ps:pe] = new_order
+                arr[ps:pe] = [lvals[idx] if src == "L" else rvals[idx]
                               for src, idx in merged_src]
 
                 # Reset the merged range to the neutral fill
                 self.play(
-                    *[c[0].animate.set_fill(BLUE_E, opacity=0.5) for c in cells[ls:re]],
+                    *[c[0].animate.set_fill(BLUE_E, opacity=0.5) for c in cells[ps:pe]],
                     run_time=0.2,
                 )
 

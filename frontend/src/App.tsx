@@ -77,27 +77,241 @@ interface BreakdownSection {
 // ─────────────────────────────────────────────────────────────
 
 const MOCK_TOPICS: AnimatableTopic[] = [
+  // ── DSA: sorting ───────────────────────────────────────────────────
+  { id: "bubble-sort", name: "Bubble Sort", category: "dsa",
+    keywords: ["bubble sort", "bubblesort"],
+    description: "Pairwise compare-and-swap until the array is sorted." },
   { id: "merge-sort", name: "Merge Sort", category: "dsa",
     keywords: ["merge sort", "mergesort", "divide and conquer sort"],
     description: "Recursive divide-and-merge visualization with comparison highlights." },
   { id: "quick-sort", name: "Quick Sort", category: "dsa",
     keywords: ["quick sort", "quicksort", "partition"],
-    description: "Pivot-based partitioning shown step by step." },
+    description: "Pivot-based Lomuto partitioning shown step by step." },
+  // ── DSA: searching ────────────────────────────────────────────────
   { id: "binary-search", name: "Binary Search", category: "dsa",
     keywords: ["binary search", "log n search"],
-    description: "Halving the search space on a sorted array." },
+    description: "Halving the search space on a sorted array via L/M/R pointers." },
+  { id: "binary-search-answer", name: "Binary Search on Answer", category: "dsa",
+    keywords: ["binary search on answer", "search the answer", "koko bananas", "capacity to ship"],
+    description: "Search a numeric answer space, not array indices (e.g. minimum eating speed)." },
+  // ── DSA: two pointers ─────────────────────────────────────────────
+  { id: "two-pointers", name: "Two Pointers (Opposite Ends)", category: "dsa",
+    keywords: ["two pointers", "two-pointer", "left right pointer"],
+    description: "L from the left, R from the right, converge inward." },
+  { id: "two-pointers-fast-slow", name: "Two Pointers (Same Direction)", category: "dsa",
+    keywords: ["fast slow pointer", "fast and slow", "remove duplicates", "move zeros"],
+    description: "Slow + fast pointers both starting from the left." },
+  { id: "palindrome", name: "Palindrome Check", category: "dsa",
+    keywords: ["palindrome"],
+    description: "Two pointers converging from each end of a string." },
+  { id: "container-water", name: "Container With Most Water", category: "dsa",
+    keywords: ["container with most water", "container water", "max water"],
+    description: "Two-pointer sweep to find the rectangle of maximum area." },
+  // ── DSA: sliding window ───────────────────────────────────────────
+  { id: "sliding-window", name: "Sliding Window", category: "dsa",
+    keywords: ["sliding window", "longest substring", "longest no repeat", "longest unique"],
+    description: "Expanding/contracting window with a hashmap counter." },
+  // ── DSA: hashing ──────────────────────────────────────────────────
+  { id: "two-sum", name: "Two Sum (HashMap)", category: "dsa",
+    keywords: ["two sum", "twosum", "2 sum", "pair sum"],
+    description: "Iterate the array; for each value v, check if (target − v) is already in the hashmap." },
+  { id: "frequency-count", name: "Frequency Count", category: "dsa",
+    keywords: ["frequency count", "frequency map", "count occurrences", "majority element"],
+    description: "Walk the array, accumulating counts of each value in a hashmap." },
+  { id: "anagram-check", name: "Anagram Check", category: "dsa",
+    keywords: ["anagram", "valid anagram"],
+    description: "Increment for letters in s, decrement for letters in t — all zero means anagram." },
+  // ── DSA: stacks & queues ──────────────────────────────────────────
+  { id: "monotonic-stack", name: "Monotonic Stack", category: "dsa",
+    keywords: ["monotonic stack", "next greater element", "daily temperatures"],
+    description: "Stack maintains a monotonic invariant; pops on new violations." },
+  { id: "stack-queue", name: "Stack & Queue", category: "dsa",
+    keywords: ["stack operations", "queue operations", "lifo", "fifo", "valid parentheses"],
+    description: "Animated push/pop or enqueue/dequeue operations." },
+  // ── DSA: prefix / running sums ────────────────────────────────────
+  { id: "prefix-sum", name: "Prefix Sum", category: "dsa",
+    keywords: ["prefix sum", "cumulative sum", "running total"],
+    description: "Build a cumulative array; subarray sums become O(1) range queries." },
+  { id: "kadanes", name: "Kadane's Algorithm", category: "dsa",
+    keywords: ["kadane", "kadanes", "maximum subarray", "max subarray sum", "largest contiguous"],
+    description: "Running max-subarray sum — keep a current sum and a best-so-far." },
+  // ── DSA: linked lists ─────────────────────────────────────────────
+  { id: "reverse-linked-list", name: "Reverse Linked List", category: "dsa",
+    keywords: ["reverse linked list", "reverse list", "reverse a linked list"],
+    description: "Three-pointer walk: prev, curr, next — flip each pointer in turn." },
+  { id: "linked-list-middle", name: "Find Middle of Linked List", category: "dsa",
+    keywords: ["middle of linked list", "find middle", "fast slow linked list"],
+    description: "Slow + fast pointer technique for finding the middle node." },
+  { id: "merge-sorted-lists", name: "Merge Two Sorted Lists", category: "dsa",
+    keywords: ["merge two sorted lists", "merge sorted lists", "merge linked lists"],
+    description: "Stitch two sorted linked lists together with a single pass." },
+  // ── DSA: trees ────────────────────────────────────────────────────
+  { id: "tree-bfs", name: "Tree BFS (Level Order)", category: "dsa",
+    keywords: ["tree bfs", "level order traversal", "breadth first tree"],
+    description: "Visit nodes level by level using a queue." },
+  { id: "tree-dfs", name: "Tree DFS", category: "dsa",
+    keywords: ["tree dfs", "depth first tree", "depth-first tree"],
+    description: "Recursive depth-first walk through a binary tree." },
+  { id: "tree-inorder", name: "Inorder Traversal", category: "dsa",
+    keywords: ["inorder traversal", "in-order traversal"],
+    description: "Left subtree → root → right subtree." },
+  { id: "trie", name: "Trie", category: "dsa",
+    keywords: ["trie", "prefix tree", "autocomplete"],
+    description: "Character-by-character insert and lookup in a prefix tree." },
+  // ── DSA: graphs ───────────────────────────────────────────────────
+  { id: "graph-bfs", name: "Graph BFS", category: "dsa",
+    keywords: ["graph bfs", "breadth first search", "shortest path unweighted"],
+    description: "BFS frontier expansion across a graph from a source node." },
+  { id: "graph-dfs", name: "Graph DFS", category: "dsa",
+    keywords: ["graph dfs", "depth first search graph"],
+    description: "DFS stack-based traversal through a graph." },
+  { id: "dijkstra", name: "Dijkstra's Shortest Path", category: "dsa",
+    keywords: ["dijkstra", "shortest path", "weighted shortest path", "network delay"],
+    description: "Greedy edge-relaxation on a weighted graph." },
+  { id: "union-find", name: "Union Find (Disjoint Set)", category: "dsa",
+    keywords: ["union find", "union-find", "disjoint set", "connected components"],
+    description: "Parent[] array + union/find operations on a disjoint-set forest." },
+  // ── DSA: grid ─────────────────────────────────────────────────────
+  { id: "grid-bfs", name: "Grid BFS", category: "dsa",
+    keywords: ["grid bfs", "shortest path on grid", "flood fill", "number of islands", "matrix bfs"],
+    description: "BFS over a 2D grid — frontier expands from start until target is reached." },
+  // ── DSA: heaps ────────────────────────────────────────────────────
+  { id: "heap-ops", name: "Heap (Priority Queue)", category: "dsa",
+    keywords: ["heap", "priority queue", "min heap", "max heap", "k largest", "k smallest", "top k"],
+    description: "Push/pop with sift up/down on a binary heap." },
+  // ── DSA: intervals ────────────────────────────────────────────────
+  { id: "merge-intervals", name: "Merge Intervals", category: "dsa",
+    keywords: ["merge intervals", "interval merging", "overlapping intervals", "meeting rooms"],
+    description: "Sort by start, sweep left-to-right merging overlaps." },
+  // ── DSA: dynamic programming (1D) ─────────────────────────────────
+  { id: "fibonacci-dp", name: "Fibonacci (DP)", category: "dsa",
+    keywords: ["fibonacci dp", "fibonacci dynamic", "fib dp"],
+    description: "Bottom-up Fibonacci: each cell = sum of the previous two." },
+  { id: "climbing-stairs", name: "Climbing Stairs", category: "dsa",
+    keywords: ["climbing stairs", "climb stairs", "staircase ways"],
+    description: "Number of distinct paths to step n: dp[i] = dp[i-1] + dp[i-2]." },
+  { id: "house-robber", name: "House Robber", category: "dsa",
+    keywords: ["house robber", "rob houses"],
+    description: "dp[i] = max(dp[i-1], dp[i-2] + nums[i]) — non-adjacent maximum." },
+  // ── DSA: dynamic programming (2D) ─────────────────────────────────
+  { id: "lcs", name: "Longest Common Subsequence", category: "dsa",
+    keywords: ["longest common subsequence", "lcs"],
+    description: "2D DP table over two strings; arrows show dependencies." },
+  { id: "edit-distance", name: "Edit Distance", category: "dsa",
+    keywords: ["edit distance", "levenshtein"],
+    description: "Min insert/delete/replace operations to transform one string into another." },
+  { id: "unique-paths", name: "Unique Paths", category: "dsa",
+    keywords: ["unique paths", "grid paths", "robot paths"],
+    description: "Count distinct paths from top-left to bottom-right of a grid." },
+  // ── DSA: backtracking ─────────────────────────────────────────────
+  { id: "subsets", name: "Subsets", category: "dsa",
+    keywords: ["subsets", "power set", "all subsets"],
+    description: "Decision tree: include or skip each element." },
+  { id: "permutations", name: "Permutations", category: "dsa",
+    keywords: ["permutations", "all permutations"],
+    description: "Decision tree exploring every ordering of the input set." },
+  // ── DSA: design ───────────────────────────────────────────────────
+  { id: "lru-cache", name: "LRU Cache", category: "dsa",
+    keywords: ["lru cache", "least recently used", "design lru"],
+    description: "HashMap + doubly-linked list with eviction on capacity overflow." },
+  { id: "segment-tree", name: "Segment Tree", category: "dsa",
+    keywords: ["segment tree", "range query tree", "range sum tree"],
+    description: "Build + range query on a segment tree." },
+  // ── Calculus ──────────────────────────────────────────────────────
   { id: "chain-rule", name: "Chain Rule", category: "calculus",
     keywords: ["chain rule", "composite derivative", "f(g(x))"],
     description: "Derivative of nested functions, layer by layer." },
+  { id: "derivative-power-rule", name: "Power Rule", category: "calculus",
+    keywords: ["power rule", "derivative of x^n"],
+    description: "Why d/dx[x^n] = n·x^(n-1)." },
+  { id: "limit", name: "Limit", category: "calculus",
+    keywords: ["limit of f", "limit as x approaches", "lim x", "one-sided limit"],
+    description: "Watch f(x) approach a limit point from both sides." },
+  { id: "critical-points", name: "Critical Points", category: "calculus",
+    keywords: ["critical points", "critical point", "maxima minima", "extrema", "local max"],
+    description: "Local max, min, and inflection points marked on a curve." },
+  { id: "riemann-sum", name: "Riemann Sum", category: "calculus",
+    keywords: ["riemann sum", "rectangles under curve", "left riemann", "right riemann"],
+    description: "Approximate area under a curve with N rectangles." },
+  { id: "ftc", name: "Fundamental Theorem of Calculus", category: "calculus",
+    keywords: ["fundamental theorem of calculus", "ftc", "first fundamental theorem"],
+    description: "The connection between differentiation and integration." },
+  { id: "area-between-curves", name: "Area Between Curves", category: "calculus",
+    keywords: ["area between curves", "area between two curves", "region between curves"],
+    description: "Area enclosed between two curves over an interval." },
+  { id: "average-value", name: "Average Value of a Function", category: "calculus",
+    keywords: ["average value of a function", "mean value of a function", "function average"],
+    description: "Mean value of f over [a, b] shown as a horizontal line." },
+  { id: "arc-length", name: "Arc Length", category: "calculus",
+    keywords: ["arc length", "length of a curve"],
+    description: "Length of a curve approximated by line segments." },
+  { id: "u-substitution", name: "u-Substitution", category: "calculus",
+    keywords: ["u substitution", "u-substitution", "u sub", "integration by substitution"],
+    description: "Integration by substitution, walked through step by step." },
+  { id: "integration-by-parts", name: "Integration by Parts", category: "calculus",
+    keywords: ["integration by parts", "by parts", "ibp"],
+    description: "Integration by parts: ∫u dv = uv − ∫v du." },
+  { id: "improper-integral", name: "Improper Integral", category: "calculus",
+    keywords: ["improper integral", "infinite integral", "integral to infinity"],
+    description: "Integrals with infinite bounds or discontinuities." },
+  { id: "volume-revolution", name: "Volume of Revolution (Disk)", category: "calculus",
+    keywords: ["volume of revolution", "disk method", "solid of revolution"],
+    description: "Volume of a solid formed by rotating f(x) around the x-axis." },
   { id: "washer-method", name: "Washer Method", category: "calculus",
-    keywords: ["washer method", "volume of revolution", "disk method"],
+    keywords: ["washer method", "disk method"],
     description: "Volume of solids of revolution using stacked washers." },
   { id: "shell-method", name: "Cylindrical Shell Method", category: "calculus",
     keywords: ["cylindrical shell", "shell method", "shells"],
     description: "Volume by unwrapping concentric cylindrical shells." },
-  { id: "derivative-power-rule", name: "Power Rule", category: "calculus",
-    keywords: ["power rule", "derivative of x^n"],
-    description: "Why d/dx[x^n] = n·x^(n-1)." },
+  { id: "cross-section", name: "Volume by Cross Sections", category: "calculus",
+    keywords: ["volume by cross sections", "cross section", "known cross sections"],
+    description: "Volume of a solid built from known cross-sections." },
+  { id: "taylor-series", name: "Taylor Series", category: "calculus",
+    keywords: ["taylor series", "taylor polynomial", "maclaurin series"],
+    description: "Polynomial approximation of f(x) centered at a point." },
+  { id: "sequence", name: "Recursive Sequence", category: "calculus",
+    keywords: ["recursive sequence", "iteration sequence", "recurrence relation"],
+    description: "Plot terms of a recursive sequence aₙ = f(aₙ₋₁)." },
+  { id: "cobweb", name: "Cobweb Diagram", category: "calculus",
+    keywords: ["cobweb diagram", "cobweb plot", "fixed point iteration"],
+    description: "Visualize fixed-point iteration on a single function." },
+  // ── Algebra ───────────────────────────────────────────────────────
+  { id: "linear-function", name: "Linear Function", category: "calculus",
+    keywords: ["linear function", "y = mx + b", "slope intercept"],
+    description: "Plot a linear function with slope and intercept." },
+  { id: "quadratic", name: "Quadratic Function", category: "calculus",
+    keywords: ["quadratic function", "parabola", "vertex form", "ax^2 + bx + c"],
+    description: "Parabola with vertex, axis of symmetry, and roots marked." },
+  { id: "inequality", name: "Inequality", category: "calculus",
+    keywords: ["graph inequality", "linear inequality", "polynomial inequality"],
+    description: "Region of x satisfying an inequality." },
+  { id: "exponential-function", name: "Exponential Function", category: "calculus",
+    keywords: ["exponential function", "exponential growth", "exponential decay", "e^x"],
+    description: "Exponential growth or decay with key points highlighted." },
+  { id: "function-transformation", name: "Function Transformation", category: "calculus",
+    keywords: ["function transformation", "graph transformation", "shift scale reflect"],
+    description: "Side-by-side comparison of base and transformed functions." },
+  // ── Arithmetic ────────────────────────────────────────────────────
+  { id: "fraction", name: "Fractions", category: "arithmetic",
+    keywords: ["fractions", "compare fractions", "add fractions", "fraction strip"],
+    description: "Fraction visualization: represent, compare, add, or subtract." },
+  // ── Trig ──────────────────────────────────────────────────────────
+  { id: "trig-unit-circle", name: "Trig Unit Circle", category: "calculus",
+    keywords: ["unit circle", "trig unit circle", "sine cosine projection"],
+    description: "Unit circle with rotating angle and sine/cosine projections." },
+  // ── 3D / Multivariable ────────────────────────────────────────────
+  { id: "surface-plot", name: "3D Surface Plot", category: "calculus",
+    keywords: ["3d surface", "surface plot", "z = f(x,y)", "two variable function"],
+    description: "3D surface plot of z = f(x, y)." },
+  { id: "contour", name: "Contour Map", category: "calculus",
+    keywords: ["contour map", "contour plot", "level curves"],
+    description: "Contour map of a 2D function with level curves." },
+  { id: "vector-field", name: "Vector Field", category: "calculus",
+    keywords: ["vector field", "vector flow"],
+    description: "2D vector field with arrows showing direction at each point." },
+  { id: "partial-derivative", name: "Partial Derivative", category: "calculus",
+    keywords: ["partial derivative", "partial derivatives", "∂f/∂x", "df/dx of f(x,y)"],
+    description: "Partial derivative shown as a slice of the surface." },
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -114,9 +328,226 @@ const MOCK_TOPICS: AnimatableTopic[] = [
 // ─────────────────────────────────────────────────────────────
 
 const TOPIC_SCENE_MAP: Record<string, { scene: string; params: Record<string, unknown> }> = {
+  // ── Sorting ───────────────────────────────────────────────────
+  "bubble-sort": { scene: "bubble_sort", params: { array: [5, 3, 8, 1, 9, 2] } },
+  "merge-sort":  { scene: "merge_sort",  params: { array: [5, 2, 8, 1, 9, 3, 7, 4] } },
+  "quick-sort":  { scene: "quick_sort",  params: { array: [3, 7, 1, 5, 9, 2, 8, 4] } },
+
+  // ── Searching ────────────────────────────────────────────────
   "binary-search": {
     scene: "binary_search_index",
     params: { array: [1, 3, 5, 7, 9, 11, 13, 15], algorithm: "find_target", target: 7 },
+  },
+  "binary-search-answer": {
+    scene: "binary_search_answer",
+    params: { min_value: 1, max_value: 16, true_at: 7, predicate_label: "feasible(x)" },
+  },
+
+  // ── Two pointers ─────────────────────────────────────────────
+  "two-pointers": {
+    scene: "two_pointers_opposite",
+    params: { array: [1, 3, 5, 7, 9, 11], algorithm: "two_sum_sorted", target: 12 },
+  },
+  "two-pointers-fast-slow": {
+    scene: "two_pointers_same_dir",
+    params: { array: [1, 1, 2, 3, 3, 4, 5], algorithm: "remove_duplicates" },
+  },
+  "palindrome": {
+    scene: "two_pointers_opposite",
+    params: { array: ["r", "a", "c", "e", "c", "a", "r"], algorithm: "palindrome" },
+  },
+  "container-water": {
+    scene: "two_pointers_opposite",
+    params: { array: [1, 8, 6, 2, 5, 4, 8, 3], algorithm: "container_water" },
+  },
+
+  // ── Sliding window ────────────────────────────────────────────
+  "sliding-window": {
+    scene: "sliding_window_variable",
+    params: { array: ["a", "b", "c", "a", "b", "c", "b", "b"], algorithm: "longest_no_repeat" },
+  },
+
+  // ── Hashing ───────────────────────────────────────────────────
+  "two-sum": {
+    scene: "hashmap_iteration",
+    params: { array: [2, 7, 11, 15], algorithm: "two_sum_hashmap", target: 9 },
+  },
+  "frequency-count": {
+    scene: "hashmap_iteration",
+    params: { array: [1, 2, 2, 3, 1, 2, 4], algorithm: "frequency_count" },
+  },
+  "anagram-check": {
+    scene: "hashmap_iteration",
+    params: { array: ["l", "i", "s", "t", "e", "n"], algorithm: "anagram_check" },
+  },
+
+  // ── Stacks & queues ──────────────────────────────────────────
+  "monotonic-stack": {
+    scene: "monotonic_stack",
+    params: { array: [2, 1, 4, 3, 5], algorithm: "next_greater", monotone: "decreasing" },
+  },
+  "stack-queue": {
+    scene: "stack_queue",
+    params: { operations: ["push 3", "push 7", "push 1", "pop", "push 5", "pop"], structure: "stack" },
+  },
+
+  // ── Prefix / running sums ────────────────────────────────────
+  "prefix-sum": {
+    scene: "prefix_sum",
+    params: { array: [3, 1, 4, 1, 5, 9, 2, 6], algorithm: "build_prefix" },
+  },
+  "kadanes": {
+    scene: "kadanes",
+    params: { array: [-2, 1, -3, 4, -1, 2, 1, -5, 4] },
+  },
+
+  // ── Linked lists ─────────────────────────────────────────────
+  "reverse-linked-list":   { scene: "linked_list", params: { values: [1, 2, 3, 4, 5], algorithm: "reverse" } },
+  "linked-list-middle":    { scene: "linked_list", params: { values: [1, 2, 3, 4, 5, 6], algorithm: "find_middle" } },
+  "merge-sorted-lists":    { scene: "linked_list", params: { values: [1, 3, 5], values2: [2, 4, 6], algorithm: "merge_sorted" } },
+
+  // ── Trees ────────────────────────────────────────────────────
+  "tree-bfs":     { scene: "tree_traversal", params: { values: [1, 2, 3, 4, 5, 6, 7], algorithm: "bfs" } },
+  "tree-dfs":     { scene: "tree_traversal", params: { values: [1, 2, 3, 4, 5, 6, 7], algorithm: "dfs" } },
+  "tree-inorder": { scene: "tree_traversal", params: { values: [1, 2, 3, 4, 5, 6, 7], algorithm: "inorder" } },
+  "trie": {
+    scene: "trie_ops",
+    params: { words: ["cat", "car", "card", "care"], queries: ["car", "cap"] },
+  },
+
+  // ── Graphs ───────────────────────────────────────────────────
+  "graph-bfs": {
+    scene: "graph_traversal",
+    params: {
+      num_nodes: 6,
+      edges: [[0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 5]],
+      start_node: 0, algorithm: "bfs", directed: false,
+    },
+  },
+  "graph-dfs": {
+    scene: "graph_traversal",
+    params: {
+      num_nodes: 6,
+      edges: [[0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 5]],
+      start_node: 0, algorithm: "dfs", directed: false,
+    },
+  },
+  "dijkstra": {
+    scene: "dijkstra",
+    params: {
+      num_nodes: 5,
+      edges: [[0, 1, 4], [0, 2, 1], [2, 1, 2], [1, 3, 1], [2, 3, 5], [3, 4, 3]],
+      source: 0,
+    },
+  },
+  "union-find": {
+    scene: "union_find",
+    params: { n: 6, operations: ["union 0 1", "union 2 3", "union 4 5", "union 1 3", "find 4"] },
+  },
+
+  // ── Grid ─────────────────────────────────────────────────────
+  "grid-bfs": {
+    scene: "grid_traversal",
+    params: {
+      grid: [[0, 0, 0, 1], [1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]],
+      start: [0, 0], target: [3, 3], algorithm: "bfs",
+    },
+  },
+
+  // ── Heaps ────────────────────────────────────────────────────
+  "heap-ops": {
+    scene: "heap_ops",
+    params: {
+      operations: ["push 5", "push 3", "push 8", "push 1", "pop", "push 7", "pop"],
+      heap_type: "min",
+    },
+  },
+
+  // ── Intervals ────────────────────────────────────────────────
+  "merge-intervals": {
+    scene: "interval_merging",
+    params: { intervals: [[1, 3], [2, 6], [8, 10], [15, 18]] },
+  },
+
+  // ── DP (1D) ──────────────────────────────────────────────────
+  "fibonacci-dp":     { scene: "dp_array", params: { algorithm: "fibonacci",       n: 8 } },
+  "climbing-stairs":  { scene: "dp_array", params: { algorithm: "climbing_stairs", n: 8 } },
+  "house-robber":     { scene: "dp_array", params: { algorithm: "house_robber",    n: 8 } },
+
+  // ── DP (2D) ──────────────────────────────────────────────────
+  "lcs":           { scene: "dp_2d", params: { algorithm: "lcs",           input1: "abcde",  input2: "ace" } },
+  "edit-distance": { scene: "dp_2d", params: { algorithm: "edit_distance", input1: "kitten", input2: "sitting" } },
+  "unique-paths":  { scene: "dp_2d", params: { algorithm: "unique_paths",  input1: "3",      input2: "3" } },
+
+  // ── Backtracking ─────────────────────────────────────────────
+  "subsets":      { scene: "backtracking_subsets", params: { array: [1, 2, 3], algorithm: "subsets" } },
+  "permutations": { scene: "backtracking_subsets", params: { array: [1, 2, 3], algorithm: "permutations" } },
+
+  // ── Design ───────────────────────────────────────────────────
+  "lru-cache": {
+    scene: "lru_cache",
+    params: {
+      operations: ["put 1 a", "put 2 b", "get 1", "put 3 c", "get 2"],
+      capacity: 2,
+    },
+  },
+  "segment-tree": {
+    scene: "segment_tree",
+    params: { array: [1, 3, 5, 7, 9, 11], queries: [[1, 3], [0, 5], [2, 4]] },
+  },
+
+  // ── Calculus ─────────────────────────────────────────────────
+  "chain-rule": {
+    scene: "tangent_line",
+    params: { expression: "(2*x + 1)**2", x_point: 1, domain: [-2, 2] },
+  },
+  "derivative-power-rule": {
+    scene: "tangent_line",
+    params: { expression: "x**3", x_point: 1, domain: [-2, 2] },
+  },
+  "limit": {
+    scene: "limit",
+    params: { expression: "sin(x)/x", limit_point: 0, domain: [-3, 3] },
+  },
+  "critical-points": {
+    scene: "critical_points",
+    params: { expression: "x**3 - 3*x", domain: [-2.5, 2.5] },
+  },
+  "riemann-sum": {
+    scene: "riemann_sum",
+    params: { expression: "x**2", domain: [0, 2], n: 6, method: "left" },
+  },
+  "ftc": {
+    scene: "ftc",
+    params: { expression: "x**2", domain: [0, 3], start: 0 },
+  },
+  "area-between-curves": {
+    scene: "area_between_curves",
+    params: { f_expression: "x", g_expression: "x**2", domain: [0, 1] },
+  },
+  "average-value": {
+    scene: "average_value",
+    params: { expression: "sin(x)", domain: [0, 3.14159] },
+  },
+  "arc-length": {
+    scene: "arc_length",
+    params: { expression: "x**2", domain: [0, 2], n_segments: 8 },
+  },
+  "u-substitution": {
+    scene: "u_substitution",
+    params: { expression: "2*x*(x**2 + 1)**3", u_expression: "x**2 + 1", domain: [0, 2] },
+  },
+  "integration-by-parts": {
+    scene: "integration_by_parts",
+    params: { u_expression: "x", dv_expression: "exp(x)", domain: [0, 2] },
+  },
+  "improper-integral": {
+    scene: "improper_integral",
+    params: { expression: "1/(x**2)", domain: [1, 10], improper_bound: "right" },
+  },
+  "volume-revolution": {
+    scene: "volume_revolution",
+    params: { expression: "x**2", domain: [0, 2], n_disks: 8 },
   },
   "washer-method": {
     scene: "washer_method",
@@ -126,60 +557,215 @@ const TOPIC_SCENE_MAP: Record<string, { scene: string; params: Record<string, un
     scene: "shell_method",
     params: { expression: "x**2", domain: [0, 2], n_shells: 8 },
   },
-  "chain-rule": {
-    scene: "tangent_line",
-    // Classic chain-rule example: outer u², inner 2x+1.
-    // Kept low-degree so the plot renders quickly without big y-ranges.
-    params: { expression: "(2*x + 1)**2", x_point: 1, domain: [-2, 2] },
+  "cross-section": {
+    scene: "cross_section",
+    params: { expression: "sqrt(x)", domain: [0, 4], shape: "square" },
   },
-  "derivative-power-rule": {
-    scene: "tangent_line",
-    params: { expression: "x**3", x_point: 1, domain: [-2, 2] },
+  "taylor-series": {
+    scene: "taylor_series",
+    params: { expression: "sin(x)", center: 0, max_terms: 5, domain: [-3, 3] },
   },
-  "merge-sort": {
-    scene: "merge_sort",
-    params: { array: [5, 2, 8, 1, 9, 3, 7, 4] },
+  "sequence": {
+    scene: "sequence",
+    params: { formula: "x/2 + 1", a0: 0, n_terms: 8 },
   },
-  "quick-sort": {
-    scene: "quick_sort",
-    params: { array: [3, 7, 1, 5, 9, 2, 8, 4] },
+  "cobweb": {
+    scene: "cobweb",
+    params: { formula: "0.7*x + 0.5", a0: 0.1, n_steps: 8, domain: [0, 2] },
+  },
+
+  // ── Algebra ──────────────────────────────────────────────────
+  "linear-function": {
+    scene: "linear_function",
+    params: { expression: "2*x + 1", domain: [-5, 5] },
+  },
+  "quadratic": {
+    scene: "quadratic",
+    params: { expression: "x**2 - 4*x + 3", domain: [-1, 5] },
+  },
+  "inequality": {
+    scene: "inequality",
+    params: { expression: "x**2 - 4", domain: [-5, 5] },
+  },
+  "exponential-function": {
+    scene: "exponential",
+    params: { expression: "exp(x)", domain: [-3, 3], show_key_points: true },
+  },
+  "function-transformation": {
+    scene: "transformation",
+    params: { base_expression: "x**2", transformed_expression: "(x - 2)**2 + 1", domain: [-3, 5] },
+  },
+
+  // ── Arithmetic ───────────────────────────────────────────────
+  "fraction": {
+    scene: "fraction",
+    params: { mode: "compare", fractions: [[1, 4], [2, 4], [3, 4]] },
+  },
+
+  // ── Trig ─────────────────────────────────────────────────────
+  "trig-unit-circle": {
+    scene: "trig_unit_circle",
+    params: { angle: 0.785, animate_rotation: true },
+  },
+
+  // ── 3D / Multivariable ───────────────────────────────────────
+  "surface-plot": {
+    scene: "surface_plot",
+    params: { expression: "x**2 + y**2", x_domain: [-2, 2], y_domain: [-2, 2] },
+  },
+  "contour": {
+    scene: "contour",
+    params: { expression: "x**2 + y**2", x_domain: [-3, 3], y_domain: [-3, 3], num_levels: 8 },
+  },
+  "vector-field": {
+    scene: "vector_field",
+    params: { x_expression: "-y", y_expression: "x", domain: [-2, 2], show_streamlines: false },
+  },
+  "partial-derivative": {
+    scene: "partial_derivative",
+    params: { expression: "x**2 + y**2", variable: "x", fixed_value: 0, x_domain: [-2, 2], y_domain: [-2, 2] },
   },
 };
+
+// Pre-render on boot — small curated list of topics the user is most
+// likely to click first. Every other topic in TOPIC_SCENE_MAP renders on
+// demand and gets cached on first click. Tune freely.
+const WARMUP_TOPICS: string[] = [
+  "merge-sort",
+  "quick-sort",
+  "binary-search",
+  "two-sum",
+  "kadanes",
+];
 
 // Topics whose default array param should be replaced by an array literal
 // found in the user's selection (e.g. "quick sort [1,4,6,3,7,8,0]").
+// Different scenes use different param names: most use "array" but trees and
+// linked lists use "values".
 const ARRAY_PARAM_TOPICS: Record<string, string> = {
-  "merge-sort": "array",
-  "quick-sort": "array",
-  "binary-search": "array",
+  // Sort / search / hashing — primary input is `array`
+  "bubble-sort":            "array",
+  "merge-sort":             "array",
+  "quick-sort":             "array",
+  "binary-search":          "array",
+  "two-pointers":           "array",
+  "two-pointers-fast-slow": "array",
+  "container-water":        "array",
+  "two-sum":                "array",
+  "frequency-count":        "array",
+  "monotonic-stack":        "array",
+  "prefix-sum":             "array",
+  "kadanes":                "array",
+  "subsets":                "array",
+  "permutations":           "array",
+  "segment-tree":           "array",
+  // Trees — level-order array under `values`
+  "tree-bfs":               "values",
+  "tree-dfs":               "values",
+  "tree-inorder":           "values",
+  // Linked lists — list of node values under `values`
+  "reverse-linked-list":    "values",
+  "linked-list-middle":     "values",
+  "merge-sorted-lists":     "values",
 };
 
-// Find the first JS-style number array in `text`. Returns null if none, or
-// if the parsed array is too short/long to render cleanly.
+// Topics that consume a SECOND array literal from the same selection
+// (e.g. "merge [1,3,5] and [2,4,6]" → values2 = [2,4,6]).
+const SECOND_ARRAY_PARAM_TOPICS: Record<string, string> = {
+  "merge-sorted-lists": "values2",
+};
+
+// Topics whose params include a target value that should be pulled from
+// the user's text — e.g. "two sum, target = 9" / "find 7 in [...]".
+const TARGET_PARAM_TOPICS: Record<string, string> = {
+  "binary-search": "target",
+  "two-pointers":  "target",
+  "two-sum":       "target",
+};
+
+// Pull every JS-style number array out of `text`, in order of appearance.
+// Capped at `max` matches; each must be 1-50 finite numbers.
+function extractAllArrays(text: string, max = 4): number[][] {
+  const re = /\[\s*(-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)*)\s*\]/g;
+  const out: number[][] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null && out.length < max) {
+    const items = m[1].split(",").map((s) => parseFloat(s.trim()));
+    if (items.length >= 1 && items.length <= 50 && items.every((n) => Number.isFinite(n))) {
+      out.push(items);
+    }
+  }
+  return out;
+}
+
+// Backwards-compatible: first array if any, with the original ≥2-element gate
+// (sort/search topics need at least two items to be meaningful).
 function extractArray(text: string): number[] | null {
-  const m = text.match(/\[\s*(-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)*)\s*\]/);
-  if (!m) return null;
-  const items = m[1].split(",").map((s) => parseFloat(s.trim()));
-  if (items.some((n) => !Number.isFinite(n))) return null;
-  if (items.length < 2 || items.length > 20) return null;
-  return items;
+  const all = extractAllArrays(text, 1);
+  if (!all.length) return null;
+  const first = all[0];
+  if (first.length < 2 || first.length > 20) return null;
+  return first;
+}
+
+// Pull a target integer out of natural-language phrasing:
+//   "target = 9", "target: 9", "sum to 9", "sums to 9", "find 7", "looking for 7"
+// Returns null if no clear target is found.
+function extractTarget(text: string): number | null {
+  const patterns: RegExp[] = [
+    /\btarget\s*[:=]\s*(-?\d+)/i,
+    /\bsums?\s+to\s+(-?\d+)/i,
+    /\bequal\s+(?:to\s+)?(-?\d+)/i,
+    /\b(?:find|looking\s+for|search\s+for)\s+(?:the\s+)?(?:value\s+)?(-?\d+)/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
 }
 
 // Given a topic and a chunk of text (selection or surrounding paragraph),
-// build a sceneOverride that uses any embedded array literal as the topic's
-// array param. Returns null if no override is needed.
+// build a sceneOverride that uses any embedded array literal and/or target
+// value as the topic's params. Returns null if nothing extractable was found.
+//
+// Topics that map to "array" enforce a ≥2-element minimum (a single-element
+// sort makes no sense). Topics that map to "values" allow ≥1 (a singleton
+// tree or linked list is valid).
 function arrayOverrideFor(
   topic: AnimatableTopic,
   text: string
 ): { scene: string; params: Record<string, unknown> } | null {
-  const paramName = ARRAY_PARAM_TOPICS[topic.id];
-  if (!paramName) return null;
-  const arr = extractArray(text);
+  const arrayParam   = ARRAY_PARAM_TOPICS[topic.id];
+  const secondParam  = SECOND_ARRAY_PARAM_TOPICS[topic.id];
+  const targetParam  = TARGET_PARAM_TOPICS[topic.id];
   const base = TOPIC_SCENE_MAP[topic.id];
-  if (!arr || !base) return null;
+  if (!base || (!arrayParam && !targetParam)) return null;
+
+  const overrides: Record<string, unknown> = {};
+
+  if (arrayParam) {
+    const allArrays = extractAllArrays(text, secondParam ? 2 : 1);
+    const minLen = arrayParam === "values" ? 1 : 2;
+    if (allArrays[0] && allArrays[0].length >= minLen && allArrays[0].length <= 20) {
+      overrides[arrayParam] = allArrays[0];
+    }
+    if (secondParam && allArrays[1] && allArrays[1].length >= 1 && allArrays[1].length <= 20) {
+      overrides[secondParam] = allArrays[1];
+    }
+  }
+  if (targetParam) {
+    const tgt = extractTarget(text);
+    if (tgt !== null) overrides[targetParam] = tgt;
+  }
+  if (Object.keys(overrides).length === 0) return null;
+
   return {
     scene: base.scene,
-    params: { ...base.params, [paramName]: arr },
+    params: { ...base.params, ...overrides },
   };
 }
 
@@ -3083,8 +3669,14 @@ const ImportAnimationsPage: React.FC<{
         return;
       }
       setStatus({ kind: "rendering", problem: parsed.problem, topic });
+      // Pull any array literal out of the problem text and use it instead
+      // of the topic's default array (e.g. "merge sort [1,4,6,3,7,8,0]"
+      // overrides merge_sort's default [5,2,8,1,9,3,7,4]). For binary
+      // search this also pulls a target if "looking for N" / "find N" is
+      // present in the source text.
+      const arrayOverride = arrayOverrideFor(topic, parsed.problem);
       const [animResult, breakdown] = await Promise.all([
-        generateAnimation(topic, parsed.problem),
+        generateAnimation(topic, parsed.problem, arrayOverride ?? undefined),
         explainProblem(parsed.problem, topic),
       ]);
       setStatus({
@@ -3454,14 +4046,14 @@ export default function App() {
     fetchTopics().then(setTopics);
   }, []);
 
-  // Background pre-render warmup. On app boot, render every TOPIC_SCENE_MAP
-  // entry SEQUENTIALLY in the background — one at a time, each waiting for
-  // the previous to finish polling. Concurrent manim subprocesses overwhelm
-  // typical dev machines (each is ~300MB + 100% CPU) and cause spurious
-  // timeouts. Backend cache dedupes, so subsequent boots are no-ops.
+  // Background pre-render warmup. On app boot, render a curated "hot list"
+  // of the most-likely-to-be-clicked topics SEQUENTIALLY in the background.
+  // Other topics in TOPIC_SCENE_MAP cache lazily on first click — pre-warming
+  // all 40+ would burn ~7 minutes on every boot.
+  // Backend cache dedupes across boots, so the second startup is a no-op.
   useEffect(() => {
     const flaskUrl = flaskBase();
-    const ids = Object.keys(TOPIC_SCENE_MAP);
+    const ids = WARMUP_TOPICS;
     let cancelled = false;
 
     (async () => {

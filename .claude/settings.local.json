@@ -21,7 +21,8 @@
       "Bash(ls -la *.mp4)",
       "Bash(md5sum *.mp4)",
       "PowerShell(npx tsc -b 2>&1)",
-      "PowerShell(if \\($LASTEXITCODE -eq 0\\) { \"OK\" })"
+      "PowerShell(if \\($LASTEXITCODE -eq 0\\) { \"OK\" })",
+      "Bash(curl -s -m 5 http://localhost:5000/health)"
     ]
   }
 }
