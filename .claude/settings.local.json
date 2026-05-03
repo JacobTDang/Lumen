@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git grep *)",
+      "Bash(.venv/Scripts/python.exe -m py_compile backend/agent/classifier.py backend/schemas/types.py backend/scenes/dsa_pattern_scene.py)",
+      "PowerShell(backend\\\\.venv\\\\Scripts\\\\python.exe -m py_compile backend\\\\agent\\\\classifier.py backend\\\\schemas\\\\types.py backend\\\\scenes\\\\dsa_pattern_scene.py)",
+      "PowerShell(if \\($?\\) { \"OK\" })",
+      "Bash(cat tsconfig.json)",
+      "Bash(cat tsconfig.app.json)",
+      "Bash(ls *.json *.ts *.config.*)",
+      "PowerShell(npx tsc -b --pretty 2>&1)",
+      "PowerShell(npx vite build 2>&1)",
+      "PowerShell(Get-Command ffmpeg -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command manim -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command latex -ErrorAction SilentlyContinue)",
+      "PowerShell(\"ffmpeg: \" + \\(Get-Command ffmpeg -ErrorAction SilentlyContinue\\).Source; \"manim:  \" + \\(Get-Command manim  -ErrorAction SilentlyContinue\\).Source; \"latex:  \" + \\(Get-Command latex  -ErrorAction SilentlyContinue\\).Source)",
+      "PowerShell(\"latex:    \" + \\(Get-Command latex    -ErrorAction SilentlyContinue\\).Source; \"dvisvgm:  \" + \\(Get-Command dvisvgm  -ErrorAction SilentlyContinue\\).Source; \"ffmpeg:   \" + \\(Get-Command ffmpeg   -ErrorAction SilentlyContinue\\).Source; \"miktex:   \" + \\(Get-Command miktex   -ErrorAction SilentlyContinue\\).Source; \"initexmf: \" + \\(Get-Command initexmf -ErrorAction SilentlyContinue\\).Source)",
+      "PowerShell(initexmf --show-config-value=[MPM]AutoInstall 2>&1)",
+      "PowerShell(initexmf --set-config-value=\"[MPM]AutoInstall=1\"; \"After: \" + \\(initexmf --show-config-value=[MPM]AutoInstall 2>&1\\))",
+      "PowerShell(miktex packages install standalone preview amsmath amssymb amsfonts xcolor doublestroke setspace rsfs relsize ragged2e fundus-calligra microtype wasysym physics dvisvgm 2>&1)",
+      "Bash(ls -la *.mp4)",
+      "Bash(md5sum *.mp4)",
+      "PowerShell(npx tsc -b 2>&1)",
+      "PowerShell(if \\($LASTEXITCODE -eq 0\\) { \"OK\" })"
+    ]
+  }
+}

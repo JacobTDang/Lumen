@@ -14,6 +14,7 @@ from agent.explainer import explain_problem
 from agent.gemini_client import call_gemini
 from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
+from schemas.types import StepPlan
 
 _TOPICS = [
     {"id": "merge-sort", "name": "Merge Sort", "category": "dsa",
@@ -34,18 +35,9 @@ _TOPICS = [
     {"id": "shell-method", "name": "Cylindrical Shell Method", "category": "calculus",
      "keywords": ["cylindrical shell", "shell method", "shells"],
      "description": "Volume by unwrapping concentric cylindrical shells."},
-    {"id": "long-division", "name": "Long Division", "category": "arithmetic",
-     "keywords": ["long division", "divide"],
-     "description": "Step-by-step division algorithm."},
     {"id": "derivative-power-rule", "name": "Power Rule", "category": "calculus",
      "keywords": ["power rule", "derivative of x^n"],
      "description": "Why d/dx[x^n] = n·x^(n-1)."},
-    {"id": "torque", "name": "Torque", "category": "physics",
-     "keywords": ["torque", "rotational force"],
-     "description": "Force × lever arm visualized on a rotating body."},
-    {"id": "matrix-multiply", "name": "Matrix Multiplication", "category": "linalg",
-     "keywords": ["matrix multiply", "matmul"],
-     "description": "Row-by-column dot products animated."},
 ]
 
 _MIME_FROM_EXT = {
@@ -112,7 +104,10 @@ def create_app(testing: bool = False) -> Flask:
         params = body.get("params", {})
         if not scene:
             return jsonify({"error": "scene is required"}), 400
-        job_id = submit_render(scene, params)
+        # Route through submit_lesson so single-scene renders share the
+        # content-hash cache (so /prerender on boot warms /render too).
+        step = StepPlan(tool=scene, params=params, caption=params.get("caption", ""))
+        job_id = submit_lesson([step])
         return jsonify({"job_id": job_id}), 202
 
     @app.get("/status/<job_id>")
@@ -180,12 +175,33 @@ def create_app(testing: bool = False) -> Flask:
             "required": ["title", "html"],
         }
         prompt = (
-            "Structure the following text as a clean note.\n"
-            "Return a JSON object with:\n"
-            "- title: short descriptive title, max 60 characters\n"
-            "- html: clean semantic HTML using only <h2>, <h3>, <p>, <ul>, <li>, "
-            "<strong>, <em> tags — no CSS, no scripts, no inline styles\n\n"
-            f"Text:\n{raw_text}"
+            "You are turning a raw note transcription into a clean, well-structured "
+            "study note. Return a JSON object with:\n"
+            "- title: a short descriptive title (max 60 characters)\n"
+            "- html: well-structured semantic HTML\n\n"
+            "HTML rules:\n"
+            "- Allowed tags ONLY: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>\n"
+            "- No CSS, no scripts, no inline styles, no class attributes, no <div>/<span>.\n"
+            "- Structure with clear visual hierarchy:\n"
+            "    * Open with one short overview paragraph (1–2 sentences).\n"
+            "    * Use <h2> for major sections (e.g. Definitions, Examples, Steps, Notes).\n"
+            "    * Use <h3> for sub-sections inside a major section.\n"
+            "    * Keep prose paragraphs short — 2 to 4 sentences max — so the note "
+            "      is scannable.\n"
+            "- Use <strong> liberally to highlight:\n"
+            "    * Key terms on first definition (e.g. <strong>derivative</strong>).\n"
+            "    * Names of theorems, methods, formulas, or rules.\n"
+            "    * Important numerical values, results, and final answers.\n"
+            "    * Anything the reader should remember.\n"
+            "- Use <em> sparingly for emphasis or contrast within a sentence.\n"
+            "- Use <ul> for unordered lists (properties, characteristics, examples).\n"
+            "- Use <ol> for ordered lists (steps, procedures, sequential reasoning).\n"
+            "- Wrap each list item in its own <li>; do NOT merge multiple steps into one <li>.\n"
+            "- Each section should have its own heading + content; do not pile everything "
+            "  into one <h2> block. Aim for 2–5 sections.\n"
+            "- Preserve the original meaning; reorganize and clarify, but do not invent "
+            "  facts or add content not present in the source.\n\n"
+            f"Source text:\n{raw_text}"
         )
         try:
             response = call_gemini(prompt, response_schema=schema)

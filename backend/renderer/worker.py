@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -13,22 +14,37 @@ _jobs: dict = {}
 
 # ---------------------------------------------------------------------------
 # Quality settings
-# 2D scenes use medium quality (720p30); 3D surface is kept at low (480p15)
-# because surface renders are significantly slower.
+#
+# Set LUMEN_QUALITY=low|medium|high to override (defaults to "low" — 480p15,
+# the fastest tier). Each tier is ~3-4x slower than the previous to render.
+# 480p is comfortably legible for the educational scenes we ship; bump it up
+# only if you're exporting for high-DPI screens or recording a final video.
 # ---------------------------------------------------------------------------
-_QUALITY_2D  = "-qm"
-_QUALITY_DIR_2D = "720p30"
-_QUALITY_3D  = "-ql"
-_QUALITY_DIR_3D = "480p15"
-_3D_SCENES   = {"surface_plot", "partial_derivative"}
+_QUALITY_TIERS = {
+    "low":    ("-ql", "480p15"),
+    "medium": ("-qm", "720p30"),
+    "high":   ("-qh", "1080p60"),
+}
+_QUALITY_2D = _QUALITY_TIERS.get(
+    os.environ.get("LUMEN_QUALITY", "low").lower(),
+    _QUALITY_TIERS["low"],
+)
+_QUALITY_FLAG_2D, _QUALITY_DIR_2D = _QUALITY_2D
+# 3D scenes always render at low — surface plots are an order of magnitude
+# slower than 2D scenes and benefit much less from a resolution bump.
+_QUALITY_FLAG_3D, _QUALITY_DIR_3D = _QUALITY_TIERS["low"]
+_3D_SCENES = {"surface_plot", "partial_derivative"}
 
 SCENE_REGISTRY = {
     # Core
     "bubble_sort":        ("scenes/array_scene.py",       "BubbleSortScene"),
+    "merge_sort":         ("scenes/array_scene.py",       "MergeSortScene"),
+    "quick_sort":         ("scenes/array_scene.py",       "QuickSortScene"),
     # Calculus
     "function_plot":      ("scenes/calculus_scene.py",    "FunctionPlotScene"),
     "limit":              ("scenes/calculus_scene.py",    "LimitScene"),
     "tangent_line":       ("scenes/calculus_scene.py",    "TangentLineScene"),
+    "secant_line":        ("scenes/calculus_scene.py",    "SecantLineScene"),
     "riemann_sum":        ("scenes/calculus_scene.py",    "RiemannSumScene"),
     "critical_points":    ("scenes/calculus_scene.py",    "CriticalPointsScene"),
     "volume_revolution":  ("scenes/calculus_scene.py",    "VolumeRevolutionScene"),
@@ -193,7 +209,7 @@ def cleanup_old_jobs(max_age_seconds: int = 3600) -> int:
 
 def submit_render(scene_type: str, params: dict) -> str:
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "url": None, "error": None}
+    _jobs[job_id] = {"status": "pending", "url": None, "error": None, "progress": 0.0}
     threading.Thread(
         target=_run_render, args=(job_id, scene_type, params), daemon=True,
     ).start()
@@ -204,39 +220,102 @@ def get_job(job_id: str) -> dict | None:
     return _jobs.get(job_id)
 
 
+# Manim's tqdm progress bar emits lines like:
+#   "Animation 0:  42%|████▏      | 10/24 [00:00<00:01, ...]"
+# We track the most recent (animation_idx, frac_in_anim) and combine with the
+# total animations seen so far to estimate overall job progress.
+_TQDM_RE = re.compile(r"Animation\s+(\d+):\s*(\d+)%\|")
+
+
+def _stream_progress(stderr, job_id: str, on_done: list):
+    """Read stderr line-by-line; whenever a tqdm progress line shows up,
+    update the job's `progress` field. Best-effort — manim's output format
+    can change between versions, in which case progress just stays at 0."""
+    last_anim   = -1
+    max_anim    = 0
+    err_buf: list[str] = []
+    try:
+        for raw in iter(stderr.readline, ""):
+            line = raw.rstrip("\n")
+            if not line:
+                continue
+            err_buf.append(line)
+            if len(err_buf) > 200:
+                err_buf = err_buf[-200:]   # cap memory
+            m = _TQDM_RE.search(line)
+            if m:
+                anim_idx = int(m.group(1))
+                pct      = int(m.group(2)) / 100.0
+                if anim_idx > max_anim:
+                    max_anim = anim_idx
+                last_anim = anim_idx
+                # Estimate overall progress: completed anims + current anim's
+                # fraction, divided by max_anim+1 (the highest seen). Asymptotic
+                # because we don't know total animations until the end.
+                total = max(max_anim + 1, last_anim + 1)
+                overall = (last_anim + pct) / total
+                # Cap at 95% — leave the last 5% for the file-write phase
+                _jobs[job_id]["progress"] = min(0.95, overall)
+    except Exception:
+        pass
+    finally:
+        on_done.append("\n".join(err_buf[-50:]))
+
+
 def _run_render(job_id: str, scene_type: str, params: dict):
     if scene_type not in SCENE_REGISTRY:
-        _jobs[job_id] = {"status": "error", "url": None, "error": f"unknown scene type: {scene_type}"}
+        _jobs[job_id] = {"status": "error", "url": None, "error": f"unknown scene type: {scene_type}", "progress": 0.0}
         return
 
     os.makedirs(_TEMP_DIR, exist_ok=True)
     params_path = os.path.join(_TEMP_DIR, f"{job_id}.json")
 
-    # Each job gets its own media directory — enables parallel rendering
-    # without output file collisions between jobs of the same scene class.
     is_3d         = scene_type in _3D_SCENES
-    quality_flag  = _QUALITY_3D  if is_3d else _QUALITY_2D
-    quality_dir   = _QUALITY_DIR_3D if is_3d else _QUALITY_DIR_2D
+    quality_flag  = _QUALITY_FLAG_3D if is_3d else _QUALITY_FLAG_2D
+    quality_dir   = _QUALITY_DIR_3D  if is_3d else _QUALITY_DIR_2D
     job_media_dir = os.path.join(_MEDIA_DIR, "jobs", job_id)
     os.makedirs(job_media_dir, exist_ok=True)
 
+    proc = None
     try:
         with open(params_path, "w") as f:
             json.dump(params, f)
 
         scene_file, scene_class = SCENE_REGISTRY[scene_type]
 
-        result = subprocess.run(
-            [sys.executable, "-m", "manim", quality_flag,
+        # IMPORTANT: stdout MUST be DEVNULL (or actively read in a thread).
+        # Manim writes occasional info to stdout; if we capture it via PIPE
+        # but never drain it, the OS pipe buffer fills (~64KB) and manim
+        # blocks on its next print, deadlocking the entire render.
+        proc = subprocess.Popen(
+            [sys.executable, "-u", "-m", "manim", quality_flag,
              "--media_dir", job_media_dir,
              "--disable_caching", scene_file, scene_class],
-            capture_output=True, text=True, timeout=180,
-            cwd=_BACKEND_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True, bufsize=1, cwd=_BACKEND_DIR,
             env={**os.environ, "MANIM_JOB_ID": job_id, "MANIM_TEMP_DIR": _TEMP_DIR},
         )
 
-        if result.returncode != 0:
-            _jobs[job_id] = {"status": "error", "url": None, "error": result.stderr[-500:]}
+        err_capture: list = []
+        stderr_thread = threading.Thread(
+            target=_stream_progress, args=(proc.stderr, job_id, err_capture), daemon=True,
+        )
+        stderr_thread.start()
+
+        try:
+            proc.wait(timeout=180)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            _jobs[job_id] = {"status": "error", "url": None, "error": "render timed out after 180s", "progress": _jobs[job_id].get("progress", 0.0)}
+            return
+
+        # Drain remaining stderr
+        stderr_thread.join(timeout=2.0)
+        err_tail = err_capture[0] if err_capture else ""
+
+        if proc.returncode != 0:
+            _jobs[job_id] = {"status": "error", "url": None, "error": err_tail[-500:] or f"exit {proc.returncode}", "progress": _jobs[job_id].get("progress", 0.0)}
             return
 
         scene_stem = os.path.splitext(os.path.basename(scene_file))[0]
@@ -244,15 +323,16 @@ def _run_render(job_id: str, scene_type: str, params: dict):
         full_path  = os.path.join(_MEDIA_DIR, video_rel)
 
         if not os.path.exists(full_path):
-            _jobs[job_id] = {"status": "error", "url": None, "error": "output file not found after render"}
+            _jobs[job_id] = {"status": "error", "url": None, "error": "output file not found after render", "progress": _jobs[job_id].get("progress", 0.0)}
             return
 
-        _jobs[job_id] = {"status": "done", "url": f"/media/{video_rel}", "error": None}
+        _jobs[job_id] = {"status": "done", "url": f"/media/{video_rel}", "error": None, "progress": 1.0}
 
-    except subprocess.TimeoutExpired:
-        _jobs[job_id] = {"status": "error", "url": None, "error": "render timed out after 180s"}
     except Exception as e:
-        _jobs[job_id] = {"status": "error", "url": None, "error": str(e)}
+        if proc is not None:
+            try: proc.kill()
+            except Exception: pass
+        _jobs[job_id] = {"status": "error", "url": None, "error": str(e), "progress": _jobs[job_id].get("progress", 0.0)}
     finally:
         if os.path.exists(params_path):
             os.remove(params_path)
@@ -264,11 +344,29 @@ def _run_render(job_id: str, scene_type: str, params: dict):
 
 def submit_lesson(steps: list) -> str:
     lesson_id = str(uuid.uuid4())
-    _jobs[lesson_id] = {"status": "pending", "url": None, "error": None}
+    _jobs[lesson_id] = {"status": "pending", "url": None, "error": None, "progress": 0.0}
     threading.Thread(
         target=_run_lesson, args=(lesson_id, steps), daemon=True,
     ).start()
     return lesson_id
+
+
+def _aggregate_progress(lesson_id: str, step_job_ids: list, stop_event: threading.Event):
+    """Background ticker that averages step progress into the lesson job's
+    progress field while the lesson is still rendering."""
+    while not stop_event.is_set():
+        try:
+            progresses = [
+                _jobs.get(sid, {}).get("progress", 0.0) for sid in step_job_ids
+            ]
+            if progresses:
+                avg = sum(progresses) / len(progresses)
+                cur = _jobs.get(lesson_id, {})
+                if cur.get("status") == "pending":
+                    cur["progress"] = min(0.95, avg)
+        except Exception:
+            pass
+        stop_event.wait(0.25)
 
 
 def stitch_videos(paths: list[str], out: str):
@@ -295,20 +393,35 @@ def _run_lesson(lesson_id: str, steps: list):
     cache_key   = _lesson_cache_key(steps)
     cached_url  = _cache_lookup(cache_key)
     if cached_url is not None:
-        _jobs[lesson_id] = {"status": "done", "url": cached_url, "error": None}
+        _jobs[lesson_id] = {"status": "done", "url": cached_url, "error": None, "progress": 1.0}
         return
 
-    def _render_step(step):
-        step_job_id = str(uuid.uuid4())
-        _jobs[step_job_id] = {"status": "pending", "url": None, "error": None}
-        _run_render(step_job_id, step.tool, {**step.params, "caption": step.caption})
-        return step_job_id
+    # Pre-allocate step job IDs so the progress aggregator can track them
+    # before each step actually starts running.
+    step_job_ids = [str(uuid.uuid4()) for _ in steps]
+    for sid in step_job_ids:
+        _jobs[sid] = {"status": "pending", "url": None, "error": None, "progress": 0.0}
+
+    progress_stop = threading.Event()
+    progress_thread = threading.Thread(
+        target=_aggregate_progress,
+        args=(lesson_id, step_job_ids, progress_stop),
+        daemon=True,
+    )
+    progress_thread.start()
+
+    def _render_step(idx: int, step):
+        _run_render(step_job_ids[idx], step.tool, {**step.params, "caption": step.caption})
 
     # Render all steps in parallel — isolated media dirs prevent collisions
     max_workers = min(len(steps), 4)
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures        = [pool.submit(_render_step, step) for step in steps]
-        step_job_ids   = [f.result() for f in futures]  # preserves submission order
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(_render_step, i, step) for i, step in enumerate(steps)]
+            for f in futures:
+                f.result()
+    finally:
+        progress_stop.set()
 
     # Check for any render errors
     for jid in step_job_ids:
@@ -316,6 +429,7 @@ def _run_lesson(lesson_id: str, steps: list):
             _jobs[lesson_id] = {
                 "status": "error", "url": None,
                 "error": f"Step failed: {_jobs[jid]['error']}",
+                "progress": _jobs[lesson_id].get("progress", 0.0),
             }
             return
 
@@ -332,7 +446,7 @@ def _run_lesson(lesson_id: str, steps: list):
         except OSError:
             # Fall back to the original URL if copy fails — caching skipped.
             final_url = src_url
-        _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None}
+        _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None, "progress": 1.0}
         if final_url.startswith("/media/lessons/"):
             _cache_store(cache_key, final_url)
         return
@@ -348,7 +462,7 @@ def _run_lesson(lesson_id: str, steps: list):
     try:
         stitch_videos(video_paths, output_path)
     except Exception as e:
-        _jobs[lesson_id] = {"status": "error", "url": None, "error": f"stitch failed: {e}"}
+        _jobs[lesson_id] = {"status": "error", "url": None, "error": f"stitch failed: {e}", "progress": _jobs[lesson_id].get("progress", 0.95)}
         return
 
     final_url = f"/media/lessons/{lesson_id}.mp4"

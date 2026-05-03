@@ -24,3 +24,59 @@ body {
   background: #e9d7be;
   color: #2f261f;
 }
+
+/* Shared rules for rendered note HTML — applied in the contenteditable
+   editor and in the import-page preview. Gives Gemini-formatted notes
+   visible hierarchy: spaced headings, breathable paragraphs, real bold,
+   indented lists. */
+.note-content > *:first-child {
+  margin-top: 0;
+}
+.note-content > *:last-child {
+  margin-bottom: 0;
+}
+.note-content h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #e8e8e8;
+  letter-spacing: -0.01em;
+  margin: 28px 0 10px;
+  line-height: 1.3;
+}
+.note-content h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #e8e8e8;
+  margin: 22px 0 6px;
+  line-height: 1.3;
+}
+.note-content p {
+  margin: 0 0 14px;
+  line-height: 1.7;
+}
+.note-content strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+.note-content em {
+  color: #cfcfcf;
+  font-style: italic;
+}
+.note-content ul,
+.note-content ol {
+  margin: 0 0 16px;
+  padding-left: 24px;
+}
+.note-content li {
+  margin: 4px 0;
+  line-height: 1.6;
+}
+.note-content li > p {
+  margin: 0;
+}
+.note-content ul ul,
+.note-content ol ol,
+.note-content ul ol,
+.note-content ol ul {
+  margin: 4px 0 4px;
+}

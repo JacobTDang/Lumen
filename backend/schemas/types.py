@@ -313,18 +313,12 @@ class LRUCacheSchema(BaseModel):
 
 class GridTraversalSchema(BaseModel):
     scene: Literal["grid_traversal"] = "grid_traversal"
-<<<<<<< HEAD
-    grid: List[List[int]] = Field(..., max_length=8)
-=======
     grid: List[List[int]] = Field(..., min_length=1, max_length=8)
->>>>>>> 044ede7 (Connected back end to front end)
     start: List[int]
     target: List[int]
     algorithm: Literal["bfs", "dfs"] = "bfs"
     caption: str = ""
 
-<<<<<<< HEAD
-=======
     @field_validator("grid")
     @classmethod
     def _grid_nonempty(cls, v: List[List[int]]) -> List[List[int]]:
@@ -337,7 +331,6 @@ class GridTraversalSchema(BaseModel):
             raise ValueError("grid columns must not exceed 8")
         return v
 
->>>>>>> 044ede7 (Connected back end to front end)
 
 class HeapOpsSchema(BaseModel):
     scene: Literal["heap_ops"] = "heap_ops"

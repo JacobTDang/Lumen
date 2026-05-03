@@ -347,6 +347,95 @@ class TangentLineScene(Scene):
 
 
 # ---------------------------------------------------------------------------
+# Average rate of change (secant line through the endpoints of an interval)
+# ---------------------------------------------------------------------------
+
+class SecantLineScene(Scene):
+    """Average rate of change = slope of the secant through (a, f(a)) and
+    (b, f(b)). Renders the curve, the two endpoints, the secant, and the
+    computed slope as (f(b) − f(a)) / (b − a)."""
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        expression = p.get("expression", "x**2 + 1")
+        a = float(p.get("a", 2.0))
+        b = float(p.get("b", 5.0))
+        cap = p.get("caption", "")
+        if a == b:
+            b = a + 1  # degenerate interval — nudge so we don't divide by zero
+
+        # Pick a domain that comfortably brackets [a, b] for context
+        span    = b - a
+        margin  = max(1.0, span * 0.4)
+        domain  = p.get("domain", [a - margin, b + margin])
+
+        expr, f, _x_sym = _parse(expression)
+        ya = _safe_eval(f, a)
+        yb = _safe_eval(f, b)
+        slope = (yb - ya) / (b - a)
+
+        yr  = _y_range(f, domain)
+        ax  = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=CURVE_COLOR)
+        title  = MathTex(
+            r"f(x) = " + _clip_latex(expr), font_size=34,
+        ).to_edge(UP, buff=0.3)
+
+        pa  = ax.c2p(a, ya)
+        pb  = ax.c2p(b, yb)
+        dot_a = Dot(pa, color=HIGHLIGHT_COLOR, radius=0.1)
+        dot_b = Dot(pb, color=HIGHLIGHT_COLOR, radius=0.1)
+        # Dashed verticals from x-axis up to each endpoint
+        zero_y = ax.c2p(a, 0)[1]
+        v_a = DashedLine(start=[pa[0], zero_y, 0], end=pa, color=GRAY_B, stroke_width=2)
+        v_b = DashedLine(start=[pb[0], zero_y, 0], end=pb, color=GRAY_B, stroke_width=2)
+        # x-axis tick labels for a and b
+        lbl_a = MathTex(_num(a), font_size=24, color=GRAY_B).next_to([pa[0], zero_y, 0], DOWN, buff=0.15)
+        lbl_b = MathTex(_num(b), font_size=24, color=GRAY_B).next_to([pb[0], zero_y, 0], DOWN, buff=0.15)
+
+        # Secant line extending slightly beyond the two endpoints for visual reach
+        ext = max(0.4, span * 0.15)
+        secant = ax.plot(
+            lambda x: ya + slope * (x - a),
+            x_range=[max(domain[0], a - ext), min(domain[1], b + ext)],
+            color=TANGENT_COLOR,
+            stroke_width=3,
+        )
+        secant_lbl = Text("secant", font_size=22, color=TANGENT_COLOR).to_corner(UR, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels))
+        self.play(Write(title), Create(graph))
+        self.play(FadeIn(v_a), FadeIn(v_b), Write(lbl_a), Write(lbl_b))
+        self.play(FadeIn(dot_a), FadeIn(dot_b))
+        self.play(Create(secant), Write(secant_lbl))
+
+        self.play(Indicate(dot_a, color=HIGHLIGHT_COLOR, scale_factor=1.5))
+        self.play(Indicate(dot_b, color=HIGHLIGHT_COLOR, scale_factor=1.5))
+
+        # Slope formula + numeric result
+        formula = MathTex(
+            r"\frac{f(" + _num(b) + r") - f(" + _num(a) + r")}"
+            r"{" + _num(b) + r" - " + _num(a) + r"}"
+            r" = \frac{" + _num(yb) + r" - " + _num(ya) + r"}"
+            r"{" + _num(b - a) + r"} = " + _num(slope),
+            font_size=30,
+        )
+        result = _result_box(
+            r"\text{avg rate of change} = " + _num(slope), 28,
+        )
+        VGroup(formula, result).arrange(DOWN, buff=0.18).to_edge(DOWN, buff=0.4)
+        self.play(FadeIn(formula))
+        self.play(FadeIn(result))
+        self.wait(2)
+
+
+# ---------------------------------------------------------------------------
 # Scene 4 — Riemann Sum
 # ---------------------------------------------------------------------------
 

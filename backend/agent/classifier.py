@@ -29,13 +29,9 @@ Reply with ONLY one word: math or dsa"""
 
 def _build_classifier_llm() -> ChatOpenAI:
     # Priority: gpt-oss-120b → Groq llama-3.1-8b-instant → generic OpenRouter
-<<<<<<< HEAD
-    # gpt-oss is a reasoning model so we allow more tokens; thinking is stripped in classify_domain.
-=======
     # gpt-oss is a reasoning model — its reasoning tokens count against
     # max_tokens even when hidden by OpenRouter, so leave plenty of headroom
     # or the final "dsa"/"math" word gets truncated to "d" / "m".
->>>>>>> 044ede7 (Connected back end to front end)
     base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     if os.environ.get("OPENROUTER_GPT_OSS_120_KEY"):
         return ChatOpenAI(
@@ -43,11 +39,7 @@ def _build_classifier_llm() -> ChatOpenAI:
             api_key=os.environ["OPENROUTER_GPT_OSS_120_KEY"],
             model=os.environ.get("OPENROUTER_GPT_OSS_120_MODEL", "openai/gpt-oss-120b"),
             temperature=0,
-<<<<<<< HEAD
-            max_tokens=512,
-=======
             max_tokens=2048,
->>>>>>> 044ede7 (Connected back end to front end)
             extra_body={"reasoning": {"effort": "low"}},
         )
     if os.environ.get("GROQ_API_KEY"):
@@ -67,10 +59,6 @@ def _build_classifier_llm() -> ChatOpenAI:
     )
 
 
-<<<<<<< HEAD
-def classify_domain(question: str) -> str:
-    """Returns 'math' or 'dsa'. Defaults to 'math' on any failure."""
-=======
 _DSA_KEYWORDS = (
     "bfs", "dfs", "binary tree", "linked list", "hashmap", "hash map",
     "trie", "heap", "graph", "leetcode", "neetcode", "two pointer",
@@ -92,7 +80,6 @@ def classify_domain(question: str) -> str:
     """Returns 'math' or 'dsa'. Falls back to keyword scan if the LLM response
     is empty/truncated, then defaults to 'math' as a last resort.
     """
->>>>>>> 044ede7 (Connected back end to front end)
     try:
         llm = _build_classifier_llm()
         response = llm.invoke([
@@ -100,24 +87,11 @@ def classify_domain(question: str) -> str:
             HumanMessage(content=question),
         ])
         raw = response.content
-<<<<<<< HEAD
-        # Strip reasoning artifacts (gpt-oss harmony channels, generic <thinking>)
-=======
->>>>>>> 044ede7 (Connected back end to front end)
         raw = re.sub(r"<\|channel\|>analysis<\|message\|>.*?(?=<\|channel\|>final<\|message\|>|$)",
                      "", raw, flags=re.DOTALL)
         raw = re.sub(r"<\|channel\|>final<\|message\|>", "", raw)
         raw = re.sub(r"<\|end\|>", "", raw)
         raw = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL)
-<<<<<<< HEAD
-        raw = raw.strip().lower()
-        raw = re.sub(r"[^a-z]", "", raw)
-        if "dsa" in raw or "algo" in raw or "data" in raw:
-            return "dsa"
-        return "math"
-    except Exception:
-        return "math"
-=======
         cleaned = re.sub(r"[^a-z]", "", raw.strip().lower())
         if "dsa" in cleaned or "algo" in cleaned:
             return "dsa"
@@ -127,4 +101,3 @@ def classify_domain(question: str) -> str:
         return _keyword_fallback(question)
     except Exception:
         return _keyword_fallback(question)
->>>>>>> 044ede7 (Connected back end to front end)

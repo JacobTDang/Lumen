@@ -1414,28 +1414,21 @@ def _union_find_steps(n: int, operations: list) -> tuple:
             path.append(x)
         return x, path
 
-<<<<<<< HEAD
-=======
     def _maybe_int(s):
         try:
             return int(s)
         except (ValueError, TypeError):
             return None
 
->>>>>>> 044ede7 (Connected back end to front end)
     for raw in operations:
         parts = raw.strip().split()
         if not parts:
             continue
         op = parts[0]
         if op == "union" and len(parts) >= 3:
-<<<<<<< HEAD
-            a = int(parts[1]); b = int(parts[2])
-=======
             a = _maybe_int(parts[1]); b = _maybe_int(parts[2])
             if a is None or b is None or not (0 <= a < n) or not (0 <= b < n):
                 continue   # skip malformed op silently
->>>>>>> 044ede7 (Connected back end to front end)
             ra, _ = find_root(a)
             rb, _ = find_root(b)
             before = list(parent)
@@ -1452,13 +1445,9 @@ def _union_find_steps(n: int, operations: list) -> tuple:
                                "parent_before": before, "parent_after": after,
                                "action": f"union({a},{b}): root {ra} → {rb}"})
         elif op == "find" and len(parts) >= 2:
-<<<<<<< HEAD
-            a = int(parts[1])
-=======
             a = _maybe_int(parts[1])
             if a is None or not (0 <= a < n):
                 continue
->>>>>>> 044ede7 (Connected back end to front end)
             ra, path = find_root(a)
             steps.append({"op": "find", "a": a, "ra": ra, "kind": "find",
                            "path": path,
@@ -1818,28 +1807,21 @@ def _heap_ops_steps(operations: list, heap_type: str = "min") -> tuple:
                            "action": f"sift down: swap idx {i} and {best}"})
             i = best
 
-<<<<<<< HEAD
-=======
     def _maybe_int(s):
         try:
             return int(s)
         except (ValueError, TypeError):
             return None
 
->>>>>>> 044ede7 (Connected back end to front end)
     for raw in operations:
         parts = raw.strip().split()
         if not parts:
             continue
         op = parts[0]
         if op == "push" and len(parts) >= 2:
-<<<<<<< HEAD
-            v = int(parts[1])
-=======
             v = _maybe_int(parts[1])
             if v is None:
                 continue   # skip malformed push silently
->>>>>>> 044ede7 (Connected back end to front end)
             heap.append(v)
             steps.append({"kind": "push", "value": v, "snapshot": list(heap),
                            "action": f"push {v} at index {len(heap) - 1}"})
