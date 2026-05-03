@@ -960,7 +960,8 @@ class WasherMethodScene(Scene):
         expr_f, f, x_sym = _parse(f_str)
         expr_g, g, _     = _parse(g_str)
 
-        yr = [0, _y_range(f, domain)[1], _y_range(f, domain)[2]]
+        max_y = _y_range(f, domain)[1]
+        yr = [-max_y * 1.05, max_y * 1.05, max(0.5, round(max_y / 4, 1))]
         ax = _make_axes(domain, yr)
         labels  = ax.get_axis_labels(x_label="x", y_label="y")
         graph_f = ax.plot(f, x_range=domain, color=CURVE_COLOR,   stroke_width=2.5)
@@ -1414,8 +1415,13 @@ class IntegrationByPartsScene(Scene):
             MathTex(r"= " + _clip_latex(result) + r"\ +\ C", font_size=26, color=DERIV_COLOR),
         ]
 
+        # Auto-scale steps wider than the screen
+        for s in steps:
+            if s.width > 12.5:
+                s.scale(12.5 / s.width)
+
         for i, s in enumerate(steps):
-            s.shift(DOWN * (i * 0.8 - 1.2))
+            s.shift(DOWN * (i * 0.85 - 1.4))
 
         if cap:
             _show_title_card(self, cap)
@@ -1474,38 +1480,75 @@ class CrossSectionScene(Scene):
         self.play(Create(graph), run_time=1.5)
         self.wait(0.3)
 
-        # Animate cross-sections appearing left to right
+        # Animate cross-sections appearing left to right with 3D-perspective tilt
         n_slices = 12
         xs = np.linspace(domain[0], domain[1], n_slices + 1)
         slices = VGroup()
+        tilt_x = 0.18  # horizontal shift suggesting depth
+        tilt_y = 0.12  # vertical shift suggesting depth
 
         for i in range(n_slices):
             x_mid = (xs[i] + xs[i + 1]) / 2
             s     = max(_safe_eval(f, float(x_mid)), 0)
-            w     = (xs[i + 1] - xs[i]) * ax.x_axis.unit_size * 0.85
-            h     = s * ax.y_axis.unit_size  # visual height = f(x) for the shape
+            w     = (xs[i + 1] - xs[i]) * ax.x_axis.unit_size * 0.88
+            cx, cy_bot = ax.c2p(float(x_mid), 0)[:2]
+            _, cy_top  = ax.c2p(float(x_mid), s)[:2]
 
-            # Draw a rectangle to represent the cross-section footprint
-            alpha = 0.55
-            rect = Rectangle(width=w, height=h,
-                             fill_color=YELLOW, fill_opacity=alpha,
-                             stroke_color=WHITE, stroke_width=1)
-            rect.move_to(ax.c2p(float(x_mid), s / 2))
-            slices.add(rect)
+            # Parallelogram with tilted top edge → cross-section seen at an angle
+            poly = Polygon(
+                np.array([cx - w/2,           cy_bot,           0]),
+                np.array([cx + w/2,           cy_bot,           0]),
+                np.array([cx + w/2 + tilt_x,  cy_top + tilt_y,  0]),
+                np.array([cx - w/2 + tilt_x,  cy_top + tilt_y,  0]),
+                fill_color=YELLOW, fill_opacity=0.55,
+                stroke_color=WHITE, stroke_width=1.2,
+            )
+            slices.add(poly)
 
-        self.play(LaggedStart(*[FadeIn(s) for s in slices], lag_ratio=0.08), run_time=2)
+        self.play(LaggedStart(*[FadeIn(s) for s in slices], lag_ratio=0.08), run_time=2.2)
 
         area_label = MathTex(shape_labels.get(shape, r"A(x)"), font_size=22, color=YELLOW)
         area_label.to_corner(UR, buff=0.3)
         self.play(Write(area_label))
+        self.wait(0.4)
 
+        # Compute volume
         try:
             vol = float(factor * sp.integrate(expr**2, (x_sym, domain[0], domain[1])))
             vol_str = f"{vol:.4f}"
         except Exception:
+            vol = 0.0
             vol_str = r"?"
 
-        self.play(FadeIn(_result_box(r"V = \int A(x)\,dx = " + vol_str, 26)
-                         .to_edge(DOWN, buff=0.55)))
-        self.wait(0.8)
+        # Riemann-sum style transition: show running sum building up
+        running_sum = 0.0
+        sum_label = MathTex(r"\sum A(x_i)\,\Delta x = 0.000", font_size=24, color=HIGHLIGHT_COLOR)
+        sum_label.to_corner(UL, buff=0.3)
+        self.play(Write(sum_label))
+
+        # Animate each slice contributing to the running sum
+        dx_real = (domain[1] - domain[0]) / n_slices
+        for i, slc in enumerate(slices):
+            x_mid_real = (xs[i] + xs[i + 1]) / 2
+            s_real     = max(_safe_eval(f, float(x_mid_real)), 0)
+            running_sum += factor * (s_real ** 2) * dx_real
+
+            new_sum_lbl = MathTex(
+                r"\sum A(x_i)\,\Delta x = " + f"{running_sum:.3f}",
+                font_size=24, color=HIGHLIGHT_COLOR,
+            ).to_corner(UL, buff=0.3)
+
+            self.play(
+                Indicate(slc, color=GREEN, scale_factor=1.15),
+                Transform(sum_label, new_sum_lbl),
+                run_time=0.25,
+            )
+
+        # Final transition: sum → integral
+        integral_eq = MathTex(
+            r"\sum A(x_i)\,\Delta x \;\longrightarrow\; \int A(x)\,dx = " + vol_str,
+            font_size=26, color=DERIV_COLOR,
+        ).to_edge(DOWN, buff=0.55)
+        self.play(FadeOut(sum_label), FadeIn(integral_eq))
+        self.wait(1.0)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
