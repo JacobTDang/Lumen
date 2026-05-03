@@ -62,6 +62,44 @@ CALCULUS EXTENDED:
   cobweb — cobweb/staircase diagram showing fixed-point iteration converging to L
     params: {"formula": str, "a0": float, "n_steps": int, "domain": [float, float]}
     use for: cobweb diagram, fixed-point iteration, recursive sequence convergence proof, show aₙ → L graphically
+    IMPORTANT: formula must use x as the variable
+
+INTEGRAL APPLICATIONS:
+  area_between_curves — shade region between f(x) above and g(x) below with computed area
+    params: {"f_expression": str, "g_expression": str, "domain": [float, float]}
+    use for: area between two curves, consumer surplus, probability density regions
+
+  washer_method — hollow disks (washers) from revolving region between two curves around x-axis
+    params: {"f_expression": str, "g_expression": str, "domain": [float, float], "n_washers": int}
+    use for: washer method, volume between two curves revolved, hollow solids of revolution
+
+  shell_method — cylindrical shells from revolving region around y-axis, V = 2π∫x·f(x)dx
+    params: {"expression": str, "domain": [float, float], "n_shells": int}
+    use for: shell method, revolving around y-axis, cylindrical shells, alternative to disk method
+
+  arc_length — approximate curve length with line segments converging to ∫√(1+f′²)dx
+    params: {"expression": str, "domain": [float, float], "n_segments": int}
+    use for: arc length, curve length formula, ds element, length of a curve
+
+  average_value — f_avg as horizontal line, area under curve morphs to equal rectangle
+    params: {"expression": str, "domain": [float, float]}
+    use for: average value of a function, mean value theorem for integrals
+
+  u_substitution — split-screen showing integrand transforming as u=g(x) substitution applied
+    params: {"expression": str, "u_expression": str, "domain": [float, float]}
+    use for: u-substitution, change of variables, ∫f(g(x))g′(x)dx → ∫f(u)du
+
+  integration_by_parts — step-by-step algebra proof of ∫u dv = uv − ∫v du
+    params: {"u_expression": str, "dv_expression": str, "domain": [float, float]}
+    use for: integration by parts, ∫x·eˣ, ∫x·sin(x), LIATE rule
+
+  improper_integral — upper bound slides to ∞ showing area converging or diverging
+    params: {"expression": str, "domain": [float, float], "improper_bound": "right"|"left"}
+    use for: improper integrals, ∫₁^∞ f(x)dx, convergence/divergence of unbounded integrals
+
+  cross_section — stacked cross-sections (squares/semicircles) along x-axis build a volume
+    params: {"expression": str, "domain": [float, float], "shape": "square"|"semicircle"|"equilateral_triangle"}
+    use for: volume by cross-sections, non-revolution solids, V = ∫A(x)dx
     IMPORTANT: formula must use x as the variable. Example: aₙ=sqrt(aₙ₋₁+2) → formula="sqrt(x+2)"
 
 CALCULUS 3 / MULTIVARIABLE:
@@ -133,6 +171,9 @@ Respond with ONLY valid JSON — no markdown fences, no explanation:
 _VALID_TOOLS = {
     "function_plot", "limit", "tangent_line", "riemann_sum", "critical_points",
     "volume_revolution", "taylor_series", "ftc", "sequence", "cobweb",
+    "area_between_curves", "washer_method", "shell_method", "arc_length",
+    "average_value", "u_substitution", "integration_by_parts",
+    "improper_integral", "cross_section",
     "linear_function", "quadratic", "trig_unit_circle",
     "surface_plot", "contour", "vector_field", "partial_derivative",
     "number_line", "fraction", "area_model",

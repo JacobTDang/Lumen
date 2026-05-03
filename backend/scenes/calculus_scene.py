@@ -860,3 +860,652 @@ class CobwebScene(Scene):
         ))
         self.wait(0.8)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ===========================================================================
+#  INTEGRAL APPLICATION SCENES
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Scene 11 — Area Between Curves
+# ---------------------------------------------------------------------------
+
+class AreaBetweenCurvesScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        f_expr_str = p.get("f_expression", "x")
+        g_expr_str = p.get("g_expression", "x**2")
+        domain     = p.get("domain", [0, 1])
+        cap        = p.get("caption", "")
+
+        expr_f, f, x_sym = _parse(f_expr_str)
+        expr_g, g, _     = _parse(g_expr_str)
+
+        # Combined y-range
+        yr_f = _y_range(f, domain)
+        yr_g = _y_range(g, domain)
+        yr   = [min(yr_f[0], yr_g[0]), max(yr_f[1], yr_g[1]),
+                max(yr_f[2], yr_g[2])]
+
+        ax     = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph_f = ax.plot(f, x_range=domain, color=CURVE_COLOR,  stroke_width=2.5)
+        graph_g = ax.plot(g, x_range=domain, color=CRITICAL_COLOR, stroke_width=2.5)
+
+        lbl_f = MathTex(r"f(x)=" + _clip_latex(expr_f), font_size=22, color=CURVE_COLOR)
+        lbl_g = MathTex(r"g(x)=" + _clip_latex(expr_g), font_size=22, color=CRITICAL_COLOR)
+        lbl_f.to_corner(UR, buff=0.3)
+        lbl_g.next_to(lbl_f, DOWN, buff=0.1)
+
+        title = MathTex(r"\int [f(x)-g(x)]\,dx", font_size=32).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(graph_f), Create(graph_g))
+        self.play(Write(lbl_f), Write(lbl_g))
+
+        # Intersection points
+        try:
+            ints = sp.solve(expr_f - expr_g, x_sym)
+            int_xs = sorted([float(v.evalf()) for v in ints
+                             if v.is_real and domain[0] <= float(v.evalf()) <= domain[1]])
+        except Exception:
+            int_xs = []
+
+        for ix in int_xs:
+            iy = _safe_eval(f, ix)
+            self.play(FadeIn(Dot(ax.c2p(ix, iy), color=WHITE, radius=0.1)), run_time=0.3)
+
+        # Shade the region
+        area = ax.get_area(graph_f, x_range=domain,
+                           bounded_graph=graph_g, color=BLUE, opacity=0.35)
+        self.play(FadeIn(area), run_time=1.5)
+
+        # Compute area
+        try:
+            val = float(sp.integrate(expr_f - expr_g, (x_sym, domain[0], domain[1])))
+            val = abs(val)
+            val_str = f"{val:.4f}"
+        except Exception:
+            val_str = r"?"
+
+        a_tex, b_tex = _num(domain[0]), _num(domain[1])
+        self.play(FadeIn(
+            _result_box(r"A = \int_{" + a_tex + r"}^{" + b_tex + r"}"
+                        r"[f-g]\,dx = " + val_str, 26)
+            .to_edge(DOWN, buff=0.55)
+        ))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 12 — Washer Method
+# ---------------------------------------------------------------------------
+
+class WasherMethodScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        f_str    = p.get("f_expression", "sqrt(x)")
+        g_str    = p.get("g_expression", "x**2")
+        domain   = p.get("domain", [0, 1])
+        n_washers = int(p.get("n_washers", 8))
+        cap      = p.get("caption", "")
+
+        expr_f, f, x_sym = _parse(f_str)
+        expr_g, g, _     = _parse(g_str)
+
+        yr = [0, _y_range(f, domain)[1], _y_range(f, domain)[2]]
+        ax = _make_axes(domain, yr)
+        labels  = ax.get_axis_labels(x_label="x", y_label="y")
+        graph_f = ax.plot(f, x_range=domain, color=CURVE_COLOR,   stroke_width=2.5)
+        graph_g = ax.plot(g, x_range=domain, color=CRITICAL_COLOR, stroke_width=2.5)
+
+        lbl_f = MathTex(r"R=f(x)=" + _clip_latex(expr_f), font_size=20, color=CURVE_COLOR).to_corner(UR, buff=0.3)
+        lbl_g = MathTex(r"r=g(x)=" + _clip_latex(expr_g), font_size=20, color=CRITICAL_COLOR).next_to(lbl_f, DOWN, buff=0.1)
+
+        title = MathTex(r"V = \pi\int[R^2-r^2]\,dx", font_size=30).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(graph_f), Create(graph_g), Write(lbl_f), Write(lbl_g))
+        self.play(FadeIn(ax.get_area(graph_f, x_range=domain,
+                                     bounded_graph=graph_g, color=BLUE, opacity=0.2)))
+        self.wait(0.4)
+
+        dx = (domain[1] - domain[0]) / n_washers
+        ux = ax.x_axis.unit_size
+        uy = ax.y_axis.unit_size
+        washers = VGroup()
+
+        for k in range(n_washers):
+            xd = domain[0] + (k + 0.5) * dx
+            R  = max(_safe_eval(f, xd), 0)
+            r  = max(_safe_eval(g, xd), 0)
+            if R <= 0:
+                continue
+            w = dx * ux * 0.8
+            outer = Ellipse(width=w, height=2*R*uy,
+                            color=BLUE, fill_color=BLUE, fill_opacity=0.30, stroke_width=1.5)
+            inner = Ellipse(width=w * 0.95, height=max(2*r*uy, 0.02),
+                            fill_color="#0d1117", fill_opacity=1.0, stroke_width=0)
+            washer = VGroup(outer, inner).move_to(ax.c2p(xd, 0))
+            washers.add(washer)
+
+        self.play(FadeIn(washers), run_time=1.5)
+
+        try:
+            vol = float(sp.pi * sp.integrate(expr_f**2 - expr_g**2,
+                                              (x_sym, domain[0], domain[1])))
+            vol_str = f"{vol:.4f}"
+        except Exception:
+            vol_str = r"?"
+
+        self.play(FadeIn(_result_box(r"V = " + vol_str, 28).to_edge(DOWN, buff=0.55)))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 13 — Shell Method
+# ---------------------------------------------------------------------------
+
+class ShellMethodScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        expression = p.get("expression", "sqrt(x)")
+        domain     = p.get("domain",     [0, 4])
+        n_shells   = int(p.get("n_shells", 8))
+        cap        = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+        yr = _y_range(f, domain)
+        yr[0] = min(yr[0], 0)
+        ax     = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=CURVE_COLOR, stroke_width=2.5)
+        area   = ax.get_area(graph, x_range=domain, color=CURVE_COLOR, opacity=0.18)
+
+        title = MathTex(r"V = 2\pi\int x\cdot f(x)\,dx", font_size=30).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(graph), FadeIn(area))
+        self.wait(0.3)
+
+        dx  = (domain[1] - domain[0]) / n_shells
+        ux  = ax.x_axis.unit_size
+        uy  = ax.y_axis.unit_size
+        shells = VGroup()
+
+        for k in range(n_shells):
+            xd = domain[0] + (k + 0.5) * dx
+            h  = _safe_eval(f, xd)
+            if h <= 0:
+                continue
+            shell_w = dx * ux * 0.82
+            shell_h = h  * uy
+            # Shell as a tall rectangle (side view)
+            alpha = max(0.35, 0.75 - k * 0.04)
+            rect = Rectangle(
+                width=shell_w, height=shell_h,
+                fill_color=YELLOW, fill_opacity=alpha,
+                stroke_color=WHITE, stroke_width=1,
+            )
+            rect.move_to(ax.c2p(xd, h / 2))
+            shells.add(rect)
+
+        # Animate shells appearing one by one
+        self.play(LaggedStart(*[FadeIn(s) for s in shells], lag_ratio=0.15), run_time=2)
+
+        # Label one shell
+        mid_shell = shells[n_shells // 2]
+        xd_mid = domain[0] + (n_shells // 2 + 0.5) * dx
+        r_label = MathTex(r"r=x", font_size=18, color=YELLOW).next_to(mid_shell, DOWN, buff=0.15)
+        h_label = MathTex(r"h=f(x)", font_size=18, color=YELLOW).next_to(mid_shell, RIGHT, buff=0.08)
+        self.play(Write(r_label), Write(h_label))
+
+        formula = MathTex(r"V_{\text{shell}} \approx 2\pi x\cdot f(x)\cdot\Delta x",
+                          font_size=24, color=YELLOW).to_corner(UL, buff=0.3)
+        self.play(Write(formula))
+        self.wait(0.5)
+
+        try:
+            vol = float(2 * sp.pi * sp.integrate(x_sym * expr, (x_sym, domain[0], domain[1])))
+            vol_str = f"{vol:.4f}"
+        except Exception:
+            vol_str = r"?"
+
+        self.play(FadeIn(_result_box(r"V = 2\pi\int x\,f(x)\,dx = " + vol_str, 26)
+                         .to_edge(DOWN, buff=0.55)))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 14 — Arc Length
+# ---------------------------------------------------------------------------
+
+class ArcLengthScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        expression = p.get("expression", "sin(x)")
+        domain     = p.get("domain",     [0, 3.14])
+        n_segments = int(p.get("n_segments", 8))
+        cap        = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+        d_expr = sp.diff(expr, x_sym)
+        f_prime = sp.lambdify(x_sym, d_expr, modules=["numpy"])
+
+        yr = _y_range(f, domain)
+        ax = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=CURVE_COLOR, stroke_width=2)
+        title  = MathTex(r"L = \int\sqrt{1+[f'(x)]^2}\,dx", font_size=30).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(graph), run_time=1.5)
+        self.wait(0.3)
+
+        def make_segments(n):
+            xs  = np.linspace(domain[0], domain[1], n + 1)
+            pts = [ax.c2p(float(x), _safe_eval(f, float(x))) for x in xs]
+            return VGroup(*[
+                Line(pts[i], pts[i + 1], color=HIGHLIGHT_COLOR, stroke_width=2.5)
+                for i in range(n)
+            ])
+
+        segs = make_segments(n_segments)
+        self.play(Create(segs), run_time=1.5)
+        self.wait(0.4)
+
+        # Animate increasing n
+        for n_new in [n_segments * 3, n_segments * 8]:
+            new_segs = make_segments(n_new)
+            self.play(Transform(segs, new_segs), run_time=0.8)
+            self.wait(0.2)
+
+        # Compute arc length
+        try:
+            integrand = sp.sqrt(1 + d_expr**2)
+            L = float(sp.integrate(integrand, (x_sym, domain[0], domain[1])))
+            L_str = f"{L:.4f}"
+        except Exception:
+            from scipy import integrate as sci
+            L, _ = sci.quad(lambda x: math.sqrt(1 + _safe_eval(f_prime, x)**2), *domain)
+            L_str = f"{L:.4f}"
+
+        self.play(FadeIn(_result_box(r"L = " + L_str, 28).to_edge(DOWN, buff=0.55)))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 15 — Average Value
+# ---------------------------------------------------------------------------
+
+class AverageValueScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        expression = p.get("expression", "sin(x)")
+        domain     = p.get("domain",     [0, 3.14])
+        cap        = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+        a, b = domain[0], domain[1]
+
+        try:
+            avg = float(sp.integrate(expr, (x_sym, a, b)) / (b - a))
+        except Exception:
+            from scipy import integrate as sci
+            total, _ = sci.quad(f, a, b)
+            avg = total / (b - a)
+
+        yr = _y_range(f, domain)
+        ax = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=CURVE_COLOR, stroke_width=2.5)
+        title  = MathTex(r"f_{\text{avg}} = \frac{1}{b-a}\int_a^b f(x)\,dx",
+                         font_size=30).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(graph), run_time=1.5)
+
+        # Shade area under curve
+        area = ax.get_area(graph, x_range=domain, color=CURVE_COLOR, opacity=0.35)
+        self.play(FadeIn(area))
+        self.wait(0.4)
+
+        # Draw average line
+        avg_line = DashedLine(ax.c2p(a, avg), ax.c2p(b, avg), color=HIGHLIGHT_COLOR, stroke_width=2.5)
+        avg_label = MathTex(r"f_{\text{avg}} = " + f"{avg:.3f}", font_size=24, color=HIGHLIGHT_COLOR)
+        avg_label.next_to(ax.c2p(b, avg), RIGHT, buff=0.15)
+        self.play(Create(avg_line), Write(avg_label))
+        self.wait(0.5)
+
+        # Morph area → rectangle of same area (the key animation)
+        avg_rect = ax.get_area(
+            ax.plot(lambda x: avg, x_range=domain),
+            x_range=domain, color=HIGHLIGHT_COLOR, opacity=0.4,
+        )
+        self.play(Transform(area, avg_rect), run_time=1.5)
+
+        self.play(FadeIn(_result_box(r"f_{\text{avg}} = " + f"{avg:.4f}", 28)
+                         .to_edge(DOWN, buff=0.55)))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 16 — Improper Integral
+# ---------------------------------------------------------------------------
+
+class ImproperIntegralScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        expression     = p.get("expression",     "1/x**2")
+        domain         = p.get("domain",         [1, 10])
+        improper_bound = p.get("improper_bound", "right")
+        cap            = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+        a, b_display   = domain[0], domain[1]
+
+        yr = _y_range(f, [a, min(b_display, a + 5)])
+        yr[0] = min(yr[0], 0)
+        ax     = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=[a + 0.05, b_display], color=CURVE_COLOR, stroke_width=2.5)
+
+        inf_sym = r"\infty" if improper_bound == "right" else r"-\infty"
+        a_tex   = _num(a)
+        title   = MathTex(r"\int_{" + a_tex + r"}^{" + inf_sym + r"} f(x)\,dx",
+                          font_size=32).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title), Create(graph))
+
+        # Check convergence with sympy
+        try:
+            lim = sp.limit(sp.integrate(expr, (x_sym, a, sp.Symbol("b"))),
+                           sp.Symbol("b"), sp.oo)
+            converges   = lim.is_finite
+            limit_val   = float(lim) if converges else None
+            conv_str    = f"{float(lim):.4f}" if converges else r"\infty"
+        except Exception:
+            converges, limit_val, conv_str = None, None, "?"
+
+        # Animate expanding area
+        b_tracker = ValueTracker(a + 0.5)
+
+        def get_area():
+            bv = b_tracker.get_value()
+            if bv <= a + 0.05:
+                return VMobject()
+            return ax.get_area(graph, x_range=[a, min(bv, b_display)],
+                               color=CURVE_COLOR, opacity=0.4)
+
+        def get_val_label():
+            bv = b_tracker.get_value()
+            try:
+                val = float(sp.integrate(expr, (x_sym, a, bv)))
+                return Text(f"Area ≈ {val:.4f}", font_size=22, color=HIGHLIGHT_COLOR).to_corner(UR, buff=0.4)
+            except Exception:
+                return Text("Area ≈ ...", font_size=22, color=HIGHLIGHT_COLOR).to_corner(UR, buff=0.4)
+
+        area_mob  = always_redraw(get_area)
+        val_label = always_redraw(get_val_label)
+        self.add(area_mob, val_label)
+
+        self.play(b_tracker.animate.set_value(b_display), run_time=4, rate_func=smooth)
+        self.wait(0.4)
+
+        result_tex = (r"\int_{" + a_tex + r"}^{\infty} f\,dx = " + conv_str
+                      if converges else r"\int_{" + a_tex + r"}^{\infty} f\,dx \to \infty\ \text{(diverges)}")
+        self.play(FadeIn(_result_box(result_tex, 24).to_edge(DOWN, buff=0.55)))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 17 — U-Substitution
+# ---------------------------------------------------------------------------
+
+class USubstitutionScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        expression = p.get("expression",   "cos(2*x)")
+        u_expr_str = p.get("u_expression", "2*x")
+        domain     = p.get("domain",       [0, 1.57])
+        cap        = p.get("caption", "")
+
+        x_sym = sp.Symbol("x")
+        u_sym = sp.Symbol("u")
+        expr  = sp.sympify(expression)
+        u_expr = sp.sympify(u_expr_str)
+        f     = sp.lambdify(x_sym, expr, modules=["numpy"])
+
+        # After substitution: substitute x → solve(u=g(x)) into integrand
+        try:
+            x_of_u = sp.solve(u_expr - u_sym, x_sym)[0]
+            du_dx  = sp.diff(u_expr, x_sym)
+            integrand_u = (expr.subs(x_sym, x_of_u) / du_dx).simplify()
+            f_u = sp.lambdify(u_sym, integrand_u, modules=["numpy"])
+        except Exception:
+            integrand_u = expr
+            f_u = f
+
+        yr = _y_range(f, domain)
+        # Use number-free axes for the split-screen comparison to avoid LaTeX issues
+        def _simple_ax(dom, yr_, x_len=7, y_len=4.5):
+            return Axes(
+                x_range=[dom[0], dom[1], max(0.5, round((dom[1]-dom[0])/6, 1))],
+                y_range=yr_,
+                x_length=x_len, y_length=y_len,
+                axis_config={"color": WHITE, "include_numbers": False},
+                tips=False,
+            )
+
+        ax_x = _simple_ax(domain, yr).shift(LEFT * 2.8)
+
+        u_domain = [float(u_expr.subs(x_sym, domain[0])),
+                    float(u_expr.subs(x_sym, domain[1]))]
+        yr_u = _y_range(f_u, u_domain) if u_domain[0] < u_domain[1] else yr
+        ax_u = _simple_ax(u_domain, yr_u).shift(RIGHT * 2.8)
+
+        graph_x = ax_x.plot(f,   x_range=domain,   color=CURVE_COLOR,   stroke_width=2.5)
+        graph_u = ax_u.plot(f_u, x_range=u_domain, color=HIGHLIGHT_COLOR, stroke_width=2.5)
+
+        lbl_x = Text(f"∫ f(x) dx  (original)", font_size=20, color=CURVE_COLOR).next_to(ax_x, DOWN, buff=0.3)
+        lbl_u = Text(f"∫ f(u) du  (after sub)", font_size=20, color=HIGHLIGHT_COLOR).next_to(ax_u, DOWN, buff=0.3)
+        arrow = Text(f"u = {str(u_expr)}", font_size=22, color=HIGHLIGHT_COLOR).center()
+
+        title = Text(f"u-substitution:  u = {str(u_expr)}", font_size=28).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Write(title))
+        self.play(Create(ax_x), Create(graph_x), Write(lbl_x))
+        self.wait(0.5)
+        self.play(Write(arrow))
+        self.play(Create(ax_u), Create(graph_u), Write(lbl_u))
+        self.wait(0.5)
+
+        # Shade both areas
+        area_x = ax_x.get_area(graph_x, x_range=domain,   color=CURVE_COLOR,    opacity=0.3)
+        area_u = ax_u.get_area(graph_u, x_range=u_domain, color=HIGHLIGHT_COLOR, opacity=0.3)
+        self.play(FadeIn(area_x), FadeIn(area_u))
+
+        try:
+            antideriv = sp.integrate(expr, x_sym)
+            result_str = str(antideriv) + " + C"
+        except Exception:
+            result_str = "F(x) + C"
+
+        # Use Text for result to avoid LaTeX brace issues with complex expressions
+        result_txt = Text(f"∫ f(x) dx = {result_str}", font_size=20, color=WHITE)
+        result_bg  = SurroundingRectangle(result_txt, color=WHITE, fill_color=BLACK,
+                                           fill_opacity=0.75, buff=0.15, corner_radius=0.1)
+        result_grp = VGroup(result_bg, result_txt).to_edge(DOWN, buff=0.55)
+        self.play(FadeIn(result_grp))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 18 — Integration by Parts
+# ---------------------------------------------------------------------------
+
+class IntegrationByPartsScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        u_str  = p.get("u_expression",  "x")
+        dv_str = p.get("dv_expression", "exp(x)")
+        domain = p.get("domain",        [0, 2])
+        cap    = p.get("caption", "")
+
+        x_sym  = sp.Symbol("x")
+        u_expr = sp.sympify(u_str)
+        dv_expr = sp.sympify(dv_str)
+        v_expr  = sp.integrate(dv_expr, x_sym)
+        du_expr = sp.diff(u_expr, x_sym)
+        result  = (u_expr * v_expr - sp.integrate(v_expr * du_expr, x_sym)).simplify()
+
+        title = MathTex(r"\int u\,dv = uv - \int v\,du", font_size=34).to_edge(UP, buff=0.3)
+
+        # Step-by-step algebra display
+        steps = [
+            MathTex(r"u = " + _clip_latex(u_expr) + r",\quad dv = " + _clip_latex(dv_expr) + r"\,dx", font_size=26),
+            MathTex(r"du = " + _clip_latex(du_expr) + r"\,dx,\quad v = " + _clip_latex(v_expr), font_size=26),
+            MathTex(r"\int u\,dv = uv - \int v\,du", font_size=26, color=HIGHLIGHT_COLOR),
+            MathTex(r"= " + _clip_latex(u_expr) + r"\cdot " + _clip_latex(v_expr)
+                    + r"\ -\ \int " + _clip_latex(v_expr * du_expr) + r"\,dx", font_size=24),
+            MathTex(r"= " + _clip_latex(result) + r"\ +\ C", font_size=26, color=DERIV_COLOR),
+        ]
+
+        for i, s in enumerate(steps):
+            s.shift(DOWN * (i * 0.8 - 1.2))
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Write(title))
+        for step in steps:
+            self.play(FadeIn(step, shift=DOWN * 0.1), run_time=0.6)
+            self.wait(0.3)
+
+        # Highlight the final result
+        self.play(Indicate(steps[-1], color=DERIV_COLOR, scale_factor=1.1))
+        self.play(FadeIn(_result_box(r"\int " + _clip_latex(u_expr * dv_expr) + r"\,dx = "
+                                     + _clip_latex(result) + r"\ +\ C", 22)
+                         .to_edge(DOWN, buff=0.55)))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 19 — Volume by Cross-Sections
+# ---------------------------------------------------------------------------
+
+class CrossSectionScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = _load_params()
+        expression = p.get("expression", "sin(x)")
+        domain     = p.get("domain",     [0, 3.14])
+        shape      = p.get("shape",      "square")
+        cap        = p.get("caption", "")
+
+        expr, f, x_sym = _parse(expression)
+        yr = _y_range(f, domain)
+        yr[0] = min(yr[0], 0)
+        ax     = _make_axes(domain, yr)
+        labels = ax.get_axis_labels(x_label="x", y_label="y")
+        graph  = ax.plot(f, x_range=domain, color=CURVE_COLOR, stroke_width=2.5)
+
+        shape_labels = {"square": r"A(x)=[f(x)]^2",
+                        "semicircle": r"A(x)=\frac{\pi}{8}[f(x)]^2",
+                        "equilateral_triangle": r"A(x)=\frac{\sqrt{3}}{4}[f(x)]^2"}
+        shape_factors = {"square": 1.0,
+                         "semicircle": math.pi / 8,
+                         "equilateral_triangle": math.sqrt(3) / 4}
+        factor = shape_factors.get(shape, 1.0)
+
+        title = MathTex(r"V = \int A(x)\,dx\quad(" + shape + r"\text{ cross-sections})",
+                        font_size=26).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(graph), run_time=1.5)
+        self.wait(0.3)
+
+        # Animate cross-sections appearing left to right
+        n_slices = 12
+        xs = np.linspace(domain[0], domain[1], n_slices + 1)
+        slices = VGroup()
+
+        for i in range(n_slices):
+            x_mid = (xs[i] + xs[i + 1]) / 2
+            s     = max(_safe_eval(f, float(x_mid)), 0)
+            w     = (xs[i + 1] - xs[i]) * ax.x_axis.unit_size * 0.85
+            h     = s * ax.y_axis.unit_size  # visual height = f(x) for the shape
+
+            # Draw a rectangle to represent the cross-section footprint
+            alpha = 0.55
+            rect = Rectangle(width=w, height=h,
+                             fill_color=YELLOW, fill_opacity=alpha,
+                             stroke_color=WHITE, stroke_width=1)
+            rect.move_to(ax.c2p(float(x_mid), s / 2))
+            slices.add(rect)
+
+        self.play(LaggedStart(*[FadeIn(s) for s in slices], lag_ratio=0.08), run_time=2)
+
+        area_label = MathTex(shape_labels.get(shape, r"A(x)"), font_size=22, color=YELLOW)
+        area_label.to_corner(UR, buff=0.3)
+        self.play(Write(area_label))
+
+        try:
+            vol = float(factor * sp.integrate(expr**2, (x_sym, domain[0], domain[1])))
+            vol_str = f"{vol:.4f}"
+        except Exception:
+            vol_str = r"?"
+
+        self.play(FadeIn(_result_box(r"V = \int A(x)\,dx = " + vol_str, 26)
+                         .to_edge(DOWN, buff=0.55)))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)

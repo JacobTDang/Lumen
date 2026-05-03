@@ -251,6 +251,78 @@ class CobwebSchema(BaseModel):
     caption: str = ""
 
 
+class AreaBetweenCurvesSchema(BaseModel):
+    scene: Literal["area_between_curves"] = "area_between_curves"
+    f_expression: str
+    g_expression: str
+    domain: List[float]
+    caption: str = ""
+
+
+class WasherMethodSchema(BaseModel):
+    scene: Literal["washer_method"] = "washer_method"
+    f_expression: str
+    g_expression: str
+    domain: List[float]
+    n_washers: int = 8
+    caption: str = ""
+
+
+class ShellMethodSchema(BaseModel):
+    scene: Literal["shell_method"] = "shell_method"
+    expression: str
+    domain: List[float]
+    n_shells: int = 8
+    caption: str = ""
+
+
+class ArcLengthSchema(BaseModel):
+    scene: Literal["arc_length"] = "arc_length"
+    expression: str
+    domain: List[float]
+    n_segments: int = 8
+    caption: str = ""
+
+
+class AverageValueSchema(BaseModel):
+    scene: Literal["average_value"] = "average_value"
+    expression: str
+    domain: List[float]
+    caption: str = ""
+
+
+class USubstitutionSchema(BaseModel):
+    scene: Literal["u_substitution"] = "u_substitution"
+    expression: str
+    u_expression: str
+    domain: List[float]
+    caption: str = ""
+
+
+class IntegrationByPartsSchema(BaseModel):
+    scene: Literal["integration_by_parts"] = "integration_by_parts"
+    u_expression: str
+    dv_expression: str
+    domain: List[float] = [0.0, 2.0]
+    caption: str = ""
+
+
+class ImproperIntegralSchema(BaseModel):
+    scene: Literal["improper_integral"] = "improper_integral"
+    expression: str
+    domain: List[float]
+    improper_bound: Literal["right", "left", "both"] = "right"
+    caption: str = ""
+
+
+class CrossSectionSchema(BaseModel):
+    scene: Literal["cross_section"] = "cross_section"
+    expression: str
+    domain: List[float]
+    shape: Literal["square", "semicircle", "equilateral_triangle"] = "square"
+    caption: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Calc 3 extension schemas
 # ---------------------------------------------------------------------------
@@ -315,6 +387,15 @@ VisualizationSchema = (
     | GraphSchema
     | DPArraySchema
     | StackQueueSchema
+    | AreaBetweenCurvesSchema
+    | WasherMethodSchema
+    | ShellMethodSchema
+    | ArcLengthSchema
+    | AverageValueSchema
+    | USubstitutionSchema
+    | IntegrationByPartsSchema
+    | ImproperIntegralSchema
+    | CrossSectionSchema
 )
 
 
