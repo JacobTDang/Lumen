@@ -1316,10 +1316,24 @@ class USubstitutionScene(Scene):
 
         # After substitution: substitute x → solve(u=g(x)) into integrand
         try:
-            x_of_u = sp.solve(u_expr - u_sym, x_sym)[0]
+            sols = sp.solve(u_expr - u_sym, x_sym)
+            if not sols:
+                raise ValueError("no inverse for u")
+            x_of_u = sols[0]
             du_dx  = sp.diff(u_expr, x_sym)
+            if du_dx == 0:
+                raise ValueError("du/dx is zero")
             integrand_u = (expr.subs(x_sym, x_of_u) / du_dx).simplify()
-            f_u = sp.lambdify(u_sym, integrand_u, modules=["numpy"])
+            f_u_raw = sp.lambdify(u_sym, integrand_u, modules=["numpy"])
+            # Test eval at midpoint to ensure it produces real numbers
+            test_u = 1.0
+            try:
+                v = float(f_u_raw(test_u))
+                if not math.isfinite(v):
+                    raise ValueError("non-finite test")
+            except Exception:
+                raise ValueError("u_func failed test eval")
+            f_u = f_u_raw
         except Exception:
             integrand_u = expr
             f_u = f
