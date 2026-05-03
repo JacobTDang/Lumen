@@ -169,7 +169,19 @@ def plan_dsa(question: str, max_retries: int = 3) -> LessonPlan:
             raw = re.sub(r"^```(?:json)?\s*", "", raw)
             raw = re.sub(r"\s*```$", "", raw)
             raw = raw.strip()
-            data = json.loads(raw)
+            # Strip trailing commas before } or ] — the model frequently emits
+            # them (e.g. "..., }" or "..., ]") which strict JSON rejects.
+            raw = re.sub(r",(\s*[}\]])", r"\1", raw)
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                # Fall back to extracting the first balanced JSON object if
+                # the model wrapped the payload in prose.
+                start = raw.find("{")
+                end   = raw.rfind("}")
+                if start == -1 or end == -1 or end <= start:
+                    raise
+                data = json.loads(raw[start:end + 1])
             break
         except Exception as e:
             last_error = e
