@@ -212,10 +212,24 @@ async function MOCK_generateAnimation(
     }
 
     const deadline = Date.now() + 120_000;   // 2-minute timeout
+    let transient = 0;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 800));
       const statusRes = await fetch(`${flaskUrl}/status/${jobId}`);
-      if (!statusRes.ok) continue;
+      if (statusRes.status === 404) {
+        // Backend lost the job (process restart) — fail fast, don't wait 2 min
+        return { videoUrl: `placeholder://${topic.id}`, status: "error",
+                  error: "job not found — backend may have restarted" };
+      }
+      if (!statusRes.ok) {
+        // Transient 5xx — tolerate a few then bail
+        if (++transient >= 5) {
+          return { videoUrl: `placeholder://${topic.id}`, status: "error",
+                    error: `status endpoint kept failing (${statusRes.status})` };
+        }
+        continue;
+      }
+      transient = 0;
       const job = await statusRes.json();
       if (job.status === "done" && job.url) {
         return { videoUrl: `${flaskUrl}${job.url}`, status: "ready" };
