@@ -128,7 +128,7 @@ def test_ask_classifier_failure_returns_422(client, mocker):
     mocker.patch("app.plan_math", side_effect=ValueError("bad json from model"))
     res = client.post("/ask", json={"question": "some question"})
     assert res.status_code == 422
-    assert "planning failed" in res.get_json()["error"]
+    assert "Could not understand" in res.get_json()["error"]
 
 
 # ---------------------------------------------------------------------------

@@ -371,9 +371,10 @@ class ArrayPointerScene(Scene):
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
     def _ptr(self, label: str, color) -> VGroup:
-        arrow = Arrow(DOWN * 0.55, ORIGIN, color=color, buff=0,
-                      max_tip_length_to_length_ratio=0.35, stroke_width=3)
-        lbl = Text(label, font_size=18, color=color).next_to(arrow.get_start(), DOWN, buff=0.05)
+        # Shorter, thinner arrow + smaller label so multiple pointers don't collide visually
+        arrow = Arrow(DOWN * 0.45, ORIGIN, color=color, buff=0,
+                      max_tip_length_to_length_ratio=0.4, stroke_width=2.5)
+        lbl = Text(label, font_size=15, color=color, weight=BOLD).next_to(arrow.get_start(), DOWN, buff=0.04)
         return VGroup(arrow, lbl)
 
     def _run_binary_search(self, cells, steps):
@@ -509,7 +510,8 @@ class SlidingWindowScene(Scene):
             c[0].set_fill(YELLOW, opacity=0.5)
 
         val_key = "current" if algorithm == "max_subarray_fixed" else "length"
-        info = Text(f"Sum = {steps[0][val_key]}", font_size=24).to_corner(UR, buff=0.4)
+        label_word = "Sum" if algorithm == "max_subarray_fixed" else "Length"
+        info = Text(f"{label_word} = {steps[0][val_key]}", font_size=24).to_corner(UR, buff=0.4)
         self.play(Create(rect), FadeIn(info))
 
         action = _action_text(steps[0]["action"])
@@ -530,7 +532,7 @@ class SlidingWindowScene(Scene):
                 VGroup(*cells[step["start"]:step["end"]+1]),
                 color=YELLOW, buff=0.08, corner_radius=0.05, stroke_width=2.5,
             )
-            new_info = Text(f"Sum = {step[val_key]}", font_size=24).to_corner(UR, buff=0.4)
+            new_info = Text(f"{label_word} = {step[val_key]}", font_size=24).to_corner(UR, buff=0.4)
             self.play(
                 Transform(rect, new_rect),
                 Transform(info, new_info),
@@ -651,8 +653,8 @@ class LinkedListScene(Scene):
                   Write(null_lbl), Create(null_arr), Write(head_label))
         self.wait(0.4)
 
-        slow_lbl = Text("slow 🐢", font_size=18, color=GREEN).next_to(nodes[0], DOWN, buff=0.3)
-        fast_lbl = Text("fast 🐇", font_size=18, color=RED).next_to(nodes[0], DOWN, buff=0.6)
+        slow_lbl = Text("slow", font_size=18, color=GREEN).next_to(nodes[0], DOWN, buff=0.3)
+        fast_lbl = Text("fast", font_size=18, color=RED).next_to(nodes[0], DOWN, buff=0.65)
         self.play(Write(slow_lbl), Write(fast_lbl))
 
         slow, fast = 0, 0
@@ -746,17 +748,25 @@ class TreeTraversalScene(Scene):
                     "preorder": _preorder, "postorder": _postorder}
         traversal = order_fn.get(algorithm, _bfs_order)(values)
 
+        # Pre-compute layout so the entire sequence fits on screen
+        n_visit = len(traversal)
+        seq_font = 20 if n_visit <= 8 else (16 if n_visit <= 15 else 13)
+        seq_spacing = 0.4 if n_visit <= 8 else (0.32 if n_visit <= 15 else 0.26)
+
         seq_labels = []
         for step_i, node_idx in enumerate(traversal):
             mob = node_mobs[node_idx]
             self.play(mob[0].animate.set_fill(YELLOW, opacity=0.9), run_time=0.25)
             self.play(mob[0].animate.set_fill(GREEN,  opacity=0.7), run_time=0.2)
 
-            lbl = Text(str(values[node_idx]), font_size=20, color=GREEN)
+            lbl = Text(str(values[node_idx]), font_size=seq_font, color=GREEN)
             if not seq_labels:
-                lbl.to_edge(DOWN, buff=0.55)
+                # Center the first label, letting subsequent ones extend right
+                # Pre-position based on total expected width
+                first_x = -((n_visit - 1) * seq_spacing) / 2
+                lbl.move_to(np.array([first_x, -3.2, 0]))
             else:
-                lbl.next_to(seq_labels[-1], RIGHT, buff=0.25)
+                lbl.next_to(seq_labels[-1], RIGHT, buff=seq_spacing - 0.15)
             self.play(FadeIn(lbl), run_time=0.2)
             seq_labels.append(lbl)
             self.wait(0.1)
@@ -841,10 +851,11 @@ class GraphScene(Scene):
 
             visit_order.append(str(n))
             struct_content = step["queue"] if algorithm == "bfs" else step["stack"]
-            new_struct = Text(
-                ("Queue" if algorithm == "bfs" else "Stack") + f": {struct_content}",
-                font_size=20, color=YELLOW,
-            ).to_corner(UR, buff=0.4)
+            label_text = ("Queue" if algorithm == "bfs" else "Stack") + f": {struct_content}"
+            new_struct = Text(label_text, font_size=20, color=YELLOW)
+            if new_struct.width > 5.5:
+                new_struct.scale(5.5 / new_struct.width)
+            new_struct.to_corner(UR, buff=0.4)
             self.play(
                 Transform(struct_label, new_struct),
                 Transform(action, _action_text(step["action"])),
@@ -852,8 +863,13 @@ class GraphScene(Scene):
             )
             self.wait(0.4)
 
-        order_str = " → ".join(visit_order)
-        self.play(FadeIn(_result_box(f"\\text{{Order: }}{order_str}", 22).to_edge(DOWN, buff=0.55)))
+        order_str = " -> ".join(visit_order)
+        order_lbl = Text(f"Order: {order_str}", font_size=22, color=WHITE)
+        if order_lbl.width > 13.5:
+            order_lbl.scale(13.5 / order_lbl.width)
+        order_box = SurroundingRectangle(order_lbl, color=WHITE, fill_color=BLACK,
+                                          fill_opacity=0.75, buff=0.15, corner_radius=0.1)
+        self.play(FadeIn(VGroup(order_box, order_lbl).to_edge(DOWN, buff=0.55)))
         self.wait(0.8)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
@@ -913,7 +929,7 @@ class DPArrayScene(Scene):
         self.play(FadeIn(row), Write(idx_labels))
         self.wait(0.3)
 
-        action = _action_text("Filling DP table...")
+        action = Text("Filling DP table...", font_size=22).to_edge(DOWN, buff=1.4)
         self.play(Write(action))
 
         for step in steps:
@@ -938,7 +954,7 @@ class DPArrayScene(Scene):
             self.play(
                 cells[idx][0].animate.set_fill(YELLOW, opacity=0.8),
                 Transform(cells[idx][1], new_cell_text),
-                Transform(action, _action_text(step["formula"])),
+                Transform(action, Text(step["formula"], font_size=22).to_edge(DOWN, buff=1.4)),
                 run_time=0.45,
             )
             self.play(cells[idx][0].animate.set_fill(GREEN, opacity=0.65), run_time=0.2)

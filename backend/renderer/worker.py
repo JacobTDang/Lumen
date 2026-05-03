@@ -51,7 +51,7 @@ SCENE_REGISTRY = {
     "inequality":         ("scenes/algebra_scene.py",     "InequalityScene"),
     "exponential":        ("scenes/algebra_scene.py",     "ExponentialScene"),
     "transformation":     ("scenes/algebra_scene.py",     "TransformationScene"),
-    # DSA
+    # DSA — legacy (monolithic, kept for backwards compatibility)
     "array_pointer":   ("scenes/dsa_scene.py", "ArrayPointerScene"),
     "sliding_window":  ("scenes/dsa_scene.py", "SlidingWindowScene"),
     "linked_list":     ("scenes/dsa_scene.py", "LinkedListScene"),
@@ -59,6 +59,15 @@ SCENE_REGISTRY = {
     "graph_traversal": ("scenes/dsa_scene.py", "GraphScene"),
     "dp_array":        ("scenes/dsa_scene.py", "DPArrayScene"),
     "stack_queue":     ("scenes/dsa_scene.py", "StackQueueScene"),
+    # DSA — pattern-specific (primitive-based)
+    "two_pointers_opposite":   ("scenes/dsa_pattern_scene.py", "TwoPointersOppositeScene"),
+    "two_pointers_same_dir":   ("scenes/dsa_pattern_scene.py", "TwoPointersSameDirScene"),
+    "sliding_window_variable": ("scenes/dsa_pattern_scene.py", "SlidingWindowVariableScene"),
+    "binary_search_index":     ("scenes/dsa_pattern_scene.py", "BinarySearchIndexScene"),
+    "binary_search_answer":    ("scenes/dsa_pattern_scene.py", "BinarySearchAnswerScene"),
+    "monotonic_stack":         ("scenes/dsa_pattern_scene.py", "MonotonicStackScene"),
+    "hashmap_iteration":       ("scenes/dsa_pattern_scene.py", "HashMapIterationScene"),
+    "prefix_sum":              ("scenes/dsa_pattern_scene.py", "PrefixSumScene"),
     # Arithmetic
     "number_line":        ("scenes/arithmetic_scene.py",  "NumberLineScene"),
     "fraction":           ("scenes/arithmetic_scene.py",  "FractionScene"),

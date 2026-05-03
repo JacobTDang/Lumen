@@ -82,3 +82,104 @@ def test_hmi_two_sum_not_found(tmp_path):
     _ok(_render(tmp_path, "HashMapIterationScene",
                 {"array": [1, 2, 3, 4], "algorithm": "two_sum_hashmap", "target": 100}),
         tmp_path, "HashMapIterationScene")
+
+
+# ---------------------------------------------------------------------------
+# TwoPointersSameDirScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_tpsd_remove_duplicates(tmp_path):
+    _ok(_render(tmp_path, "TwoPointersSameDirScene",
+                {"array": [1, 1, 2, 2, 3, 4], "algorithm": "remove_duplicates"}),
+        tmp_path, "TwoPointersSameDirScene")
+
+
+@pytest.mark.integration
+def test_tpsd_move_zeros(tmp_path):
+    _ok(_render(tmp_path, "TwoPointersSameDirScene",
+                {"array": [0, 1, 0, 3, 12], "algorithm": "move_zeros"}),
+        tmp_path, "TwoPointersSameDirScene")
+
+
+# ---------------------------------------------------------------------------
+# SlidingWindowVariableScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_swv_longest_no_repeat(tmp_path):
+    _ok(_render(tmp_path, "SlidingWindowVariableScene",
+                {"array": ["a", "b", "c", "a", "b", "c"],
+                 "algorithm": "longest_no_repeat"}),
+        tmp_path, "SlidingWindowVariableScene")
+
+
+@pytest.mark.integration
+def test_swv_at_most_k_distinct(tmp_path):
+    _ok(_render(tmp_path, "SlidingWindowVariableScene",
+                {"array": ["a", "b", "a", "c", "b", "c"],
+                 "algorithm": "longest_at_most_k_distinct", "k": 2}),
+        tmp_path, "SlidingWindowVariableScene")
+
+
+# ---------------------------------------------------------------------------
+# BinarySearchIndexScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_bsi_find_target(tmp_path):
+    _ok(_render(tmp_path, "BinarySearchIndexScene",
+                {"array": [1, 3, 5, 7, 9, 11, 13, 15],
+                 "algorithm": "find_target", "target": 7}),
+        tmp_path, "BinarySearchIndexScene")
+
+
+@pytest.mark.integration
+def test_bsi_first_occurrence(tmp_path):
+    _ok(_render(tmp_path, "BinarySearchIndexScene",
+                {"array": [1, 2, 2, 2, 3, 4, 5],
+                 "algorithm": "first_occurrence", "target": 2}),
+        tmp_path, "BinarySearchIndexScene")
+
+
+# ---------------------------------------------------------------------------
+# BinarySearchAnswerScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_bsa_basic(tmp_path):
+    _ok(_render(tmp_path, "BinarySearchAnswerScene",
+                {"min_value": 1, "max_value": 16, "true_at": 7,
+                 "predicate_label": "feasible(x)"}),
+        tmp_path, "BinarySearchAnswerScene")
+
+
+# ---------------------------------------------------------------------------
+# MonotonicStackScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_mstk_next_greater(tmp_path):
+    _ok(_render(tmp_path, "MonotonicStackScene",
+                {"array": [2, 1, 5, 6, 2, 3],
+                 "algorithm": "next_greater", "monotone": "decreasing"}),
+        tmp_path, "MonotonicStackScene")
+
+
+# ---------------------------------------------------------------------------
+# PrefixSumScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_psum_build(tmp_path):
+    _ok(_render(tmp_path, "PrefixSumScene",
+                {"array": [3, 1, 4, 1, 5, 9, 2], "algorithm": "build_prefix"}),
+        tmp_path, "PrefixSumScene")
+
+
+@pytest.mark.integration
+def test_psum_range_query(tmp_path):
+    _ok(_render(tmp_path, "PrefixSumScene",
+                {"array": [3, 1, 4, 1, 5, 9, 2],
+                 "algorithm": "range_sum_query", "query_range": [1, 4]}),
+        tmp_path, "PrefixSumScene")

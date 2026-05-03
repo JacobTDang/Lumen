@@ -1,5 +1,18 @@
 from typing import List, Literal, Optional, Union
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
+
+
+# ---------------------------------------------------------------------------
+# Shared validators
+# ---------------------------------------------------------------------------
+
+def _validate_domain(v: List[float]) -> List[float]:
+    """Validate that domain has exactly two entries and the upper bound exceeds the lower bound."""
+    if len(v) != 2:
+        raise ValueError("domain must contain exactly two entries [low, high]")
+    if v[1] <= v[0]:
+        raise ValueError("domain[1] must be strictly greater than domain[0]")
+    return v
 
 
 # ---------------------------------------------------------------------------
@@ -8,7 +21,7 @@ from pydantic import BaseModel, field_validator
 
 class BubbleSortSchema(BaseModel):
     scene: Literal["bubble_sort"] = "bubble_sort"
-    array: List[int]
+    array: List[int] = Field(..., max_length=50)
     caption: str = ""
 
 
@@ -19,6 +32,11 @@ class FunctionPlotSchema(BaseModel):
     x_point: Optional[float] = None
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class LimitSchema(BaseModel):
     scene: Literal["limit"] = "limit"
@@ -26,6 +44,11 @@ class LimitSchema(BaseModel):
     limit_point: float
     domain: List[float] = [-5.0, 5.0]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class TangentLineSchema(BaseModel):
@@ -35,12 +58,17 @@ class TangentLineSchema(BaseModel):
     domain: List[float] = [-4.0, 4.0]
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class RiemannSumSchema(BaseModel):
     scene: Literal["riemann_sum"] = "riemann_sum"
     expression: str
     domain: List[float]
-    n: int = 5
+    n: int = Field(default=5, ge=1, le=50)
     method: Literal["left", "right", "midpoint"] = "left"
     caption: str = ""
 
@@ -51,12 +79,22 @@ class RiemannSumSchema(BaseModel):
             raise ValueError("n must be at least 1")
         return v
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class CriticalPointsSchema(BaseModel):
     scene: Literal["critical_points"] = "critical_points"
     expression: str
     domain: List[float] = [-4.0, 4.0]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class LinearFunctionSchema(BaseModel):
@@ -66,12 +104,22 @@ class LinearFunctionSchema(BaseModel):
     second_expression: Optional[str] = None
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class QuadraticSchema(BaseModel):
     scene: Literal["quadratic"] = "quadratic"
     expression: str
     domain: List[float] = [-5.0, 5.0]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class TrigUnitCircleSchema(BaseModel):
@@ -88,6 +136,11 @@ class SurfacePlotSchema(BaseModel):
     y_domain: List[float] = [-3.0, 3.0]
     caption: str = ""
 
+    @field_validator("x_domain", "y_domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 # ---------------------------------------------------------------------------
 # DSA schemas
@@ -95,7 +148,7 @@ class SurfacePlotSchema(BaseModel):
 
 class ArrayPointerSchema(BaseModel):
     scene: Literal["array_pointer"] = "array_pointer"
-    array: List[Union[int, str]]
+    array: List[Union[int, str]] = Field(..., max_length=50)
     algorithm: Literal["binary_search", "two_pointers", "palindrome"] = "binary_search"
     target: Optional[int] = None
     caption: str = ""
@@ -103,7 +156,7 @@ class ArrayPointerSchema(BaseModel):
 
 class SlidingWindowSchema(BaseModel):
     scene: Literal["sliding_window"] = "sliding_window"
-    array: List[Union[int, str]]
+    array: List[Union[int, str]] = Field(..., max_length=50)
     algorithm: Literal["max_subarray_fixed", "longest_unique_substring"] = "max_subarray_fixed"
     k: Optional[int] = 3
     caption: str = ""
@@ -111,15 +164,15 @@ class SlidingWindowSchema(BaseModel):
 
 class LinkedListSchema(BaseModel):
     scene: Literal["linked_list"] = "linked_list"
-    values: List[int]
+    values: List[int] = Field(..., max_length=50)
     algorithm: Literal["reverse", "find_middle", "merge_sorted"] = "reverse"
-    values2: Optional[List[int]] = None
+    values2: Optional[List[int]] = Field(default=None, max_length=50)
     caption: str = ""
 
 
 class TreeTraversalSchema(BaseModel):
     scene: Literal["tree_traversal"] = "tree_traversal"
-    values: List[Optional[int]]
+    values: List[Optional[int]] = Field(..., max_length=50)
     algorithm: Literal["inorder", "preorder", "postorder", "bfs", "dfs", "height"] = "bfs"
     caption: str = ""
 
@@ -137,8 +190,8 @@ class GraphSchema(BaseModel):
 class DPArraySchema(BaseModel):
     scene: Literal["dp_array"] = "dp_array"
     algorithm: Literal["fibonacci", "climbing_stairs", "house_robber", "coin_change"]
-    n: Optional[int] = 8
-    coins: Optional[List[int]] = None
+    n: Optional[int] = Field(default=8, ge=1, le=20)
+    coins: Optional[List[int]] = Field(default=None, max_length=50)
     amount: Optional[int] = None
     caption: str = ""
 
@@ -151,22 +204,104 @@ class StackQueueSchema(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# DSA pattern schemas (granular, primitive-based)
+# ---------------------------------------------------------------------------
+
+class TwoPointersOppositeSchema(BaseModel):
+    scene: Literal["two_pointers_opposite"] = "two_pointers_opposite"
+    array: List[Union[int, str]] = Field(..., max_length=50)
+    algorithm: Literal["palindrome", "two_sum_sorted", "container_water", "reverse_array"] = "palindrome"
+    target: Optional[int] = None
+    caption: str = ""
+
+
+class TwoPointersSameDirSchema(BaseModel):
+    scene: Literal["two_pointers_same_dir"] = "two_pointers_same_dir"
+    array: List[int] = Field(..., max_length=50)
+    algorithm: Literal["remove_duplicates", "move_zeros"] = "remove_duplicates"
+    caption: str = ""
+
+
+class SlidingWindowVariableSchema(BaseModel):
+    scene: Literal["sliding_window_variable"] = "sliding_window_variable"
+    array: List[Union[int, str]] = Field(..., max_length=50)
+    algorithm: Literal["longest_no_repeat", "longest_at_most_k_distinct"] = "longest_no_repeat"
+    k: Optional[int] = Field(default=None, ge=1, le=20)
+    caption: str = ""
+
+
+class BinarySearchIndexSchema(BaseModel):
+    scene: Literal["binary_search_index"] = "binary_search_index"
+    array: List[int] = Field(..., max_length=50)
+    algorithm: Literal["find_target", "first_occurrence"] = "find_target"
+    target: int = 0
+    caption: str = ""
+
+
+class BinarySearchAnswerSchema(BaseModel):
+    scene: Literal["binary_search_answer"] = "binary_search_answer"
+    min_value: int = Field(default=1, ge=-1000, le=1000)
+    max_value: int = Field(default=16, ge=-1000, le=1000)
+    true_at: int = Field(default=7, ge=-1000, le=1000)
+    predicate_label: str = "feasible(x)"
+    caption: str = ""
+
+    @field_validator("max_value")
+    @classmethod
+    def _max_above_min(cls, v, info):
+        mn = info.data.get("min_value")
+        if mn is not None and v <= mn:
+            raise ValueError("max_value must be greater than min_value")
+        return v
+
+
+class MonotonicStackSchema(BaseModel):
+    scene: Literal["monotonic_stack"] = "monotonic_stack"
+    array: List[int] = Field(..., max_length=30)
+    algorithm: Literal["next_greater", "daily_temperatures"] = "next_greater"
+    monotone: Literal["increasing", "decreasing"] = "decreasing"
+    caption: str = ""
+
+
+class HashMapIterationSchema(BaseModel):
+    scene: Literal["hashmap_iteration"] = "hashmap_iteration"
+    array: List[Union[int, str]] = Field(..., max_length=50)
+    algorithm: Literal["frequency_count", "two_sum_hashmap", "anagram_check"] = "frequency_count"
+    target: Optional[int] = None
+    caption: str = ""
+
+
+class PrefixSumSchema(BaseModel):
+    scene: Literal["prefix_sum"] = "prefix_sum"
+    array: List[int] = Field(..., max_length=30)
+    algorithm: Literal["build_prefix", "range_sum_query"] = "build_prefix"
+    query_range: Optional[List[int]] = None
+    target: Optional[int] = None
+    caption: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Arithmetic schemas
 # ---------------------------------------------------------------------------
 
 class NumberLineSchema(BaseModel):
     scene: Literal["number_line"] = "number_line"
     mode: Literal["addition", "subtraction", "inequality", "absolute_value"] = "addition"
-    values: List[float]
+    values: List[float] = Field(..., max_length=50)
     domain: List[float] = [-2.0, 12.0]
     inequality_sign: str = ">"
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class FractionSchema(BaseModel):
     scene: Literal["fraction"] = "fraction"
     mode: Literal["represent", "compare", "add", "subtract"] = "represent"
-    fractions: List[List[int]]
+    fractions: List[List[int]] = Field(..., max_length=50)
     caption: str = ""
 
 
@@ -188,6 +323,11 @@ class InequalitySchema(BaseModel):
     domain: List[float] = [-10.0, 10.0]
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class ExponentialSchema(BaseModel):
     scene: Literal["exponential"] = "exponential"
@@ -196,6 +336,11 @@ class ExponentialSchema(BaseModel):
     show_key_points: bool = True
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class TransformationSchema(BaseModel):
     scene: Literal["transformation"] = "transformation"
@@ -203,6 +348,11 @@ class TransformationSchema(BaseModel):
     transformed_expression: str
     domain: List[float] = [-5.0, 5.0]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 # ---------------------------------------------------------------------------
@@ -213,17 +363,27 @@ class VolumeRevolutionSchema(BaseModel):
     scene: Literal["volume_revolution"] = "volume_revolution"
     expression: str
     domain: List[float]
-    n_disks: int = 8
+    n_disks: int = Field(default=8, ge=1, le=20)
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class TaylorSeriesSchema(BaseModel):
     scene: Literal["taylor_series"] = "taylor_series"
     expression: str
     center: float = 0.0
-    max_terms: int = 5
+    max_terms: int = Field(default=5, ge=1, le=12)
     domain: List[float] = [-5.0, 5.0]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class FTCSchema(BaseModel):
@@ -233,12 +393,17 @@ class FTCSchema(BaseModel):
     start: float = 0.0
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class SequenceSchema(BaseModel):
     scene: Literal["sequence"] = "sequence"
     formula: str                        # recursive formula f(x), where aₙ = f(aₙ₋₁)
     a0: float = 0.0
-    n_terms: int = 8
+    n_terms: int = Field(default=8, ge=1, le=20)
     caption: str = ""
 
 
@@ -246,9 +411,14 @@ class CobwebSchema(BaseModel):
     scene: Literal["cobweb"] = "cobweb"
     formula: str
     a0: float = 0.0
-    n_steps: int = 8
+    n_steps: int = Field(default=8, ge=1, le=30)
     domain: List[float] = [0.0, 4.0]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class AreaBetweenCurvesSchema(BaseModel):
@@ -258,30 +428,50 @@ class AreaBetweenCurvesSchema(BaseModel):
     domain: List[float]
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class WasherMethodSchema(BaseModel):
     scene: Literal["washer_method"] = "washer_method"
     f_expression: str
     g_expression: str
     domain: List[float]
-    n_washers: int = 8
+    n_washers: int = Field(default=8, ge=1, le=20)
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class ShellMethodSchema(BaseModel):
     scene: Literal["shell_method"] = "shell_method"
     expression: str
     domain: List[float]
-    n_shells: int = 8
+    n_shells: int = Field(default=8, ge=1, le=20)
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class ArcLengthSchema(BaseModel):
     scene: Literal["arc_length"] = "arc_length"
     expression: str
     domain: List[float]
-    n_segments: int = 8
+    n_segments: int = Field(default=8, ge=1, le=30)
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class AverageValueSchema(BaseModel):
@@ -289,6 +479,11 @@ class AverageValueSchema(BaseModel):
     expression: str
     domain: List[float]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class USubstitutionSchema(BaseModel):
@@ -298,6 +493,11 @@ class USubstitutionSchema(BaseModel):
     domain: List[float]
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class IntegrationByPartsSchema(BaseModel):
     scene: Literal["integration_by_parts"] = "integration_by_parts"
@@ -305,6 +505,11 @@ class IntegrationByPartsSchema(BaseModel):
     dv_expression: str
     domain: List[float] = [0.0, 2.0]
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class ImproperIntegralSchema(BaseModel):
@@ -314,6 +519,11 @@ class ImproperIntegralSchema(BaseModel):
     improper_bound: Literal["right", "left", "both"] = "right"
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class CrossSectionSchema(BaseModel):
     scene: Literal["cross_section"] = "cross_section"
@@ -321,6 +531,11 @@ class CrossSectionSchema(BaseModel):
     domain: List[float]
     shape: Literal["square", "semicircle", "equilateral_triangle"] = "square"
     caption: str = ""
+
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 # ---------------------------------------------------------------------------
@@ -332,8 +547,13 @@ class ContourSchema(BaseModel):
     expression: str
     x_domain: List[float] = [-3.0, 3.0]
     y_domain: List[float] = [-3.0, 3.0]
-    num_levels: int = 8
+    num_levels: int = Field(default=8, ge=1, le=15)
     caption: str = ""
+
+    @field_validator("x_domain", "y_domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 class VectorFieldSchema(BaseModel):
@@ -344,6 +564,11 @@ class VectorFieldSchema(BaseModel):
     show_streamlines: bool = False
     caption: str = ""
 
+    @field_validator("domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
+
 
 class PartialDerivativeSchema(BaseModel):
     scene: Literal["partial_derivative"] = "partial_derivative"
@@ -353,6 +578,11 @@ class PartialDerivativeSchema(BaseModel):
     x_domain: List[float] = [-3.0, 3.0]
     y_domain: List[float] = [-3.0, 3.0]
     caption: str = ""
+
+    @field_validator("x_domain", "y_domain")
+    @classmethod
+    def _check_domain(cls, v: List[float]) -> List[float]:
+        return _validate_domain(v)
 
 
 VisualizationSchema = (
@@ -396,6 +626,14 @@ VisualizationSchema = (
     | IntegrationByPartsSchema
     | ImproperIntegralSchema
     | CrossSectionSchema
+    | TwoPointersOppositeSchema
+    | TwoPointersSameDirSchema
+    | SlidingWindowVariableSchema
+    | BinarySearchIndexSchema
+    | BinarySearchAnswerSchema
+    | MonotonicStackSchema
+    | HashMapIterationSchema
+    | PrefixSumSchema
 )
 
 

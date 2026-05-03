@@ -1,10 +1,37 @@
 import json
 import math
 import os
+from contextlib import contextmanager
 
 import numpy as np
 import sympy as sp
 from manim import *
+
+# ---------------------------------------------------------------------------
+# WARNING: sympy calls (sp.solve, sp.integrate, sp.limit, sp.series, etc.)
+# can hang indefinitely on pathological inputs. There is currently no
+# wall-clock timeout enforced around these calls. A proper timeout requires
+# a multiprocessing.Process approach because signal-based timeouts only work
+# on Unix and threading.Timer cannot interrupt a CPU-bound C extension call.
+# Until that's implemented, validate inputs at the schema layer
+# (see backend/schemas/types.py) and keep expressions simple.
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _sympy_timeout(seconds: int = 5):
+    """No-op timeout context manager (placeholder).
+
+    NOTE: This is intentionally a no-op on Windows because:
+      - signal.SIGALRM is Unix-only.
+      - threading.Timer cannot interrupt CPU-bound sympy/C-extension calls.
+    Proper enforcement requires running the sympy work in a
+    multiprocessing.Process and joining with a timeout. Left as a TODO.
+    Yields a flag list whose [0] entry is set to True if/when a real
+    timeout fires, so call sites can detect it once the helper is upgraded.
+    """
+    flag = [False]
+    yield flag
 
 # ---------------------------------------------------------------------------
 # Colour palette
@@ -72,6 +99,17 @@ def _make_axes(domain: list, yr: list, x_len: float = 9.0, y_len: float = 5.5) -
 
 def _num(v: float) -> str:
     return str(int(v)) if v == int(v) else str(round(v, 4))
+
+
+def _fmt_num(v: float, max_chars: int = 10) -> str:
+    """Format a number, switching to scientific notation if it would overflow a cell."""
+    if not isinstance(v, (int, float)):
+        return str(v)
+    if v == int(v) and abs(v) < 10**9:
+        return str(int(v))
+    if abs(v) >= 10**6 or (abs(v) < 1e-3 and v != 0):
+        return f"{v:.2e}"
+    return f"{v:.4g}"
 
 
 def _clip_latex(expr, max_chars: int = 28) -> str:

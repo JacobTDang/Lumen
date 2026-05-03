@@ -19,17 +19,55 @@ Given a student's question, create a visual lesson plan using the scene tools be
 
 Available scene tools:
 
-ARRAYS:
-  array_pointer — two-pointer or binary search with animated pointer arrows
-    params: {"array": [int, ...], "algorithm": "binary_search"|"two_pointers"|"palindrome",
+ARRAY PATTERNS (PREFER THESE — they are pattern-specific and visually richer):
+  two_pointers_opposite — L from left, R from right, converge inward
+    params: {"array": [...], "algorithm": "palindrome"|"two_sum_sorted"|"container_water"|"reverse_array",
              "target": int|null}
-    use for: binary search, two sum, three sum, palindrome check, container water
-    note: for binary_search the array MUST be sorted ascending
+    use for: palindrome check, two sum on sorted array, container with most water, reverse array
+    note: array MUST be sorted for two_sum_sorted
 
-  sliding_window — window sliding over array tracking max/min/unique elements
-    params: {"array": [int, ...], "algorithm": "max_subarray_fixed"|"longest_unique_substring",
+  two_pointers_same_dir — slow + fast pointers both starting from left
+    params: {"array": [int, ...], "algorithm": "remove_duplicates"|"move_zeros"}
+    use for: remove duplicates from sorted array, move zeros to end
+
+  sliding_window_variable — expanding/contracting window with hashmap counter
+    params: {"array": [...], "algorithm": "longest_no_repeat"|"longest_at_most_k_distinct",
              "k": int|null}
-    use for: sliding window pattern, max subarray of size k, longest unique substring
+    use for: longest substring without repeating characters, longest substring with at most K distinct
+
+  binary_search_index — L/M/R pointers on sorted array searching for an index
+    params: {"array": [int, ...], "algorithm": "find_target"|"first_occurrence", "target": int}
+    use for: binary search, first occurrence, search insertion position
+    note: array MUST be sorted ascending
+
+  binary_search_answer — search the answer space (not indices)
+    params: {"min_value": int, "max_value": int, "true_at": int, "predicate_label": "feasible(x)"}
+    use for: koko bananas, capacity to ship, smallest divisor — when the search is over a numeric ANSWER, not array indices
+    note: true_at = the smallest value where the predicate becomes true
+
+  monotonic_stack — stack maintains monotonic invariant
+    params: {"array": [int, ...], "algorithm": "next_greater"|"daily_temperatures",
+             "monotone": "increasing"|"decreasing"}
+    use for: next greater element, daily temperatures, largest rectangle skeleton
+
+  hashmap_iteration — iterate left to right, updating a hashmap
+    params: {"array": [...], "algorithm": "frequency_count"|"two_sum_hashmap"|"anagram_check",
+             "target": int|null}
+    use for: two sum (unsorted), frequency counting, anagram check
+
+  prefix_sum — cumulative sum array (input on top, prefix below)
+    params: {"array": [int, ...], "algorithm": "build_prefix"|"range_sum_query",
+             "query_range": [l, r]|null}
+    use for: range sum queries, subarray sum, prefix-sum-based problems
+
+LEGACY ARRAYS (only fall back if no pattern above fits):
+  array_pointer — generic two-pointer or binary search
+    params: {"array": [...], "algorithm": "binary_search"|"two_pointers"|"palindrome",
+             "target": int|null}
+
+  sliding_window — fixed-size window
+    params: {"array": [...], "algorithm": "max_subarray_fixed"|"longest_unique_substring",
+             "k": int|null}
 
 LINKED LISTS:
   linked_list — animated linked list with pointer labels
@@ -60,6 +98,16 @@ STACKS & QUEUES:
     params: {"operations": ["push X", "pop", ...], "structure": "stack"|"queue"}
     use for: stack/queue operations, valid parentheses, LIFO/FIFO concepts
 
+Pattern routing (tiebreakers):
+- palindrome / two-sum-on-sorted / container-water / reverse-array → two_pointers_opposite
+- remove duplicates / move zeros → two_pointers_same_dir
+- longest substring without repeating / at-most-k-distinct → sliding_window_variable
+- binary search for an index in sorted array → binary_search_index
+- "minimum X such that …" / "maximum X such that …" / koko bananas / capacity-to-ship → binary_search_answer
+- next greater element / daily temperatures → monotonic_stack
+- two sum (unsorted) / frequency / anagram → hashmap_iteration
+- range sum / subarray sum / cumulative anything → prefix_sum
+
 Planning rules:
 - Use small realistic data (arrays 5-8 elements, trees 7-15 nodes, graphs 5-7 nodes)
 - 1 step  : "show me X" or "visualize X"
@@ -69,7 +117,7 @@ Planning rules:
 - Arrays/strings: use short examples with 5-7 elements. Prefer 'racecar' over full problem input strings.
 - Never copy the full example input from a problem statement into the array param.
 - Arrays for binary search MUST be sorted
-- IMPORTANT: Use EXACT tool names — never abbreviate. "graph_traversal" not "graph", "tree_traversal" not "tree", "stack_queue" not "stack", "linked_list" not "list", "array_pointer" not "array", "sliding_window" not "window", "dp_array" not "dp"
+- IMPORTANT: Use EXACT tool names — never abbreviate. "graph_traversal" not "graph", "tree_traversal" not "tree", "stack_queue" not "stack", "linked_list" not "list", "two_pointers_opposite" not "two_pointers", "sliding_window_variable" not "sliding_window", "dp_array" not "dp"
 - Respond with ONLY valid JSON — no markdown fences
 
 {"concept": "brief concept name", "level": "beginner|intermediate|advanced", "steps": [
@@ -78,8 +126,13 @@ Planning rules:
 ]}"""
 
 _VALID_DSA_TOOLS = {
+    # legacy
     "array_pointer", "sliding_window", "linked_list",
     "tree_traversal", "graph_traversal", "dp_array", "stack_queue",
+    # pattern-specific
+    "two_pointers_opposite", "two_pointers_same_dir", "sliding_window_variable",
+    "binary_search_index", "binary_search_answer", "monotonic_stack",
+    "hashmap_iteration", "prefix_sum",
 }
 
 
