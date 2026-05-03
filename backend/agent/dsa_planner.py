@@ -69,6 +69,7 @@ Planning rules:
 - Arrays/strings: use short examples with 5-7 elements. Prefer 'racecar' over full problem input strings.
 - Never copy the full example input from a problem statement into the array param.
 - Arrays for binary search MUST be sorted
+- IMPORTANT: Use EXACT tool names — never abbreviate. "graph_traversal" not "graph", "tree_traversal" not "tree", "stack_queue" not "stack", "linked_list" not "list", "array_pointer" not "array", "sliding_window" not "window", "dp_array" not "dp"
 - Respond with ONLY valid JSON — no markdown fences
 
 {"concept": "brief concept name", "level": "beginner|intermediate|advanced", "steps": [
