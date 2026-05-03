@@ -182,7 +182,16 @@ _VALID_TOOLS = {
 
 
 def _build_llm() -> ChatOpenAI:
-    # Use Groq if key is available, fall back to OpenRouter
+    # Priority: gpt-oss-120b (primary) → Groq llama → generic OpenRouter
+    base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    if os.environ.get("OPENROUTER_GPT_OSS_120_KEY"):
+        return ChatOpenAI(
+            base_url=base_or,
+            api_key=os.environ["OPENROUTER_GPT_OSS_120_KEY"],
+            model=os.environ.get("OPENROUTER_GPT_OSS_120_MODEL", "openai/gpt-oss-120b"),
+            temperature=0,
+            extra_body={"reasoning": {"effort": "low"}},
+        )
     if os.environ.get("GROQ_API_KEY"):
         return ChatOpenAI(
             base_url="https://api.groq.com/openai/v1",
@@ -191,7 +200,7 @@ def _build_llm() -> ChatOpenAI:
             temperature=0,
         )
     return ChatOpenAI(
-        base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        base_url=base_or,
         api_key=os.environ["OPENROUTER_API_KEY"],
         model=os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
         temperature=0,
@@ -212,10 +221,24 @@ def plan(question: str, max_retries: int = 3) -> LessonPlan:
             raw = response.content.strip()
             if not raw:
                 raise ValueError(f"Model returned empty response (attempt {attempt})")
+            # Strip reasoning-model artifacts (gpt-oss harmony channels, generic <thinking> tags)
+            raw = re.sub(r"<\|channel\|>analysis<\|message\|>.*?(?=<\|channel\|>final<\|message\|>|$)",
+                         "", raw, flags=re.DOTALL)
+            raw = re.sub(r"<\|channel\|>final<\|message\|>", "", raw)
+            raw = re.sub(r"<\|end\|>", "", raw)
+            raw = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL)
             raw = re.sub(r"^```(?:json)?\s*", "", raw)
             raw = re.sub(r"\s*```$", "", raw)
             raw = raw.strip()
-            data = json.loads(raw)
+            raw = re.sub(r",(\s*[}\]])", r"\1", raw)
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                start = raw.find("{")
+                end   = raw.rfind("}")
+                if start == -1 or end == -1 or end <= start:
+                    raise
+                data = json.loads(raw[start:end + 1])
             break  # success
         except Exception as e:
             last_error = e

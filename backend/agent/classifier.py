@@ -28,6 +28,18 @@ Reply with ONLY one word: math or dsa"""
 
 
 def _build_classifier_llm() -> ChatOpenAI:
+    # Priority: gpt-oss-120b → Groq llama-3.1-8b-instant → generic OpenRouter
+    # gpt-oss is a reasoning model so we allow more tokens; thinking is stripped in classify_domain.
+    base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    if os.environ.get("OPENROUTER_GPT_OSS_120_KEY"):
+        return ChatOpenAI(
+            base_url=base_or,
+            api_key=os.environ["OPENROUTER_GPT_OSS_120_KEY"],
+            model=os.environ.get("OPENROUTER_GPT_OSS_120_MODEL", "openai/gpt-oss-120b"),
+            temperature=0,
+            max_tokens=512,
+            extra_body={"reasoning": {"effort": "low"}},
+        )
     if os.environ.get("GROQ_API_KEY"):
         return ChatOpenAI(
             base_url="https://api.groq.com/openai/v1",
@@ -37,7 +49,7 @@ def _build_classifier_llm() -> ChatOpenAI:
             max_tokens=5,
         )
     return ChatOpenAI(
-        base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        base_url=base_or,
         api_key=os.environ["OPENROUTER_API_KEY"],
         model=os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
         temperature=0,
@@ -53,7 +65,14 @@ def classify_domain(question: str) -> str:
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content=question),
         ])
-        raw = response.content.strip().lower()
+        raw = response.content
+        # Strip reasoning artifacts (gpt-oss harmony channels, generic <thinking>)
+        raw = re.sub(r"<\|channel\|>analysis<\|message\|>.*?(?=<\|channel\|>final<\|message\|>|$)",
+                     "", raw, flags=re.DOTALL)
+        raw = re.sub(r"<\|channel\|>final<\|message\|>", "", raw)
+        raw = re.sub(r"<\|end\|>", "", raw)
+        raw = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL)
+        raw = raw.strip().lower()
         raw = re.sub(r"[^a-z]", "", raw)
         if "dsa" in raw or "algo" in raw or "data" in raw:
             return "dsa"

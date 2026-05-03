@@ -137,6 +137,16 @@ _VALID_DSA_TOOLS = {
 
 
 def _build_llm() -> ChatOpenAI:
+    # Priority: gpt-oss-120b (primary, smartest pattern routing) → Groq llama → generic OpenRouter
+    base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    if os.environ.get("OPENROUTER_GPT_OSS_120_KEY"):
+        return ChatOpenAI(
+            base_url=base_or,
+            api_key=os.environ["OPENROUTER_GPT_OSS_120_KEY"],
+            model=os.environ.get("OPENROUTER_GPT_OSS_120_MODEL", "openai/gpt-oss-120b"),
+            temperature=0,
+            extra_body={"reasoning": {"effort": "low"}},
+        )
     if os.environ.get("GROQ_API_KEY"):
         return ChatOpenAI(
             base_url="https://api.groq.com/openai/v1",
@@ -145,7 +155,7 @@ def _build_llm() -> ChatOpenAI:
             temperature=0,
         )
     return ChatOpenAI(
-        base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        base_url=base_or,
         api_key=os.environ["OPENROUTER_API_KEY"],
         model=os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
         temperature=0,
@@ -166,6 +176,12 @@ def plan_dsa(question: str, max_retries: int = 3) -> LessonPlan:
             raw = response.content.strip()
             if not raw:
                 raise ValueError(f"Model returned empty response (attempt {attempt})")
+            # Strip reasoning-model artifacts (gpt-oss harmony channels, generic <thinking> tags)
+            raw = re.sub(r"<\|channel\|>analysis<\|message\|>.*?(?=<\|channel\|>final<\|message\|>|$)",
+                         "", raw, flags=re.DOTALL)
+            raw = re.sub(r"<\|channel\|>final<\|message\|>", "", raw)
+            raw = re.sub(r"<\|end\|>", "", raw)
+            raw = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL)
             raw = re.sub(r"^```(?:json)?\s*", "", raw)
             raw = re.sub(r"\s*```$", "", raw)
             raw = raw.strip()
