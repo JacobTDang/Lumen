@@ -224,7 +224,8 @@ def _bfs_order(values):
     return order
 
 
-def _graph_bfs_steps(adj: dict, start: int, n: int) -> list:
+def _graph_bfs_steps(adj: dict, start: int, n: int, positions: list = None) -> list:
+    """BFS steps, visiting neighbors left-to-right on screen (by x-position)."""
     steps = []
     visited = [False] * n
     visited[start] = True
@@ -232,7 +233,12 @@ def _graph_bfs_steps(adj: dict, start: int, n: int) -> list:
     while q:
         node = q.popleft()
         neighbors_added = []
-        for nb in sorted(adj.get(node, [])):
+        # Sort neighbors by screen x-position (left → right); fall back to node index
+        neighbors = sorted(
+            adj.get(node, []),
+            key=lambda nb: positions[nb][0] if positions is not None else nb,
+        )
+        for nb in neighbors:
             if not visited[nb]:
                 visited[nb] = True
                 q.append(nb)
@@ -242,7 +248,8 @@ def _graph_bfs_steps(adj: dict, start: int, n: int) -> list:
     return steps
 
 
-def _graph_dfs_steps(adj: dict, start: int, n: int) -> list:
+def _graph_dfs_steps(adj: dict, start: int, n: int, positions: list = None) -> list:
+    """DFS steps, pushing neighbors right-to-left so left is popped first."""
     steps = []
     visited = [False] * n
     stack = [start]
@@ -252,7 +259,13 @@ def _graph_dfs_steps(adj: dict, start: int, n: int) -> list:
             continue
         visited[node] = True
         neighbors_added = []
-        for nb in sorted(adj.get(node, []), reverse=True):
+        # Push in reverse x-order so the leftmost neighbor is popped first
+        neighbors = sorted(
+            adj.get(node, []),
+            key=lambda nb: positions[nb][0] if positions is not None else nb,
+            reverse=True,
+        )
+        for nb in neighbors:
             if not visited[nb]:
                 stack.append(nb)
                 neighbors_added.append(nb)
@@ -809,7 +822,7 @@ class GraphScene(Scene):
         self.wait(0.3)
 
         steps_fn = _graph_bfs_steps if algorithm == "bfs" else _graph_dfs_steps
-        steps = steps_fn(adj, start_node, num_nodes)
+        steps = steps_fn(adj, start_node, num_nodes, positions)
 
         # Structure label (queue or stack)
         struct_label = Text("Queue: []" if algorithm == "bfs" else "Stack: []",
