@@ -99,7 +99,11 @@ def result_box(text: str, font_size: int = 28, use_text: bool = True) -> VGroup:
 
 
 def action_text(msg: str, font_size: int = 22) -> VGroup:
-    """Bottom-anchored action log line on a thin dark strip."""
+    """Bottom-anchored action log line on a thin dark strip.
+
+    Sits clearly above the caption_strip (which is pinned at the bottom edge
+    with bg height 0.65) so their backgrounds do not overlap.
+    """
     txt = Text(msg, font_size=font_size, color=WHITE)
     if txt.width > 13.0:
         txt.scale(13.0 / txt.width)
@@ -108,7 +112,7 @@ def action_text(msg: str, font_size: int = 22) -> VGroup:
         height=txt.height + 0.25,
         fill_color=BLACK, fill_opacity=0.7, stroke_width=0,
     )
-    grp = VGroup(bg, txt).to_edge(DOWN, buff=0.45)
+    grp = VGroup(bg, txt).to_edge(DOWN, buff=0.95)
     return grp
 
 
@@ -554,3 +558,497 @@ class DependencyArc:
             strip.cell_top(target_idx) + UP * 0.05,
             color=color, angle=angle, stroke_width=stroke_width,
         )
+
+
+# ---------------------------------------------------------------------------
+# Primitive 9 — GridPanel  (2D matrix of cells)
+# ---------------------------------------------------------------------------
+
+class GridPanel:
+    """2D grid of cells. cells[r][c] is a VGroup(square, label).
+
+    Methods:
+        .anim_set_fill(r, c, color, opacity)
+        .anim_set_value(r, c, new_value)
+        .flash(r, c, color, scale)
+        .cell_center(r, c) -> point
+    """
+
+    def __init__(self, values, position=ORIGIN, cell_size: float = None,
+                 with_indices: bool = True):
+        rows = len(values)
+        cols = len(values[0]) if rows else 0
+        if cell_size is None:
+            longest = max(rows, cols, 1)
+            cell_size = 0.85 if longest <= 5 else (0.65 if longest <= 7 else 0.50)
+        self.cell_size = cell_size
+        self.rows, self.cols = rows, cols
+        font = max(14, int(22 * cell_size))
+
+        self.cells = []
+        rows_g = []
+        for r in range(rows):
+            row = []
+            for c in range(cols):
+                sq = Square(side_length=cell_size,
+                            fill_color=DEFAULT_CELL, fill_opacity=0.70,
+                            stroke_color=WHITE, stroke_width=2)
+                lbl = Text(str(values[r][c]), font_size=font, color=WHITE)
+                row.append(VGroup(sq, lbl))
+            rg = VGroup(*row).arrange(RIGHT, buff=0.06)
+            rows_g.append(rg)
+            self.cells.append(row)
+        self.vgroup = VGroup(*rows_g).arrange(DOWN, buff=0.06).move_to(position)
+
+        self.row_idx = VGroup()
+        self.col_idx = VGroup()
+        if with_indices and rows and cols:
+            for r in range(rows):
+                ix = Text(str(r), font_size=max(11, int(13 * cell_size)),
+                          color=GRAY).next_to(self.cells[r][0], LEFT, buff=0.10)
+                self.row_idx.add(ix)
+            for c in range(cols):
+                ix = Text(str(c), font_size=max(11, int(13 * cell_size)),
+                          color=GRAY).next_to(self.cells[0][c], UP, buff=0.10)
+                self.col_idx.add(ix)
+
+    def anim_set_fill(self, r: int, c: int, color, opacity: float = 0.75):
+        return self.cells[r][c][0].animate.set_fill(color, opacity=opacity)
+
+    def anim_set_value(self, r: int, c: int, new_value):
+        font = max(14, int(22 * self.cell_size))
+        new_lbl = Text(str(new_value), font_size=font, color=WHITE).move_to(
+            self.cells[r][c][1].get_center())
+        return Transform(self.cells[r][c][1], new_lbl)
+
+    def flash(self, r: int, c: int, color=YELLOW, scale: float = 1.18):
+        return Indicate(self.cells[r][c][0], color=color, scale_factor=scale)
+
+    def cell_center(self, r: int, c: int):
+        return self.cells[r][c].get_center()
+
+
+# ---------------------------------------------------------------------------
+# Primitive 10 — BinaryTreePanel  (complete binary tree)
+# ---------------------------------------------------------------------------
+
+class BinaryTreePanel:
+    """Complete-binary-tree layout. Node at index i has children 2i+1, 2i+2.
+
+    Methods:
+        .anim_set_value(i, new_value)
+        .anim_set_fill(i, color, opacity)
+        .flash(i, color, scale)
+        .node_pos(i) -> point
+        .edge_between(parent_i, child_i) -> Line
+    """
+
+    def __init__(self, values, position=ORIGIN, node_radius: float = 0.32,
+                 level_gap: float = 0.95):
+        self.values = list(values)
+        n = len(self.values)
+        self.n = n
+        self.node_radius = node_radius
+        self.level_gap = level_gap
+
+        if n == 0:
+            self.nodes = []
+            self.edges = []
+            self.vgroup = VGroup()
+            return
+
+        import math
+        levels = int(math.floor(math.log2(n))) + 1
+        positions = []
+        font = max(14, int(20 * (node_radius / 0.32)))
+        max_level_w = 2 ** (levels - 1)
+        spread = max(4.5, 0.6 * max_level_w)
+
+        self.nodes = []
+        for i in range(n):
+            level = int(math.floor(math.log2(i + 1)))
+            count_at_level = 2 ** level
+            idx_in_level = i - (count_at_level - 1)
+            x = -spread / 2 + (spread / max(count_at_level, 1)) * (idx_in_level + 0.5)
+            y = -level * level_gap
+            positions.append((x, y))
+            circle = Circle(radius=node_radius, color=WHITE, stroke_width=2,
+                            fill_color=DEFAULT_CELL, fill_opacity=0.7)
+            lbl = Text(str(self.values[i]), font_size=font, color=WHITE)
+            node = VGroup(circle, lbl).move_to([x, y, 0])
+            self.nodes.append(node)
+
+        self.edges = []
+        edge_objs = []
+        for i in range(n):
+            for child in (2 * i + 1, 2 * i + 2):
+                if child < n:
+                    e = Line(self.nodes[i].get_bottom(),
+                             self.nodes[child].get_top(),
+                             color=GRAY, stroke_width=2)
+                    self.edges.append((i, child, e))
+                    edge_objs.append(e)
+
+        self.vgroup = VGroup(*edge_objs, *self.nodes).move_to(position)
+
+    def anim_set_value(self, i: int, new_value):
+        font = max(14, int(20 * (self.node_radius / 0.32)))
+        new_lbl = Text(str(new_value), font_size=font, color=WHITE).move_to(
+            self.nodes[i][1].get_center())
+        return Transform(self.nodes[i][1], new_lbl)
+
+    def anim_set_fill(self, i: int, color, opacity: float = 0.75):
+        return self.nodes[i][0].animate.set_fill(color, opacity=opacity)
+
+    def flash(self, i: int, color=YELLOW, scale: float = 1.25):
+        return Indicate(self.nodes[i][0], color=color, scale_factor=scale)
+
+    def node_pos(self, i: int):
+        return self.nodes[i].get_center()
+
+
+# ---------------------------------------------------------------------------
+# Primitive 11 — RecursionTree  (dynamically growing tree)
+# ---------------------------------------------------------------------------
+
+class RecursionTree:
+    """A tree that grows as DFS recurses.
+
+    The scene calls .anim_spawn_child(parent_id, label) to grow the tree, and
+    .anim_fade_subtree(node_id) to abandon a branch.
+
+    Layout: simple breadth-aware spreading at each call to spawn — children of
+    a parent share that parent's allocated x-range.
+    """
+
+    def __init__(self, root_label: str = "[]", position=ORIGIN,
+                 width: float = 10.0, level_gap: float = 0.95,
+                 node_radius: float = 0.30):
+        self.width = width
+        self.level_gap = level_gap
+        self.node_radius = node_radius
+        self.center = position
+
+        self.nodes = {}    # id -> VGroup(circle, text)
+        self.edges = {}    # (parent_id, child_id) -> Line
+        self.parent = {0: None}
+        self.children = {0: []}
+        self.depth = {0: 0}
+        self.x_span = {0: (-width / 2, width / 2)}
+        self.next_id = 1
+
+        font = max(13, int(18 * (node_radius / 0.30)))
+        self.root = self._make_node(root_label, font, 0, 0)
+        self.nodes[0] = self.root
+        self.vgroup = VGroup(self.root)
+
+    def _make_node(self, label, font, x, y):
+        c = Circle(radius=self.node_radius, color=WHITE, stroke_width=2,
+                   fill_color=DEFAULT_CELL, fill_opacity=0.7)
+        t = Text(str(label), font_size=font, color=WHITE)
+        if t.width > 2 * self.node_radius - 0.05:
+            t.scale((2 * self.node_radius - 0.05) / max(t.width, 0.001))
+        return VGroup(c, t).move_to([x + self.center[0], y + self.center[1], 0])
+
+    def anim_spawn_child(self, parent_id: int, label: str):
+        """Spawn a child node under parent_id. Returns (new_id, [animations])."""
+        nid = self.next_id
+        self.next_id += 1
+        d = self.depth[parent_id] + 1
+        self.depth[nid] = d
+        self.parent[nid] = parent_id
+        self.children[nid] = []
+        self.children[parent_id].append(nid)
+
+        # Distribute parent's x-span among its known children
+        kids = self.children[parent_id]
+        x_lo, x_hi = self.x_span[parent_id]
+        slot_w = (x_hi - x_lo) / max(len(kids), 1)
+        for k_idx, k in enumerate(kids):
+            self.x_span[k] = (x_lo + k_idx * slot_w, x_lo + (k_idx + 1) * slot_w)
+        # Recompute existing kid positions too (so they don't bunch as new ones spawn)
+        moves = []
+        font = max(13, int(18 * (self.node_radius / 0.30)))
+        for k in kids:
+            kx = (self.x_span[k][0] + self.x_span[k][1]) / 2
+            ky = -self.depth[k] * self.level_gap
+            target_pt = [kx + self.center[0], ky + self.center[1], 0]
+            if k in self.nodes:
+                moves.append(self.nodes[k].animate.move_to(target_pt))
+            else:
+                self.nodes[k] = self._make_node(label, font, kx, ky)
+                moves.append(FadeIn(self.nodes[k], scale=0.5))
+                self.vgroup.add(self.nodes[k])
+                edge = Line(self.nodes[parent_id].get_bottom(),
+                            self.nodes[k].get_top(),
+                            color=GRAY, stroke_width=2)
+                self.edges[(parent_id, k)] = edge
+                self.vgroup.add(edge)
+                moves.append(Create(edge))
+        return nid, moves
+
+    def anim_fade_subtree(self, node_id: int):
+        """Fade out a node and all its descendants."""
+        anims = []
+        stack = [node_id]
+        while stack:
+            n = stack.pop()
+            if n in self.nodes:
+                anims.append(FadeOut(self.nodes[n]))
+            for k in self.children.get(n, []):
+                stack.append(k)
+                if (n, k) in self.edges:
+                    anims.append(FadeOut(self.edges[(n, k)]))
+        return anims
+
+
+# ---------------------------------------------------------------------------
+# Primitive 12 — IntervalBars  (number line with horizontal bars)
+# ---------------------------------------------------------------------------
+
+class IntervalBars:
+    """Number line + horizontal bars for each interval [start, end].
+
+    Methods:
+        .bars[i]            — Rectangle for interval i
+        .anim_set_color(i, color)
+        .anim_merge(i, j)   — extend bar i to cover j, fade j out
+        .x_for(value)       — point on number line
+    """
+
+    def __init__(self, intervals, position=ORIGIN, axis_width: float = 10.0,
+                 axis_height: float = 0.0, padding: float = 1.0):
+        self.intervals = [list(iv) for iv in intervals]
+        if not self.intervals:
+            self.x_min, self.x_max = 0, 1
+        else:
+            self.x_min = min(iv[0] for iv in self.intervals) - padding
+            self.x_max = max(iv[1] for iv in self.intervals) + padding
+        self.axis_width = axis_width
+
+        self.axis = NumberLine(
+            x_range=[self.x_min, self.x_max, max(1, (self.x_max - self.x_min) // 10 or 1)],
+            length=axis_width,
+            include_numbers=True,
+            font_size=18,
+            color=GRAY,
+        )
+
+        self.bars = []
+        bar_h = 0.32
+        offset_per = 0.42
+        for i, (s, e) in enumerate(self.intervals):
+            x_s = self.axis.n2p(s)[0]
+            x_e = self.axis.n2p(e)[0]
+            w = max(x_e - x_s, 0.05)
+            color = [BLUE, TEAL, PURPLE, ORANGE][i % 4]
+            rect = Rectangle(width=w, height=bar_h, color=color,
+                             fill_color=color, fill_opacity=0.55, stroke_width=2)
+            rect.move_to([(x_s + x_e) / 2, (i % 3 + 1) * offset_per, 0])
+            self.bars.append(rect)
+
+        self.vgroup = VGroup(self.axis, *self.bars).move_to(position)
+
+    def anim_set_color(self, i: int, color):
+        return self.bars[i].animate.set_color(color).set_fill(color, opacity=0.7)
+
+    def anim_merge(self, i: int, j: int, new_end: float):
+        """Extend bar i to span up to new_end, fade out bar j."""
+        x_s = self.bars[i].get_left()[0]
+        x_e = self.axis.n2p(new_end)[0]
+        new_w = max(x_e - x_s, 0.05)
+        new_rect = Rectangle(width=new_w, height=self.bars[i].height,
+                             color=GREEN, fill_color=GREEN, fill_opacity=0.7,
+                             stroke_width=2)
+        new_rect.move_to([(x_s + x_e) / 2, self.bars[i].get_center()[1], 0])
+        return [Transform(self.bars[i], new_rect), FadeOut(self.bars[j])]
+
+    def x_for(self, value):
+        return self.axis.n2p(value)
+
+
+# ---------------------------------------------------------------------------
+# Primitive 13 — DoublyLinkedListPanel
+# ---------------------------------------------------------------------------
+
+class DoublyLinkedListPanel:
+    """Horizontal cells with prev/next arrows + head/tail markers.
+
+    Internal state mirrors a real DLL: keys hashable -> {key, val, prev, next}.
+
+    Methods:
+        .anim_add_to_head(key, val)        -> animations
+        .anim_remove(key)                   -> animations
+        .anim_move_to_head(key)             -> animations
+        .anim_flash(key, color)             -> animations
+    """
+
+    def __init__(self, position=ORIGIN, cell_w: float = 1.1, cell_h: float = 0.7,
+                 max_visible: int = 5):
+        self.position = position
+        self.cell_w = cell_w
+        self.cell_h = cell_h
+        self.max_visible = max_visible
+
+        self._order = []          # list of keys, head -> tail
+        self._cells = {}          # key -> VGroup(rect, label)
+        self.vgroup = VGroup()
+
+        self.head_lbl = Text("head", font_size=14, color=GREEN_C)
+        self.tail_lbl = Text("tail", font_size=14, color=RED_C)
+        self.vgroup.add(self.head_lbl, self.tail_lbl)
+        self._reposition_labels()
+
+    def _make_cell(self, key, val):
+        rect = Rectangle(width=self.cell_w, height=self.cell_h,
+                         color=WHITE, stroke_width=2,
+                         fill_color=DEFAULT_CELL, fill_opacity=0.7)
+        txt = Text(f"{key}:{val}", font_size=16, color=WHITE)
+        if txt.width > self.cell_w - 0.15:
+            txt.scale((self.cell_w - 0.15) / max(txt.width, 0.001))
+        return VGroup(rect, txt)
+
+    def _layout_x(self, idx: int) -> float:
+        spacing = self.cell_w + 0.30
+        n = len(self._order)
+        first_x = self.position[0] - (n - 1) * spacing / 2
+        return first_x + idx * spacing
+
+    def _reposition_labels(self):
+        if self._order:
+            head_cell = self._cells[self._order[0]]
+            self.head_lbl.next_to(head_cell, UP, buff=0.18)
+            tail_cell = self._cells[self._order[-1]]
+            self.tail_lbl.next_to(tail_cell, DOWN, buff=0.18)
+        else:
+            self.head_lbl.move_to(self.position + UP * 0.6)
+            self.tail_lbl.move_to(self.position + DOWN * 0.6)
+
+    def _layout_anims(self):
+        anims = []
+        for idx, k in enumerate(self._order):
+            target = [self._layout_x(idx), self.position[1], 0]
+            anims.append(self._cells[k].animate.move_to(target))
+        return anims
+
+    def anim_add_to_head(self, key, val):
+        cell = self._make_cell(key, val)
+        cell.move_to(self.position + LEFT * 5)  # off-screen entry from left
+        self._cells[key] = cell
+        self._order.insert(0, key)
+        self.vgroup.add(cell)
+        anims = [FadeIn(cell)] + self._layout_anims()
+        self._reposition_labels()
+        return anims
+
+    def anim_remove(self, key):
+        if key not in self._cells:
+            return []
+        cell = self._cells.pop(key)
+        self._order.remove(key)
+        self.vgroup.remove(cell)
+        anims = [FadeOut(cell)] + self._layout_anims()
+        self._reposition_labels()
+        return anims
+
+    def anim_move_to_head(self, key):
+        if key not in self._cells or self._order[0] == key:
+            return []
+        self._order.remove(key)
+        self._order.insert(0, key)
+        anims = self._layout_anims()
+        self._reposition_labels()
+        return anims
+
+    def anim_flash(self, key, color=YELLOW):
+        if key not in self._cells:
+            return []
+        return [Indicate(self._cells[key][0], color=color, scale_factor=1.2)]
+
+    def order(self) -> list:
+        return list(self._order)
+
+
+# ---------------------------------------------------------------------------
+# Primitive 14 — GraphPanel
+# ---------------------------------------------------------------------------
+
+class GraphPanel:
+    """Nodes at fixed positions + edges with optional weight labels.
+
+    edges format: list of [u, v] or [u, v, w] (weighted).
+
+    Methods:
+        .anim_set_node_color(i, color, opacity)
+        .anim_flash_edge(u, v, color)
+        .anim_set_node_value(i, new_value)
+        .node_pos(i) -> point
+    """
+
+    def __init__(self, num_nodes: int, edges: list, position=ORIGIN,
+                 radius: float = 2.4, node_radius: float = 0.32, directed: bool = False):
+        import math
+        self.num_nodes = num_nodes
+        self.directed = directed
+        self.node_radius = node_radius
+
+        self.nodes = []
+        font = max(14, int(20 * (node_radius / 0.32)))
+        for i in range(num_nodes):
+            angle = 2 * PI * i / max(num_nodes, 1) - PI / 2
+            x = radius * math.cos(angle) + position[0]
+            y = radius * math.sin(angle) + position[1]
+            c = Circle(radius=node_radius, color=WHITE, stroke_width=2,
+                       fill_color=DEFAULT_CELL, fill_opacity=0.7)
+            lbl = Text(str(i), font_size=font, color=WHITE)
+            self.nodes.append(VGroup(c, lbl).move_to([x, y, 0]))
+
+        self.edges = {}        # (u, v) -> Line
+        self.weight_lbls = {}  # (u, v) -> Text
+        edge_objs = []
+        for e in edges:
+            if len(e) >= 3:
+                u, v, w = e[0], e[1], e[2]
+            else:
+                u, v, w = e[0], e[1], None
+            line = Line(self.nodes[u].get_center(), self.nodes[v].get_center(),
+                        color=GRAY, stroke_width=2)
+            # Trim line to circle borders
+            line = self._trim_to_circle(line, self.nodes[u], self.nodes[v])
+            self.edges[(u, v)] = line
+            edge_objs.append(line)
+            if w is not None:
+                wlbl = Text(str(w), font_size=14, color=YELLOW).move_to(line.get_center())
+                self.weight_lbls[(u, v)] = wlbl
+                edge_objs.append(wlbl)
+
+        self.vgroup = VGroup(*edge_objs, *self.nodes)
+
+    def _trim_to_circle(self, line, src, dst):
+        a = src.get_center()
+        b = dst.get_center()
+        import math
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        L = math.hypot(dx, dy) or 1
+        ux, uy = dx / L, dy / L
+        a2 = [a[0] + ux * self.node_radius, a[1] + uy * self.node_radius, 0]
+        b2 = [b[0] - ux * self.node_radius, b[1] - uy * self.node_radius, 0]
+        return Line(a2, b2, color=GRAY, stroke_width=2)
+
+    def anim_set_node_color(self, i: int, color, opacity: float = 0.85):
+        return self.nodes[i][0].animate.set_fill(color, opacity=opacity)
+
+    def anim_flash_edge(self, u: int, v: int, color=YELLOW):
+        e = self.edges.get((u, v)) or self.edges.get((v, u))
+        if e is None:
+            return None
+        return Indicate(e, color=color, scale_factor=1.0)
+
+    def anim_set_node_value(self, i: int, new_value):
+        font = max(14, int(20 * (self.node_radius / 0.32)))
+        new_lbl = Text(str(new_value), font_size=font, color=WHITE).move_to(
+            self.nodes[i][1].get_center())
+        return Transform(self.nodes[i][1], new_lbl)
+
+    def node_pos(self, i: int):
+        return self.nodes[i].get_center()

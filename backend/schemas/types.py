@@ -281,6 +281,90 @@ class PrefixSumSchema(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# DSA pattern schemas — extended (LRU, grid, backtracking, intervals,
+# Dijkstra, union-find, trie, heap, Kadane's, segment tree, 2D DP)
+# ---------------------------------------------------------------------------
+
+class KadanesSchema(BaseModel):
+    scene: Literal["kadanes"] = "kadanes"
+    array: List[int] = Field(..., max_length=20)
+    caption: str = ""
+
+
+class IntervalMergingSchema(BaseModel):
+    scene: Literal["interval_merging"] = "interval_merging"
+    intervals: List[List[int]] = Field(..., max_length=12)
+    caption: str = ""
+
+
+class BacktrackingSubsetsSchema(BaseModel):
+    scene: Literal["backtracking_subsets"] = "backtracking_subsets"
+    array: List[int] = Field(..., max_length=5)
+    algorithm: Literal["subsets", "permutations"] = "subsets"
+    caption: str = ""
+
+
+class LRUCacheSchema(BaseModel):
+    scene: Literal["lru_cache"] = "lru_cache"
+    operations: List[str] = Field(..., max_length=15)
+    capacity: int = Field(default=2, ge=1, le=8)
+    caption: str = ""
+
+
+class GridTraversalSchema(BaseModel):
+    scene: Literal["grid_traversal"] = "grid_traversal"
+    grid: List[List[int]] = Field(..., max_length=8)
+    start: List[int]
+    target: List[int]
+    algorithm: Literal["bfs", "dfs"] = "bfs"
+    caption: str = ""
+
+
+class HeapOpsSchema(BaseModel):
+    scene: Literal["heap_ops"] = "heap_ops"
+    operations: List[str] = Field(..., max_length=15)
+    heap_type: Literal["min", "max"] = "min"
+    caption: str = ""
+
+
+class DP2DSchema(BaseModel):
+    scene: Literal["dp_2d"] = "dp_2d"
+    algorithm: Literal["lcs", "edit_distance", "unique_paths"] = "lcs"
+    input1: str = Field(default="abc", max_length=10)
+    input2: str = Field(default="ac", max_length=10)
+    caption: str = ""
+
+
+class TrieOpsSchema(BaseModel):
+    scene: Literal["trie_ops"] = "trie_ops"
+    words: List[str] = Field(..., max_length=8)
+    queries: List[str] = Field(default_factory=list, max_length=6)
+    caption: str = ""
+
+
+class UnionFindSchema(BaseModel):
+    scene: Literal["union_find"] = "union_find"
+    n: int = Field(default=6, ge=1, le=10)
+    operations: List[str] = Field(..., max_length=15)
+    caption: str = ""
+
+
+class DijkstraSchema(BaseModel):
+    scene: Literal["dijkstra"] = "dijkstra"
+    num_nodes: int = Field(default=5, ge=2, le=10)
+    edges: List[List[int]] = Field(..., max_length=20)
+    source: int = 0
+    caption: str = ""
+
+
+class SegmentTreeSchema(BaseModel):
+    scene: Literal["segment_tree"] = "segment_tree"
+    array: List[int] = Field(..., max_length=8)
+    queries: List[List[int]] = Field(default_factory=list, max_length=6)
+    caption: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Arithmetic schemas
 # ---------------------------------------------------------------------------
 
@@ -634,6 +718,17 @@ VisualizationSchema = (
     | MonotonicStackSchema
     | HashMapIterationSchema
     | PrefixSumSchema
+    | KadanesSchema
+    | IntervalMergingSchema
+    | BacktrackingSubsetsSchema
+    | LRUCacheSchema
+    | GridTraversalSchema
+    | HeapOpsSchema
+    | DP2DSchema
+    | TrieOpsSchema
+    | UnionFindSchema
+    | DijkstraSchema
+    | SegmentTreeSchema
 )
 
 

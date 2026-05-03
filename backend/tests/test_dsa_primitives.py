@@ -8,6 +8,8 @@ from manim import Scene
 from scenes.dsa_primitives import (
     ArrayStrip, Pointer, HighlightZone, HashMapPanel, StatePanel,
     ComparisonMarker, StackWidget, DependencyArc,
+    GridPanel, BinaryTreePanel, RecursionTree, IntervalBars,
+    DoublyLinkedListPanel, GraphPanel,
     DEFAULT_CELL, HILITE, KEEP, REJECT, PTR_COLORS,
     caption_strip, result_box, action_text,
 )
@@ -247,3 +249,165 @@ def test_constants_exist():
     assert "L" in PTR_COLORS
     assert "slow" in PTR_COLORS
     assert "fast" in PTR_COLORS
+
+
+# ---------------------------------------------------------------------------
+# GridPanel
+# ---------------------------------------------------------------------------
+
+def test_grid_panel_basic():
+    g = GridPanel([[1, 2, 3], [4, 5, 6]])
+    assert len(g.cells) == 2
+    assert len(g.cells[0]) == 3
+    assert g.cells[0][0] is not None
+
+
+def test_grid_panel_animations():
+    g = GridPanel([[0, 0], [0, 0]])
+    assert g.anim_set_fill(0, 1, "RED") is not None
+    assert g.anim_set_value(1, 0, 99) is not None
+    assert g.flash(0, 0) is not None
+
+
+def test_grid_panel_cell_centers_distinct():
+    g = GridPanel([[1, 2, 3]])
+    p0 = g.cell_center(0, 0)
+    p1 = g.cell_center(0, 1)
+    p2 = g.cell_center(0, 2)
+    assert p0[0] < p1[0] < p2[0]
+
+
+# ---------------------------------------------------------------------------
+# BinaryTreePanel
+# ---------------------------------------------------------------------------
+
+def test_binary_tree_panel_basic():
+    bt = BinaryTreePanel([1, 2, 3, 4, 5])
+    assert len(bt.nodes) == 5
+    assert len(bt.edges) == 4   # 5 nodes → 4 parent-child links
+
+
+def test_binary_tree_panel_empty():
+    bt = BinaryTreePanel([])
+    assert bt.nodes == []
+    assert bt.edges == []
+
+
+def test_binary_tree_panel_animations():
+    bt = BinaryTreePanel([10, 20, 30])
+    assert bt.anim_set_value(0, 99) is not None
+    assert bt.anim_set_fill(1, "GREEN") is not None
+    assert bt.flash(2) is not None
+
+
+# ---------------------------------------------------------------------------
+# RecursionTree
+# ---------------------------------------------------------------------------
+
+def test_recursion_tree_starts_with_root():
+    rt = RecursionTree("root")
+    assert 0 in rt.nodes
+    assert rt.depth[0] == 0
+
+
+def test_recursion_tree_spawn():
+    rt = RecursionTree("[]")
+    nid, anims = rt.anim_spawn_child(0, "[1]")
+    assert nid == 1
+    assert rt.parent[nid] == 0
+    assert rt.depth[nid] == 1
+    assert len(anims) > 0
+
+
+def test_recursion_tree_fade_subtree():
+    rt = RecursionTree("[]")
+    a, _ = rt.anim_spawn_child(0, "A")
+    b, _ = rt.anim_spawn_child(a, "B")
+    anims = rt.anim_fade_subtree(a)
+    assert len(anims) >= 2  # node A + node B
+
+
+# ---------------------------------------------------------------------------
+# IntervalBars
+# ---------------------------------------------------------------------------
+
+def test_interval_bars_basic():
+    iv = IntervalBars([[1, 3], [2, 6], [8, 10]])
+    assert len(iv.bars) == 3
+    assert iv.x_min < iv.x_max
+
+
+def test_interval_bars_animations():
+    iv = IntervalBars([[1, 4], [3, 6]])
+    assert iv.anim_set_color(0, "GREEN") is not None
+    anims = iv.anim_merge(0, 1, new_end=6)
+    assert len(anims) == 2
+
+
+def test_interval_bars_empty_safe():
+    iv = IntervalBars([])
+    assert iv.bars == []
+
+
+# ---------------------------------------------------------------------------
+# DoublyLinkedListPanel
+# ---------------------------------------------------------------------------
+
+def test_dll_starts_empty():
+    dll = DoublyLinkedListPanel()
+    assert dll.order() == []
+
+
+def test_dll_add_to_head():
+    dll = DoublyLinkedListPanel()
+    dll.anim_add_to_head("a", 1)
+    dll.anim_add_to_head("b", 2)
+    assert dll.order() == ["b", "a"]
+
+
+def test_dll_remove():
+    dll = DoublyLinkedListPanel()
+    dll.anim_add_to_head("a", 1)
+    dll.anim_add_to_head("b", 2)
+    dll.anim_remove("a")
+    assert dll.order() == ["b"]
+
+
+def test_dll_move_to_head():
+    dll = DoublyLinkedListPanel()
+    dll.anim_add_to_head("a", 1)
+    dll.anim_add_to_head("b", 2)
+    dll.anim_add_to_head("c", 3)
+    dll.anim_move_to_head("a")
+    assert dll.order() == ["a", "c", "b"]
+
+
+def test_dll_remove_missing_safe():
+    dll = DoublyLinkedListPanel()
+    anims = dll.anim_remove("ghost")
+    assert anims == []
+
+
+# ---------------------------------------------------------------------------
+# GraphPanel
+# ---------------------------------------------------------------------------
+
+def test_graph_panel_basic():
+    g = GraphPanel(4, [[0, 1, 5], [1, 2, 3], [0, 3, 2]])
+    assert len(g.nodes) == 4
+    assert (0, 1) in g.edges
+    assert (1, 2) in g.edges
+
+
+def test_graph_panel_unweighted():
+    g = GraphPanel(3, [[0, 1], [1, 2]])
+    assert len(g.nodes) == 3
+    assert (0, 1) in g.edges
+    assert g.weight_lbls == {}
+
+
+def test_graph_panel_animations():
+    g = GraphPanel(3, [[0, 1, 5], [1, 2, 3]])
+    assert g.anim_set_node_color(0, "GREEN") is not None
+    assert g.anim_flash_edge(0, 1) is not None
+    assert g.anim_set_node_value(1, "X") is not None

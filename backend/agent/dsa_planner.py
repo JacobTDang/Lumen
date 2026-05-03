@@ -60,6 +60,54 @@ ARRAY PATTERNS (PREFER THESE — they are pattern-specific and visually richer):
              "query_range": [l, r]|null}
     use for: range sum queries, subarray sum, prefix-sum-based problems
 
+  kadanes — running max-subarray sum
+    params: {"array": [int, ...]}
+    use for: maximum subarray sum, largest contiguous sum, "find best window of any size"
+
+ADVANCED DSA PATTERNS:
+  interval_merging — number-line bars, merge overlapping intervals
+    params: {"intervals": [[s1,e1],[s2,e2],...]}
+    use for: merge intervals, insert interval, meeting rooms
+
+  backtracking_subsets — DFS decision tree growing live
+    params: {"array": [int, ...], "algorithm": "subsets"|"permutations"}
+    use for: subsets, permutations, combinations, decision-tree problems
+
+  lru_cache — hashmap + doubly-linked list with eviction
+    params: {"operations": ["put k v", "get k", ...], "capacity": int}
+    use for: LRU cache, MRU cache, design-cache problems
+
+  grid_traversal — 2D grid BFS/DFS with frontier expansion
+    params: {"grid": [[0|1, ...], ...], "start": [r,c], "target": [r,c],
+             "algorithm": "bfs"|"dfs"}
+    use for: shortest path on grid, flood fill, reachability, number of islands skeleton
+
+  heap_ops — binary heap push/pop with sift up/down
+    params: {"operations": ["push N", "pop", ...], "heap_type": "min"|"max"}
+    use for: priority queue, k-largest, k-smallest, top-K problems, heap-sort
+
+  dp_2d — fill 2D DP table with dependency arrows
+    params: {"algorithm": "lcs"|"edit_distance"|"unique_paths",
+             "input1": str, "input2": str}
+    use for: longest common subsequence, edit distance, unique paths, 2D DP problems
+    note: for unique_paths pass dimensions as strings, e.g. input1="3", input2="3"
+
+  trie_ops — character-by-character tree insert + search
+    params: {"words": [str, ...], "queries": [str, ...]}
+    use for: trie/prefix tree, autocomplete, word search, dictionary lookup
+
+  union_find — disjoint-set forest with parent[] array
+    params: {"n": int, "operations": ["union a b", "find x", ...]}
+    use for: union-find, disjoint-set, connected components, redundant connection
+
+  dijkstra — graph + distance hashmap, edge relaxation
+    params: {"num_nodes": int, "edges": [[u,v,w], ...], "source": int}
+    use for: shortest path on weighted graph, network delay, cheapest flights
+
+  segment_tree — segment tree build + range queries
+    params: {"array": [int, ...], "queries": [[l,r], ...]}
+    use for: range sum queries, range min/max queries, online range problems
+
 LEGACY ARRAYS (only fall back if no pattern above fits):
   array_pointer — generic two-pointer or binary search
     params: {"array": [...], "algorithm": "binary_search"|"two_pointers"|"palindrome",
@@ -107,6 +155,17 @@ Pattern routing (tiebreakers):
 - next greater element / daily temperatures → monotonic_stack
 - two sum (unsorted) / frequency / anagram → hashmap_iteration
 - range sum / subarray sum / cumulative anything → prefix_sum
+- max subarray sum / largest contiguous sum → kadanes
+- merge intervals / overlapping intervals / meeting rooms → interval_merging
+- subsets / permutations / combinations / decision-tree → backtracking_subsets
+- LRU cache / design-cache → lru_cache
+- shortest path on grid / flood fill / number of islands / matrix BFS → grid_traversal
+- priority queue / k-largest / k-smallest / heap-sort / top-K → heap_ops
+- LCS / edit distance / unique paths / 2D DP → dp_2d
+- trie / prefix tree / autocomplete / word dictionary → trie_ops
+- connected components / disjoint set / union-find → union_find
+- shortest path on weighted graph / network delay → dijkstra
+- range query / segment tree / online range → segment_tree
 
 Planning rules:
 - Use small realistic data (arrays 5-8 elements, trees 7-15 nodes, graphs 5-7 nodes)
@@ -129,10 +188,14 @@ _VALID_DSA_TOOLS = {
     # legacy
     "array_pointer", "sliding_window", "linked_list",
     "tree_traversal", "graph_traversal", "dp_array", "stack_queue",
-    # pattern-specific
+    # pattern-specific (phase 1)
     "two_pointers_opposite", "two_pointers_same_dir", "sliding_window_variable",
     "binary_search_index", "binary_search_answer", "monotonic_stack",
     "hashmap_iteration", "prefix_sum",
+    # extended pattern scenes (phase 2)
+    "kadanes", "interval_merging", "backtracking_subsets", "lru_cache",
+    "grid_traversal", "heap_ops", "dp_2d", "trie_ops",
+    "union_find", "dijkstra", "segment_tree",
 }
 
 

@@ -68,6 +68,18 @@ SCENE_REGISTRY = {
     "monotonic_stack":         ("scenes/dsa_pattern_scene.py", "MonotonicStackScene"),
     "hashmap_iteration":       ("scenes/dsa_pattern_scene.py", "HashMapIterationScene"),
     "prefix_sum":              ("scenes/dsa_pattern_scene.py", "PrefixSumScene"),
+    # DSA — extended pattern scenes (advanced LeetCode coverage)
+    "kadanes":                 ("scenes/dsa_pattern_scene.py", "KadanesScene"),
+    "interval_merging":        ("scenes/dsa_pattern_scene.py", "IntervalMergingScene"),
+    "backtracking_subsets":    ("scenes/dsa_pattern_scene.py", "BacktrackingSubsetsScene"),
+    "lru_cache":               ("scenes/dsa_pattern_scene.py", "LRUCacheScene"),
+    "grid_traversal":          ("scenes/dsa_pattern_scene.py", "GridTraversalScene"),
+    "heap_ops":                ("scenes/dsa_pattern_scene.py", "HeapOpsScene"),
+    "dp_2d":                   ("scenes/dsa_pattern_scene.py", "DP2DScene"),
+    "trie_ops":                ("scenes/dsa_pattern_scene.py", "TrieOpsScene"),
+    "union_find":              ("scenes/dsa_pattern_scene.py", "UnionFindScene"),
+    "dijkstra":                ("scenes/dsa_pattern_scene.py", "DijkstraScene"),
+    "segment_tree":            ("scenes/dsa_pattern_scene.py", "SegmentTreeScene"),
     # Arithmetic
     "number_line":        ("scenes/arithmetic_scene.py",  "NumberLineScene"),
     "fraction":           ("scenes/arithmetic_scene.py",  "FractionScene"),

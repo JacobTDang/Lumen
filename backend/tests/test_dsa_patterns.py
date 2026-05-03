@@ -183,3 +183,151 @@ def test_psum_range_query(tmp_path):
                 {"array": [3, 1, 4, 1, 5, 9, 2],
                  "algorithm": "range_sum_query", "query_range": [1, 4]}),
         tmp_path, "PrefixSumScene")
+
+
+# ---------------------------------------------------------------------------
+# KadanesScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_kadanes_classic(tmp_path):
+    _ok(_render(tmp_path, "KadanesScene",
+                {"array": [-2, 1, -3, 4, -1, 2, 1, -5, 4]}),
+        tmp_path, "KadanesScene")
+
+
+@pytest.mark.integration
+def test_kadanes_all_positive(tmp_path):
+    _ok(_render(tmp_path, "KadanesScene", {"array": [1, 2, 3, 4]}),
+        tmp_path, "KadanesScene")
+
+
+# ---------------------------------------------------------------------------
+# IntervalMergingScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_interval_merging_basic(tmp_path):
+    _ok(_render(tmp_path, "IntervalMergingScene",
+                {"intervals": [[1, 3], [2, 6], [8, 10], [15, 18]]}),
+        tmp_path, "IntervalMergingScene")
+
+
+# ---------------------------------------------------------------------------
+# UnionFindScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_union_find_basic(tmp_path):
+    _ok(_render(tmp_path, "UnionFindScene",
+                {"n": 6,
+                 "operations": ["union 0 1", "union 2 3", "union 4 5",
+                                 "union 1 3", "find 4"]}),
+        tmp_path, "UnionFindScene")
+
+
+# ---------------------------------------------------------------------------
+# LRUCacheScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_lru_cache_basic(tmp_path):
+    _ok(_render(tmp_path, "LRUCacheScene",
+                {"operations": ["put 1 100", "put 2 200", "get 1",
+                                 "put 3 300", "get 2"],
+                 "capacity": 2}),
+        tmp_path, "LRUCacheScene")
+
+
+# ---------------------------------------------------------------------------
+# GridTraversalScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_grid_traversal_bfs(tmp_path):
+    _ok(_render(tmp_path, "GridTraversalScene",
+                {"grid": [[0, 0, 1, 0],
+                           [0, 0, 0, 0],
+                           [1, 0, 1, 0],
+                           [0, 0, 0, 0]],
+                 "start": [0, 0], "target": [3, 3], "algorithm": "bfs"}),
+        tmp_path, "GridTraversalScene")
+
+
+# ---------------------------------------------------------------------------
+# HeapOpsScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_heap_ops_min(tmp_path):
+    _ok(_render(tmp_path, "HeapOpsScene",
+                {"operations": ["push 5", "push 3", "push 8",
+                                 "push 1", "pop"],
+                 "heap_type": "min"}),
+        tmp_path, "HeapOpsScene")
+
+
+# ---------------------------------------------------------------------------
+# DP2DScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_dp_2d_lcs(tmp_path):
+    _ok(_render(tmp_path, "DP2DScene",
+                {"algorithm": "lcs", "input1": "abc", "input2": "ac"}),
+        tmp_path, "DP2DScene")
+
+
+@pytest.mark.integration
+def test_dp_2d_unique_paths(tmp_path):
+    _ok(_render(tmp_path, "DP2DScene",
+                {"algorithm": "unique_paths", "input1": "3", "input2": "3"}),
+        tmp_path, "DP2DScene")
+
+
+# ---------------------------------------------------------------------------
+# BacktrackingSubsetsScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_backtracking_subsets(tmp_path):
+    _ok(_render(tmp_path, "BacktrackingSubsetsScene",
+                {"array": [1, 2, 3], "algorithm": "subsets"}),
+        tmp_path, "BacktrackingSubsetsScene")
+
+
+# ---------------------------------------------------------------------------
+# TrieOpsScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_trie_ops_basic(tmp_path):
+    _ok(_render(tmp_path, "TrieOpsScene",
+                {"words": ["cat", "car", "card"], "queries": ["car", "cab"]}),
+        tmp_path, "TrieOpsScene")
+
+
+# ---------------------------------------------------------------------------
+# DijkstraScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_dijkstra_basic(tmp_path):
+    _ok(_render(tmp_path, "DijkstraScene",
+                {"num_nodes": 5,
+                 "edges": [[0, 1, 4], [0, 2, 1], [2, 1, 2],
+                            [1, 3, 1], [2, 3, 5], [3, 4, 3]],
+                 "source": 0}),
+        tmp_path, "DijkstraScene")
+
+
+# ---------------------------------------------------------------------------
+# SegmentTreeScene
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_segment_tree_basic(tmp_path):
+    _ok(_render(tmp_path, "SegmentTreeScene",
+                {"array": [1, 3, 5, 7],
+                 "queries": [[1, 3], [0, 3]]}),
+        tmp_path, "SegmentTreeScene")
