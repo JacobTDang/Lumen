@@ -1,19 +1,17 @@
+import json
 import os
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from google.genai import types as genai_types
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from agent.classifier import classify_domain
 from agent.dsa_planner import plan_dsa
-<<<<<<< HEAD
-from agent.planner import plan as plan_math
-from renderer.worker import get_job, submit_lesson, submit_render
-
-=======
 from agent.explainer import explain_problem
+from agent.gemini_client import call_gemini
 from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
 
@@ -50,19 +48,25 @@ _TOPICS = [
      "description": "Row-by-column dot products animated."},
 ]
 
->>>>>>> 044ede7 (Connected back end to front end)
+_MIME_FROM_EXT = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "png": "image/png", "webp": "image/webp",
+    "pdf": "application/pdf",
+}
+_ALLOWED_MIMES = frozenset(_MIME_FROM_EXT.values())
+
 
 def create_app(testing: bool = False) -> Flask:
     app = Flask(__name__)
     app.config["TESTING"] = testing
     CORS(app)
 
+    # ── existing endpoints ────────────────────────────────────────
+
     @app.get("/health")
     def health():
         return jsonify({"status": "ok"})
 
-<<<<<<< HEAD
-=======
     @app.get("/topics")
     def topics():
         return jsonify({"topics": _TOPICS})
@@ -78,10 +82,9 @@ def create_app(testing: bool = False) -> Flask:
         sections = explain_problem(problem, topic_name, topic_description)
         return jsonify({"sections": sections})
 
->>>>>>> 044ede7 (Connected back end to front end)
     @app.post("/ask")
     def ask():
-        body     = request.get_json(silent=True) or {}
+        body = request.get_json(silent=True) or {}
         question = body.get("question", "").strip()
         if not question:
             return jsonify({"error": "question is required"}), 400
@@ -89,26 +92,11 @@ def create_app(testing: bool = False) -> Flask:
         try:
             lesson = plan_dsa(question) if domain == "dsa" else plan_math(question)
         except ValueError as e:
-<<<<<<< HEAD
-            return jsonify({
-                "error":  "Could not understand the question. Try rephrasing it.",
-                "detail": str(e)[:200],
-            }), 422
-        except Exception as e:
-            return jsonify({
-                "error":  "Internal planning error. Please try again.",
-                "detail": str(e)[:200],
-=======
-            app.logger.warning(f"planner ValueError on q={question[:120]!r}: {e}")
-            return jsonify({
-                "error": "Could not understand the question. Try rephrasing it.",
-            }), 422
-        except Exception as e:
-            app.logger.exception(f"planner unexpected error on q={question[:120]!r}")
-            return jsonify({
-                "error": "Internal planning error. Please try again.",
->>>>>>> 044ede7 (Connected back end to front end)
-            }), 422
+            app.logger.warning("planner ValueError on q=%r: %s", question[:120], e)
+            return jsonify({"error": "Could not understand the question. Try rephrasing it."}), 422
+        except Exception:
+            app.logger.exception("planner unexpected error on q=%r", question[:120])
+            return jsonify({"error": "Internal planning error. Please try again."}), 422
         job_id = submit_lesson(lesson.steps)
         return jsonify({
             "job_id":      job_id,
@@ -119,8 +107,8 @@ def create_app(testing: bool = False) -> Flask:
 
     @app.post("/render")
     def render():
-        body   = request.get_json(silent=True) or {}
-        scene  = body.get("scene")
+        body = request.get_json(silent=True) or {}
+        scene = body.get("scene")
         params = body.get("params", {})
         if not scene:
             return jsonify({"error": "scene is required"}), 400
@@ -136,27 +124,159 @@ def create_app(testing: bool = False) -> Flask:
 
     @app.get("/media/<path:filename>")
     def serve_media(filename):
-<<<<<<< HEAD
-        media_dir = os.path.join(os.path.dirname(__file__), "media")
-=======
         media_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "media"))
-        # Belt-and-suspenders: send_from_directory protects against ".." but we
-        # also resolve symlinks and confirm the result is still under media/.
         target = os.path.realpath(os.path.join(media_dir, filename))
         if not target.startswith(media_dir + os.sep):
             return jsonify({"error": "forbidden"}), 403
->>>>>>> 044ede7 (Connected back end to front end)
         return send_from_directory(media_dir, filename)
+
+    # ── Gemini-backed /api/* endpoints ───────────────────────────
+
+    @app.get("/api/topics")
+    def api_topics():
+        return jsonify({"topics": _TOPICS})
+
+    @app.post("/api/ocr")
+    def api_ocr():
+        if "file" not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        file = request.files["file"]
+        if not file.filename:
+            return jsonify({"error": "No file selected"}), 400
+
+        mime_type = file.mimetype or "application/octet-stream"
+        if mime_type == "application/octet-stream":
+            ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+            mime_type = _MIME_FROM_EXT.get(ext, mime_type)
+        if mime_type not in _ALLOWED_MIMES:
+            return jsonify({"error": f"Unsupported file type: {mime_type}"}), 400
+
+        try:
+            file_bytes = file.read()
+            prompt = (
+                "Extract all text from this image or document exactly as it appears. "
+                "Preserve line breaks. Do not summarize, do not add commentary, just transcribe."
+            )
+            contents = [prompt, genai_types.Part.from_bytes(data=file_bytes, mime_type=mime_type)]
+            response = call_gemini(contents)
+            return jsonify({"text": response.text})
+        except Exception as exc:
+            app.logger.exception("OCR failed")
+            return jsonify({"error": "OCR failed", "detail": str(exc)}), 500
+
+    @app.post("/api/format-note")
+    def api_format_note():
+        body = request.get_json(silent=True) or {}
+        raw_text = body.get("rawText", "").strip()
+        if not raw_text:
+            return jsonify({"error": "rawText is required"}), 400
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "html":  {"type": "string"},
+            },
+            "required": ["title", "html"],
+        }
+        prompt = (
+            "Structure the following text as a clean note.\n"
+            "Return a JSON object with:\n"
+            "- title: short descriptive title, max 60 characters\n"
+            "- html: clean semantic HTML using only <h2>, <h3>, <p>, <ul>, <li>, "
+            "<strong>, <em> tags — no CSS, no scripts, no inline styles\n\n"
+            f"Text:\n{raw_text}"
+        )
+        try:
+            response = call_gemini(prompt, response_schema=schema)
+            return jsonify(json.loads(response.text))
+        except Exception as exc:
+            app.logger.exception("format-note failed")
+            return jsonify({"error": "format-note failed", "detail": str(exc)}), 500
+
+    @app.post("/api/parse-problem")
+    def api_parse_problem():
+        body = request.get_json(silent=True) or {}
+        raw_text = body.get("rawText", "").strip()
+        topics_list = body.get("topics", [])
+        if not raw_text:
+            return jsonify({"error": "rawText is required"}), 400
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "problem": {"type": "string"},
+                "topicId": {"type": ["string", "null"]},
+            },
+            "required": ["problem", "topicId"],
+        }
+        topics_summary = "\n".join(
+            f'- id: {t.get("id")}, name: {t.get("name")}, '
+            f'keywords: {", ".join(t.get("keywords", []))}'
+            for t in topics_list
+        )
+        prompt = (
+            "Identify which of the available animation topics best matches this student problem. "
+            "Return a JSON object with:\n"
+            "- problem: cleaned-up problem statement\n"
+            "- topicId: the id of the matching topic, or null if none match\n\n"
+            f"Problem:\n{raw_text}\n\n"
+            f"Available topics:\n{topics_summary or '(none provided)'}"
+        )
+        try:
+            response = call_gemini(prompt, response_schema=schema)
+            return jsonify(json.loads(response.text))
+        except Exception as exc:
+            app.logger.exception("parse-problem failed")
+            return jsonify({"error": "parse-problem failed", "detail": str(exc)}), 500
+
+    @app.post("/api/breakdown")
+    def api_breakdown():
+        body = request.get_json(silent=True) or {}
+        problem = body.get("problem", "").strip()
+        topic = body.get("topic") or {}
+        topic_name = topic.get("name", "").strip()
+        topic_description = topic.get("description", "").strip()
+        if not topic_name:
+            return jsonify({"error": "topic.name is required"}), 400
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string"},
+                            "body":  {"type": "string"},
+                        },
+                        "required": ["label", "body"],
+                    },
+                },
+            },
+            "required": ["sections"],
+        }
+        prompt = (
+            f"Break down this problem step by step in the context of {topic_name}.\n"
+            f"Topic: {topic_name} — {topic_description}\n"
+            f"Problem: {problem or '(general explanation of the topic)'}\n\n"
+            "Return a JSON object with a 'sections' array of 3-5 objects, each with:\n"
+            "- label: short title (1-4 words)\n"
+            "- body: 1-2 sentence explanation\n\n"
+            f"Be specific about what each part represents in the context of {topic_name}."
+        )
+        try:
+            response = call_gemini(prompt, response_schema=schema)
+            return jsonify(json.loads(response.text))
+        except Exception as exc:
+            app.logger.exception("api/breakdown failed")
+            return jsonify({"error": "breakdown failed", "detail": str(exc)}), 500
 
     return app
 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-    create_app().run(debug=True, port=5000)
-=======
-    # use_reloader=False is critical: the dev reloader wipes the in-memory
-    # _jobs dict mid-render whenever any file is touched, leaving polling
-    # frontends stuck on a now-orphaned job_id.
+    # use_reloader=False: the dev reloader wipes the in-memory _jobs dict
+    # mid-render whenever any file is touched, orphaning polling frontends.
     create_app().run(debug=True, use_reloader=False, port=5000)
->>>>>>> 044ede7 (Connected back end to front end)
