@@ -789,9 +789,10 @@ class GraphScene(Scene):
         directed   = bool(p.get("directed", False))
         cap        = p.get("caption",    "")
 
-        # Build adjacency list
+        # Build adjacency list — accept [u, v] or [u, v, w] (weight ignored here)
         adj = {i: [] for i in range(num_nodes)}
-        for u, v in edges:
+        for e in edges:
+            u, v = e[0], e[1]
             adj[u].append(v)
             if not directed:
                 adj[v].append(u)
@@ -812,9 +813,10 @@ class GraphScene(Scene):
             lbl = Text(str(i), font_size=22, color=WHITE)
             node_mobs.append(VGroup(circle, lbl).move_to(positions[i]))
 
-        # Build edges
+        # Build edges — accept [u, v] or [u, v, w] (legacy scene ignores weight)
         edge_mobs = []
-        for u, v in edges:
+        for e in edges:
+            u, v = e[0], e[1]
             if directed:
                 em = Arrow(positions[u], positions[v], buff=0.38, color=GRAY,
                             stroke_width=2, max_tip_length_to_length_ratio=0.15)

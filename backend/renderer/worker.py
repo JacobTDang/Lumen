@@ -163,8 +163,8 @@ def _cache_store(cache_key: str, url: str) -> None:
 def cleanup_old_jobs(max_age_seconds: int = 3600) -> int:
     """Delete media/jobs/<dir>/ older than max_age_seconds (by mtime).
 
-    media/lessons/ and media/steps/ are intentionally left alone — those hold
-    final stitched outputs that may be cached or still referenced by clients.
+    media/lessons/ is handled separately by cleanup_old_lessons since those
+    files are referenced from the cache index and may still be served.
     Returns the number of directories removed.
     """
     jobs_dir = os.path.join(_MEDIA_DIR, "jobs")
@@ -182,6 +182,60 @@ def cleanup_old_jobs(max_age_seconds: int = 3600) -> int:
             if os.path.getmtime(path) < cutoff:
                 shutil.rmtree(path, ignore_errors=True)
                 removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def cleanup_old_lessons(max_count: int = 200, min_age_seconds: int = 120) -> int:
+    """LRU eviction over media/lessons/*.mp4: keep at most max_count files
+    (oldest first by mtime). Two protections:
+
+    1. Files referenced in the cache index are NEVER deleted. Cached lessons
+       represent intentional pre-renders (e.g., demo showcase prompts) — they
+       trade disk for instant playback and shouldn't be evicted under
+       routine cleanup.
+    2. Files newer than min_age_seconds are also protected to avoid racing
+       in-flight renders.
+
+    Returns count removed.
+    """
+    if not os.path.isdir(_LESSONS_DIR):
+        return 0
+
+    # Collect cache-referenced file paths (these are sacred).
+    with _CACHE_LOCK:
+        index = _load_cache_index()
+    pinned = {os.path.realpath(os.path.join(_MEDIA_DIR, url.removeprefix("/media/")))
+              for url in index.values()}
+
+    files = []
+    for entry in os.listdir(_LESSONS_DIR):
+        if not entry.endswith(".mp4"):
+            continue
+        path = os.path.join(_LESSONS_DIR, entry)
+        if os.path.realpath(path) in pinned:
+            continue
+        try:
+            files.append((os.path.getmtime(path), path))
+        except OSError:
+            continue
+
+    if len(files) <= max_count:
+        return 0
+
+    files.sort()   # oldest first
+    cutoff = time.time() - min_age_seconds
+    excess = len(files) - max_count
+    removed = 0
+    for mtime, path in files:
+        if removed >= excess:
+            break
+        if mtime > cutoff:
+            continue   # too fresh — protect
+        try:
+            os.remove(path)
+            removed += 1
         except OSError:
             continue
     return removed
@@ -284,10 +338,12 @@ def stitch_videos(paths: list[str], out: str):
 
 
 def _run_lesson(lesson_id: str, steps: list):
-    # Lazy housekeeping — drop old per-job render dirs so media/ doesn't grow
-    # unboundedly during normal usage. Failures here must not block a render.
+    # Lazy housekeeping — drop old per-job render dirs and cap lessons/ size
+    # so media/ doesn't grow unboundedly during normal usage. Failures here
+    # must not block a render.
     try:
         cleanup_old_jobs()
+        cleanup_old_lessons()
     except Exception:
         pass
 
