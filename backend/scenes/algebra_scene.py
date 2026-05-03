@@ -74,16 +74,27 @@ def _result_box(tex: str, font_size: int = 28) -> VGroup:
 
 
 def _show_title_card(scene, text: str):
-    card = Text(text, font_size=30, color=WHITE).center()
+    import textwrap as _tw
+    wrapped = _tw.fill(text, width=52)
+    n = len(text)
+    size = 28 if n < 45 else (24 if n < 70 else 20)
+    card = Text(wrapped, font_size=size, color=WHITE, line_spacing=1.2)
+    if card.width > 12.5:
+        card.scale(12.5 / card.width)
+    card.center()
     scene.play(FadeIn(card), run_time=0.35)
-    scene.wait(1.2)
+    scene.wait(1.4)
     scene.play(FadeOut(card), run_time=0.35)
 
 
 def _caption(text: str) -> VGroup:
-    bg  = Rectangle(width=14.5, height=0.62, fill_color=BLACK,
+    import textwrap as _tw
+    wrapped = _tw.fill(text, width=72)
+    bg  = Rectangle(width=14.5, height=0.65, fill_color=BLACK,
                     fill_opacity=0.82, stroke_width=0).to_edge(DOWN, buff=0)
-    txt = Text(text, font_size=22, color=WHITE).to_edge(DOWN, buff=0.14)
+    txt = Text(wrapped, font_size=21, color=WHITE).to_edge(DOWN, buff=0.13)
+    if txt.width > 13.5:
+        txt.scale(13.5 / txt.width)
     return VGroup(bg, txt)
 
 
