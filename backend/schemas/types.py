@@ -234,6 +234,23 @@ class FTCSchema(BaseModel):
     caption: str = ""
 
 
+class SequenceSchema(BaseModel):
+    scene: Literal["sequence"] = "sequence"
+    formula: str                        # recursive formula f(x), where aₙ = f(aₙ₋₁)
+    a0: float = 0.0
+    n_terms: int = 8
+    caption: str = ""
+
+
+class CobwebSchema(BaseModel):
+    scene: Literal["cobweb"] = "cobweb"
+    formula: str
+    a0: float = 0.0
+    n_steps: int = 8
+    domain: List[float] = [0.0, 4.0]
+    caption: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Calc 3 extension schemas
 # ---------------------------------------------------------------------------
@@ -286,6 +303,8 @@ VisualizationSchema = (
     | VolumeRevolutionSchema
     | TaylorSeriesSchema
     | FTCSchema
+    | SequenceSchema
+    | CobwebSchema
     | ContourSchema
     | VectorFieldSchema
     | PartialDerivativeSchema

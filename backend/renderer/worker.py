@@ -31,6 +31,8 @@ SCENE_REGISTRY = {
     "volume_revolution":  ("scenes/calculus_scene.py",    "VolumeRevolutionScene"),
     "taylor_series":      ("scenes/calculus_scene.py",    "TaylorSeriesScene"),
     "ftc":                ("scenes/calculus_scene.py",    "FTCScene"),
+    "sequence":           ("scenes/calculus_scene.py",    "SequenceScene"),
+    "cobweb":             ("scenes/calculus_scene.py",    "CobwebScene"),
     # Algebra
     "linear_function":    ("scenes/algebra_scene.py",     "LinearFunctionScene"),
     "quadratic":          ("scenes/algebra_scene.py",     "QuadraticScene"),

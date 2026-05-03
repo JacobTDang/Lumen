@@ -54,6 +54,16 @@ CALCULUS EXTENDED:
     params: {"expression": str, "domain": [float, float], "start": float}
     use for: FTC, accumulation function, area-antiderivative connection
 
+  sequence — plots actual computed terms aₙ converging to a limit with a dashed limit line
+    params: {"formula": str, "a0": float, "n_terms": int}
+    use for: recursive sequences, sequence convergence, show aₙ = f(aₙ₋₁) terms numerically
+    IMPORTANT: formula must use x as the variable (x represents aₙ₋₁). Example: aₙ=sqrt(aₙ₋₁+2) → formula="sqrt(x+2)"
+
+  cobweb — cobweb/staircase diagram showing fixed-point iteration converging to L
+    params: {"formula": str, "a0": float, "n_steps": int, "domain": [float, float]}
+    use for: cobweb diagram, fixed-point iteration, recursive sequence convergence proof, show aₙ → L graphically
+    IMPORTANT: formula must use x as the variable. Example: aₙ=sqrt(aₙ₋₁+2) → formula="sqrt(x+2)"
+
 CALCULUS 3 / MULTIVARIABLE:
   surface_plot — 3D surface z=f(x,y) with rotating camera, colored by height
     params: {"expression": str, "x_domain": [float, float], "y_domain": [float, float]}
@@ -122,7 +132,7 @@ Respond with ONLY valid JSON — no markdown fences, no explanation:
 
 _VALID_TOOLS = {
     "function_plot", "limit", "tangent_line", "riemann_sum", "critical_points",
-    "volume_revolution", "taylor_series", "ftc",
+    "volume_revolution", "taylor_series", "ftc", "sequence", "cobweb",
     "linear_function", "quadratic", "trig_unit_circle",
     "surface_plot", "contour", "vector_field", "partial_derivative",
     "number_line", "fraction", "area_model",

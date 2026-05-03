@@ -681,3 +681,182 @@ class FTCScene(Scene):
         ))
         self.wait(0.8)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 9 — Sequence Convergence (recursive sequence term-by-term)
+# ---------------------------------------------------------------------------
+
+class SequenceScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p        = _load_params()
+        formula  = p.get("formula",  "sqrt(x + 2)")
+        a0       = float(p.get("a0",      0.0))
+        n_terms  = int(p.get("n_terms",   8))
+        cap      = p.get("caption", "")
+
+        x_sym = sp.Symbol("x")
+        expr  = sp.sympify(formula)
+        f_rec = sp.lambdify(x_sym, expr, modules=["numpy"])
+
+        # Compute sequence terms
+        terms = [a0]
+        for _ in range(n_terms - 1):
+            terms.append(_safe_eval(f_rec, terms[-1]))
+
+        # Find fixed point L where f(L) = L
+        try:
+            fps      = sp.solve(expr - x_sym, x_sym)
+            real_fps = [float(fp.evalf()) for fp in fps if fp.is_real]
+            L        = min(real_fps, key=lambda v: abs(v - terms[-1])) if real_fps else terms[-1]
+        except Exception:
+            L = terms[-1]
+
+        y_vals  = terms + [L]
+        y_lo    = min(0.0, min(y_vals)) - 0.2
+        y_hi    = max(y_vals) * 1.15 + 0.2
+        y_step  = max(0.5, round((y_hi - y_lo) / 6, 1))
+
+        ax = Axes(
+            x_range=[0, n_terms, 1],
+            y_range=[y_lo, y_hi, y_step],
+            x_length=10, y_length=5.5,
+            axis_config={"color": WHITE, "include_numbers": True, "font_size": 18},
+            tips=False,
+        )
+        x_lbl = MathTex("n",   font_size=22).next_to(ax.x_axis.get_end(), RIGHT, buff=0.15)
+        y_lbl = MathTex("a_n", font_size=22).next_to(ax.y_axis.get_end(), UP,    buff=0.15)
+
+        title = MathTex(
+            r"a_n = " + _clip_latex(expr) + r",\quad a_0 = " + _num(a0),
+            font_size=30,
+        ).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(x_lbl), Write(y_lbl), Write(title))
+
+        # Dashed limit line
+        L_line  = DashedLine(ax.c2p(0, L), ax.c2p(n_terms, L), color=GREEN, stroke_width=2)
+        L_label = MathTex(r"L = " + _num(round(L, 4)), font_size=22, color=GREEN)
+        L_label.next_to(ax.c2p(n_terms, L), RIGHT, buff=0.1)
+        self.play(Create(L_line), Write(L_label))
+
+        # Animate terms appearing one by one
+        prev_dot = None
+        for i, val in enumerate(terms):
+            dot = Dot(ax.c2p(i, val), color=HIGHLIGHT_COLOR, radius=0.09)
+            lbl = MathTex(f"{val:.3f}", font_size=14, color=HIGHLIGHT_COLOR)
+            lbl.next_to(dot, UP if val < L else DOWN, buff=0.09)
+
+            anims = [FadeIn(dot), Write(lbl)]
+            if prev_dot is not None:
+                anims.append(Create(
+                    DashedLine(prev_dot.get_center(), dot.get_center(),
+                               color=GRAY, stroke_width=1.5)
+                ))
+            self.play(*anims, run_time=0.35)
+            prev_dot = dot
+
+        self.play(FadeIn(
+            _result_box(r"a_n \to " + _num(round(L, 4)) + r"\text{ as }n\to\infty", 26)
+            .to_edge(DOWN, buff=0.55)
+        ))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ---------------------------------------------------------------------------
+# Scene 10 — Cobweb Diagram (fixed-point iteration convergence)
+# ---------------------------------------------------------------------------
+
+class CobwebScene(Scene):
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p        = _load_params()
+        formula  = p.get("formula",  "sqrt(x + 2)")
+        a0       = float(p.get("a0",      0.0))
+        n_steps  = int(p.get("n_steps",   8))
+        domain   = p.get("domain",   [0, 4])
+        cap      = p.get("caption",  "")
+
+        x_sym = sp.Symbol("x")
+        expr  = sp.sympify(formula)
+        f_rec = sp.lambdify(x_sym, expr, modules=["numpy"])
+
+        yr = _y_range(f_rec, domain)
+        yr[0] = min(yr[0], 0)
+        yr[1] = max(yr[1], domain[1])   # y must reach diagonal
+
+        ax      = _make_axes(domain, yr)
+        labels  = ax.get_axis_labels(x_label="x", y_label="y")
+        graph_f = ax.plot(f_rec, x_range=domain, color=CURVE_COLOR, stroke_width=2.5)
+        graph_id = ax.plot(lambda x: x, x_range=[max(yr[0], domain[0]), domain[1]],
+                           color=DERIV_COLOR, stroke_width=2)
+
+        lbl_f  = MathTex(r"y = f(x) = " + _clip_latex(expr), font_size=20, color=CURVE_COLOR)
+        lbl_id = MathTex(r"y = x", font_size=20, color=DERIV_COLOR)
+        lbl_f.to_corner(UR, buff=0.3)
+        lbl_id.next_to(lbl_f, DOWN, buff=0.1)
+
+        title = MathTex(r"\text{Cobweb Diagram}", font_size=30).to_edge(UP, buff=0.3)
+
+        if cap:
+            _show_title_card(self, cap)
+            self.play(FadeIn(_caption(cap)), run_time=0.3)
+
+        self.play(Create(ax), Write(labels), Write(title))
+        self.play(Create(graph_f), Create(graph_id))
+        self.play(Write(lbl_f), Write(lbl_id))
+        self.wait(0.3)
+
+        # Fixed point: solve f(x) = x
+        try:
+            fps  = sp.solve(expr - x_sym, x_sym)
+            rfps = [float(fp.evalf()) for fp in fps
+                    if fp.is_real and domain[0] <= float(fp.evalf()) <= domain[1]]
+            L = rfps[0] if rfps else None
+        except Exception:
+            L = None
+
+        if L is not None:
+            fp_dot = Dot(ax.c2p(L, L), color=CRITICAL_COLOR, radius=0.12)
+            fp_lbl = MathTex(r"L = " + _num(round(L, 3)), font_size=22, color=CRITICAL_COLOR)
+            fp_lbl.next_to(fp_dot, UR, buff=0.15)
+            self.play(FadeIn(fp_dot), Write(fp_lbl))
+
+        # Starting dot
+        self.play(FadeIn(Dot(ax.c2p(a0, a0), color=HIGHLIGHT_COLOR, radius=0.1)))
+
+        x_cur = a0
+        for step in range(n_steps):
+            x_next = _safe_eval(f_rec, x_cur)
+            if not (domain[0] - 0.1 <= x_next <= domain[1] + 0.1):
+                break
+
+            # Opacity fades as we get closer to the fixed point
+            opacity = max(0.25, 1.0 - step * 0.09)
+
+            # Vertical: (x_cur, x_cur) → (x_cur, x_next)  [touches f(x)]
+            vline = Line(ax.c2p(x_cur, x_cur), ax.c2p(x_cur, x_next),
+                         color=HIGHLIGHT_COLOR, stroke_width=2.5, stroke_opacity=opacity)
+            self.play(Create(vline), run_time=0.4)
+
+            # Horizontal: (x_cur, x_next) → (x_next, x_next)  [touches y=x]
+            hline = Line(ax.c2p(x_cur, x_next), ax.c2p(x_next, x_next),
+                         color=HIGHLIGHT_COLOR, stroke_width=2.5, stroke_opacity=opacity)
+            self.play(Create(hline), run_time=0.4)
+
+            x_cur = x_next
+
+        self.play(FadeIn(Dot(ax.c2p(x_cur, x_cur), color=GREEN, radius=0.1)))
+        lim_str = _num(round(L, 3)) if L is not None else _num(round(x_cur, 3))
+        self.play(FadeIn(
+            _result_box(r"a_n \to " + lim_str + r"\text{ (fixed point)}", 26)
+            .to_edge(DOWN, buff=0.55)
+        ))
+        self.wait(0.8)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
