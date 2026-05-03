@@ -31,14 +31,14 @@ def create_app(testing: bool = False) -> Flask:
         try:
             lesson = plan_dsa(question) if domain == "dsa" else plan_math(question)
         except ValueError as e:
+            app.logger.warning(f"planner ValueError on q={question[:120]!r}: {e}")
             return jsonify({
-                "error":  "Could not understand the question. Try rephrasing it.",
-                "detail": str(e)[:200],
+                "error": "Could not understand the question. Try rephrasing it.",
             }), 422
         except Exception as e:
+            app.logger.exception(f"planner unexpected error on q={question[:120]!r}")
             return jsonify({
-                "error":  "Internal planning error. Please try again.",
-                "detail": str(e)[:200],
+                "error": "Internal planning error. Please try again.",
             }), 422
         job_id = submit_lesson(lesson.steps)
         return jsonify({
@@ -67,11 +67,19 @@ def create_app(testing: bool = False) -> Flask:
 
     @app.get("/media/<path:filename>")
     def serve_media(filename):
-        media_dir = os.path.join(os.path.dirname(__file__), "media")
+        media_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "media"))
+        # Belt-and-suspenders: send_from_directory protects against ".." but we
+        # also resolve symlinks and confirm the result is still under media/.
+        target = os.path.realpath(os.path.join(media_dir, filename))
+        if not target.startswith(media_dir + os.sep):
+            return jsonify({"error": "forbidden"}), 403
         return send_from_directory(media_dir, filename)
 
     return app
 
 
 if __name__ == "__main__":
-    create_app().run(debug=True, port=5000)
+    # use_reloader=False is critical: the dev reloader wipes the in-memory
+    # _jobs dict mid-render whenever any file is touched, leaving polling
+    # frontends stuck on a now-orphaned job_id.
+    create_app().run(debug=True, use_reloader=False, port=5000)
