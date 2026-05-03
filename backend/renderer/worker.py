@@ -1,8 +1,11 @@
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -72,6 +75,95 @@ SCENE_REGISTRY = {
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MEDIA_DIR   = os.path.join(_BACKEND_DIR, "media")
 _TEMP_DIR    = os.path.join(_MEDIA_DIR,   "temp")
+_LESSONS_DIR = os.path.join(_MEDIA_DIR,   "lessons")
+_CACHE_INDEX = os.path.join(_LESSONS_DIR, "cache_index.json")
+_CACHE_LOCK  = threading.Lock()
+
+
+# ---------------------------------------------------------------------------
+# Lesson render cache
+# ---------------------------------------------------------------------------
+
+def _lesson_cache_key(steps: list) -> str:
+    """Build a deterministic md5 hash from each step's tool + params.
+
+    Captions are excluded — they only affect the on-screen text, not the
+    rendered video bytes that we'd be reusing.
+    """
+    payload = [{"tool": s.tool, "params": s.params} for s in steps]
+    serialized = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.md5(serialized.encode("utf-8")).hexdigest()
+
+
+def _load_cache_index() -> dict:
+    if not os.path.exists(_CACHE_INDEX):
+        return {}
+    try:
+        with open(_CACHE_INDEX) as fh:
+            data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_cache_index(index: dict) -> None:
+    os.makedirs(_LESSONS_DIR, exist_ok=True)
+    with open(_CACHE_INDEX, "w") as fh:
+        json.dump(index, fh, indent=2, sort_keys=True)
+
+
+def _cache_lookup(cache_key: str) -> str | None:
+    """Return cached URL if present AND the underlying file still exists."""
+    with _CACHE_LOCK:
+        index = _load_cache_index()
+        url = index.get(cache_key)
+        if url is None:
+            return None
+        full_path = os.path.join(_MEDIA_DIR, url.removeprefix("/media/"))
+        if not os.path.exists(full_path):
+            # Stale entry — drop it so future runs re-render
+            index.pop(cache_key, None)
+            _save_cache_index(index)
+            return None
+        return url
+
+
+def _cache_store(cache_key: str, url: str) -> None:
+    with _CACHE_LOCK:
+        index = _load_cache_index()
+        index[cache_key] = url
+        _save_cache_index(index)
+
+
+# ---------------------------------------------------------------------------
+# Media cleanup
+# ---------------------------------------------------------------------------
+
+def cleanup_old_jobs(max_age_seconds: int = 3600) -> int:
+    """Delete media/jobs/<dir>/ older than max_age_seconds (by mtime).
+
+    media/lessons/ and media/steps/ are intentionally left alone — those hold
+    final stitched outputs that may be cached or still referenced by clients.
+    Returns the number of directories removed.
+    """
+    jobs_dir = os.path.join(_MEDIA_DIR, "jobs")
+    if not os.path.isdir(jobs_dir):
+        return 0
+
+    now     = time.time()
+    cutoff  = now - max_age_seconds
+    removed = 0
+    for entry in os.listdir(jobs_dir):
+        path = os.path.join(jobs_dir, entry)
+        if not os.path.isdir(path):
+            continue
+        try:
+            if os.path.getmtime(path) < cutoff:
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +263,20 @@ def stitch_videos(paths: list[str], out: str):
 
 
 def _run_lesson(lesson_id: str, steps: list):
+    # Lazy housekeeping — drop old per-job render dirs so media/ doesn't grow
+    # unboundedly during normal usage. Failures here must not block a render.
+    try:
+        cleanup_old_jobs()
+    except Exception:
+        pass
+
+    # Cache check — identical (tool, params) sequence → reuse stitched video
+    cache_key   = _lesson_cache_key(steps)
+    cached_url  = _cache_lookup(cache_key)
+    if cached_url is not None:
+        _jobs[lesson_id] = {"status": "done", "url": cached_url, "error": None}
+        return
+
     def _render_step(step):
         step_job_id = str(uuid.uuid4())
         _jobs[step_job_id] = {"status": "pending", "url": None, "error": None}
@@ -192,11 +298,22 @@ def _run_lesson(lesson_id: str, steps: list):
             }
             return
 
-    # Single step — skip FFmpeg, return video URL directly
+    # Single step — copy into lessons/ so the cache has a stable path that
+    # survives cleanup_old_jobs() removing the original per-job dir.
     if len(step_job_ids) == 1:
-        _jobs[lesson_id] = {
-            "status": "done", "url": _jobs[step_job_ids[0]]["url"], "error": None,
-        }
+        src_url  = _jobs[step_job_ids[0]]["url"]
+        src_path = os.path.join(_MEDIA_DIR, src_url.removeprefix("/media/"))
+        os.makedirs(_LESSONS_DIR, exist_ok=True)
+        dst_path = os.path.join(_LESSONS_DIR, f"{lesson_id}.mp4")
+        try:
+            shutil.copyfile(src_path, dst_path)
+            final_url = f"/media/lessons/{lesson_id}.mp4"
+        except OSError:
+            # Fall back to the original URL if copy fails — caching skipped.
+            final_url = src_url
+        _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None}
+        if final_url.startswith("/media/lessons/"):
+            _cache_store(cache_key, final_url)
         return
 
     # Collect video paths in submission order then stitch
@@ -204,9 +321,8 @@ def _run_lesson(lesson_id: str, steps: list):
         os.path.join(_MEDIA_DIR, _jobs[jid]["url"].removeprefix("/media/"))
         for jid in step_job_ids
     ]
-    lessons_dir = os.path.join(_MEDIA_DIR, "lessons")
-    os.makedirs(lessons_dir, exist_ok=True)
-    output_path = os.path.join(lessons_dir, f"{lesson_id}.mp4")
+    os.makedirs(_LESSONS_DIR, exist_ok=True)
+    output_path = os.path.join(_LESSONS_DIR, f"{lesson_id}.mp4")
 
     try:
         stitch_videos(video_paths, output_path)
@@ -214,4 +330,6 @@ def _run_lesson(lesson_id: str, steps: list):
         _jobs[lesson_id] = {"status": "error", "url": None, "error": f"stitch failed: {e}"}
         return
 
-    _jobs[lesson_id] = {"status": "done", "url": f"/media/lessons/{lesson_id}.mp4", "error": None}
+    final_url = f"/media/lessons/{lesson_id}.mp4"
+    _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None}
+    _cache_store(cache_key, final_url)

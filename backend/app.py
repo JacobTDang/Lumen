@@ -30,8 +30,16 @@ def create_app(testing: bool = False) -> Flask:
         domain = classify_domain(question)
         try:
             lesson = plan_dsa(question) if domain == "dsa" else plan_math(question)
+        except ValueError as e:
+            return jsonify({
+                "error":  "Could not understand the question. Try rephrasing it.",
+                "detail": str(e)[:200],
+            }), 422
         except Exception as e:
-            return jsonify({"error": f"planning failed: {e}"}), 422
+            return jsonify({
+                "error":  "Internal planning error. Please try again.",
+                "detail": str(e)[:200],
+            }), 422
         job_id = submit_lesson(lesson.steps)
         return jsonify({
             "job_id":      job_id,
