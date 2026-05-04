@@ -609,3 +609,58 @@ def test_topo_sort_renders_cycle(tmp_path):
                 {"num_nodes": 3,
                  "edges": [[0, 1], [1, 2], [2, 0]]}),
         tmp_path, "TopologicalSortScene")
+
+
+# ---------------------------------------------------------------------------
+# MatrixRotationScene — rotate_90 + spiral
+# ---------------------------------------------------------------------------
+
+def test_matrix_rotate_3x3():
+    """[[1,2,3],[4,5,6],[7,8,9]] rotates to [[7,4,1],[8,5,2],[9,6,3]]."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _matrix_rotate_90_steps
+    _, rotated = _matrix_rotate_90_steps([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    assert rotated == [[7, 4, 1], [8, 5, 2], [9, 6, 3]]
+
+
+def test_matrix_rotate_2x2():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _matrix_rotate_90_steps
+    _, rotated = _matrix_rotate_90_steps([[1, 2], [3, 4]])
+    assert rotated == [[3, 1], [4, 2]]
+
+
+def test_matrix_spiral_3x3():
+    """[[1,2,3],[4,5,6],[7,8,9]] spiral order = [1,2,3,6,9,8,7,4,5]."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _matrix_spiral_steps
+    _, order = _matrix_spiral_steps([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    assert order == [1, 2, 3, 6, 9, 8, 7, 4, 5]
+
+
+def test_matrix_spiral_rectangular():
+    """[[1,2,3,4],[5,6,7,8]] spiral order = [1,2,3,4,8,7,6,5]."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _matrix_spiral_steps
+    _, order = _matrix_spiral_steps([[1, 2, 3, 4], [5, 6, 7, 8]])
+    assert order == [1, 2, 3, 4, 8, 7, 6, 5]
+
+
+@pytest.mark.integration
+def test_matrix_rotate_renders(tmp_path):
+    _ok(_render(tmp_path, "MatrixRotationScene",
+                {"matrix": [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+                 "operation": "rotate_90"}),
+        tmp_path, "MatrixRotationScene")
+
+
+@pytest.mark.integration
+def test_matrix_spiral_renders(tmp_path):
+    _ok(_render(tmp_path, "MatrixRotationScene",
+                {"matrix": [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+                 "operation": "spiral"}),
+        tmp_path, "MatrixRotationScene")

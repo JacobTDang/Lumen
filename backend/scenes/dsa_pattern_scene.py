@@ -2883,6 +2883,264 @@ class FloydCycleScene(Scene):
 
 
 # ===========================================================================
+#  Phase 7B Scene 6 — MatrixRotationScene
+# ===========================================================================
+#
+#  rotate_90 : transpose then reverse each row
+#  spiral    : trace the spiral path from outside in
+# ---------------------------------------------------------------------------
+
+def _matrix_rotate_90_steps(matrix: list) -> tuple:
+    """Returns (steps, rotated_matrix). Each step is one swap during the
+    transpose phase or one row-reversal during the reverse phase.
+
+    Step kinds: 'phase'|'swap'|'reverse_row'|'done'.
+    """
+    n = len(matrix)
+    if n == 0:
+        return [], []
+    # Work on a copy
+    m = [row[:] for row in matrix]
+
+    steps = [{"kind": "phase", "phase": "transpose",
+              "matrix": [r[:] for r in m],
+              "action": "Phase 1: transpose"}]
+
+    for i in range(n):
+        for j in range(i + 1, len(m[0])):
+            m[i][j], m[j][i] = m[j][i], m[i][j]
+            steps.append({"kind": "swap", "i": i, "j": j,
+                          "matrix": [r[:] for r in m],
+                          "action": f"swap ({i},{j}) ↔ ({j},{i})"})
+
+    steps.append({"kind": "phase", "phase": "reverse",
+                  "matrix": [r[:] for r in m],
+                  "action": "Phase 2: reverse each row"})
+
+    for r in range(n):
+        m[r] = m[r][::-1]
+        steps.append({"kind": "reverse_row", "row": r,
+                      "matrix": [row[:] for row in m],
+                      "action": f"reverse row {r}"})
+
+    steps.append({"kind": "done", "matrix": [r[:] for r in m],
+                  "action": "rotated 90°"})
+    return steps, m
+
+
+def _matrix_spiral_steps(matrix: list) -> tuple:
+    """Returns (steps, order). order is the sequence of values visited.
+
+    Each step is one cell-visit during spiral traversal.
+    """
+    if not matrix or not matrix[0]:
+        return [], []
+    rows, cols = len(matrix), len(matrix[0])
+    visited = [[False] * cols for _ in range(rows)]
+    dr = [0, 1, 0, -1]
+    dc = [1, 0, -1, 0]
+    r = c = d = 0
+    order = []
+    steps = []
+    for _ in range(rows * cols):
+        visited[r][c] = True
+        order.append(matrix[r][c])
+        steps.append({"kind": "visit", "r": r, "c": c,
+                      "value": matrix[r][c], "order": order[:],
+                      "action": f"visit ({r},{c}) = {matrix[r][c]}"})
+        nr, nc = r + dr[d], c + dc[d]
+        if not (0 <= nr < rows and 0 <= nc < cols and not visited[nr][nc]):
+            d = (d + 1) % 4
+            nr, nc = r + dr[d], c + dc[d]
+        r, c = nr, nc
+    steps.append({"kind": "done", "order": order[:],
+                  "action": f"order = {order}"})
+    return steps, order
+
+
+_ROTATE_PSEUDOCODE = """
+# Phase 1: transpose
+for i in range(n):
+    for j in range(i+1, n):
+        a[i][j], a[j][i] = a[j][i], a[i][j]
+# Phase 2: reverse rows
+for r in range(n):
+    a[r] = a[r][::-1]
+""".strip()
+
+
+_SPIRAL_PSEUDOCODE = """
+dr = [0, 1, 0, -1]; dc = [1, 0, -1, 0]
+r = c = d = 0
+for _ in range(rows*cols):
+    visit(a[r][c]); visited[r][c] = True
+    nr, nc = r+dr[d], c+dc[d]
+    if out_of_bounds or visited[nr][nc]:
+        d = (d+1) % 4
+    r, c = r+dr[d], c+dc[d]
+""".strip()
+
+
+class MatrixRotationScene(Scene):
+    """rotate_90 / spiral on a 2D matrix.
+
+    Schema: {matrix: List[List[int]], operation: "rotate_90"|"spiral", caption}
+    """
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = load_params()
+        matrix    = p.get("matrix",   [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+        operation = p.get("operation", "rotate_90")
+        cap       = p.get("caption",   "")
+
+        title_map = {"rotate_90": "Rotate Matrix 90°",
+                     "spiral":    "Spiral Matrix Traversal"}
+        title = Text(title_map.get(operation, operation),
+                     font_size=28).to_edge(UP, buff=0.3)
+        badge = ComplexityBadge(time="O(n²)", space="O(1)", font_size=14)
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+
+        if cap:
+            show_title_card(self, cap)
+            self.play(FadeIn(caption_strip(cap)), run_time=0.3)
+        self.play(Write(title), FadeIn(badge.vgroup))
+
+        if operation == "rotate_90":
+            self._run_rotate(matrix)
+        else:
+            self._run_spiral(matrix)
+
+        self.wait(0.4)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+    # ─── rotate_90 ──────────────────────────────────────────────────────────
+
+    def _run_rotate(self, matrix):
+        grid = GridPanel(matrix, position=RIGHT * 0.5)
+        code_panel = CodePanel(_ROTATE_PSEUDOCODE, anchor=UL,
+                               font_size=14, max_width=4.0)
+
+        self.play(FadeIn(grid.vgroup), Write(grid.row_idx), Write(grid.col_idx),
+                  FadeIn(code_panel.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+
+        steps, _ = _matrix_rotate_90_steps(matrix)
+        if not steps:
+            return
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        for step in steps[1:]:
+            kind = step["kind"]
+            if kind == "phase":
+                line_idx = 1 if step["phase"] == "transpose" else 6
+                self.play(code_panel.anim_highlight(line_idx), run_time=0.25)
+                self.play(Transform(act, action_text(step["action"])),
+                          run_time=0.25)
+
+            elif kind == "swap":
+                i, j = step["i"], step["j"]
+                self.play(code_panel.anim_highlight(3), run_time=0.15)
+                # Highlight both cells
+                self.play(grid.flash(i, j, color=YELLOW, scale=1.2),
+                          grid.flash(j, i, color=YELLOW, scale=1.2),
+                          run_time=0.3)
+                # Update values to reflect swap
+                self.play(grid.anim_set_value(i, j, step["matrix"][i][j]),
+                          grid.anim_set_value(j, i, step["matrix"][j][i]),
+                          grid.anim_set_fill(i, j, KEEP, 0.6),
+                          grid.anim_set_fill(j, i, KEEP, 0.6),
+                          run_time=0.4)
+                self.play(Transform(act, action_text(step["action"])),
+                          run_time=0.2)
+
+            elif kind == "reverse_row":
+                r = step["row"]
+                self.play(code_panel.anim_highlight(7), run_time=0.15)
+                # Flash whole row
+                cols = len(step["matrix"][0])
+                self.play(*[grid.flash(r, c, color=HILITE, scale=1.1)
+                            for c in range(cols)],
+                          run_time=0.35)
+                # Update each cell to new (reversed) values
+                self.play(*[grid.anim_set_value(r, c, step["matrix"][r][c])
+                            for c in range(cols)],
+                          run_time=0.4)
+                self.play(Transform(act, action_text(step["action"])),
+                          run_time=0.2)
+
+            elif kind == "done":
+                # Final green highlight everywhere
+                rows = len(step["matrix"])
+                cols = len(step["matrix"][0])
+                self.play(*[grid.anim_set_fill(r, c, KEEP, 0.7)
+                            for r in range(rows) for c in range(cols)],
+                          run_time=0.45)
+                rb = result_box("Rotation complete", font_size=24).to_edge(DOWN, buff=1.75)
+                rb[1].set_color(KEEP)
+                cmp = BruteForceComparison(
+                    brute=("Allocate new n×n matrix", "O(n²) extra space"),
+                    optimal=("In-place transpose + reverse", "O(1) extra space"),
+                )
+                self.play(FadeOut(act), FadeIn(rb))
+                self.wait(0.3)
+                self.play(FadeIn(cmp.vgroup), run_time=0.4)
+                return
+
+            self.wait(0.1)
+
+    # ─── spiral ─────────────────────────────────────────────────────────────
+
+    def _run_spiral(self, matrix):
+        grid = GridPanel(matrix, position=LEFT * 1.0)
+        code_panel = CodePanel(_SPIRAL_PSEUDOCODE, anchor=UR,
+                               font_size=14, max_width=4.5)
+        # Order display below
+        order_lbl = Text("order: [ ]", font_size=18, color=KEEP).to_edge(DOWN, buff=2.6)
+
+        self.play(FadeIn(grid.vgroup), Write(grid.row_idx), Write(grid.col_idx),
+                  FadeIn(code_panel.vgroup), FadeIn(order_lbl))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
+
+        steps, order = _matrix_spiral_steps(matrix)
+        if not steps:
+            return
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        for step in steps:
+            if step["kind"] == "done":
+                break
+            r, c = step["r"], step["c"]
+            self.play(code_panel.anim_highlight(3), run_time=0.15)
+            self.play(grid.flash(r, c, color=HILITE, scale=1.25),
+                      grid.anim_set_fill(r, c, KEEP, 0.7),
+                      run_time=0.3, rate_func=smooth)
+            new_order_lbl = Text(f"order: {step['order']}",
+                                 font_size=16, color=KEEP).to_edge(DOWN, buff=2.6)
+            if new_order_lbl.width > 12:
+                new_order_lbl.scale(12 / new_order_lbl.width)
+            self.play(Transform(order_lbl, new_order_lbl),
+                      Transform(act, action_text(step["action"])),
+                      run_time=0.25)
+            self.wait(0.1)
+
+        rb = result_box(f"order = {order}", font_size=20).to_edge(DOWN, buff=1.75)
+        if rb.width > 13:
+            rb.scale(13 / rb.width)
+        rb[1].set_color(KEEP)
+        cmp = BruteForceComparison(
+            brute=("Track 4 boundaries explicitly", "O(rc), longer code"),
+            optimal=("Direction vector + turn-on-blocked", "O(rc), 6 lines"),
+        )
+        self.play(FadeOut(act), FadeIn(rb))
+        self.wait(0.3)
+        self.play(FadeIn(cmp.vgroup), run_time=0.4)
+
+
+# ===========================================================================
 #  Phase 7B Scene 5 — TopologicalSortScene (Kahn's algorithm)
 # ===========================================================================
 #
