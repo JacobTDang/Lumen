@@ -25,6 +25,89 @@ from scenes.dsa_primitives import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Pattern catalog: pseudocode + complexity per (scene_key, algorithm) pair.
+# Used by the polish pass to add CodePanel + ComplexityBadge to existing
+# pattern scenes without restructuring their step loops.
+# ---------------------------------------------------------------------------
+
+_PATTERN_CATALOG = {
+    # two_pointers_opposite
+    ("two_pointers_opposite", "palindrome"): (
+        "l, r = 0, len(s) - 1\nwhile l < r:\n    if s[l] != s[r]: return False\n    l, r = l + 1, r - 1\nreturn True",
+        "O(n)", "O(1)"),
+    ("two_pointers_opposite", "two_sum_sorted"): (
+        "l, r = 0, len(a) - 1\nwhile l < r:\n    s = a[l] + a[r]\n    if s == target: return [l, r]\n    elif s < target: l += 1\n    else: r -= 1",
+        "O(n)", "O(1)"),
+    ("two_pointers_opposite", "container_water"): (
+        "l, r = 0, len(h) - 1\nbest = 0\nwhile l < r:\n    area = (r - l) * min(h[l], h[r])\n    best = max(best, area)\n    if h[l] < h[r]: l += 1\n    else: r -= 1",
+        "O(n)", "O(1)"),
+    ("two_pointers_opposite", "reverse_array"): (
+        "l, r = 0, len(a) - 1\nwhile l < r:\n    a[l], a[r] = a[r], a[l]\n    l, r = l + 1, r - 1",
+        "O(n)", "O(1)"),
+
+    # hashmap_iteration
+    ("hashmap_iteration", "two_sum_hashmap"): (
+        "seen = {}\nfor i, v in enumerate(a):\n    if target - v in seen:\n        return [seen[target - v], i]\n    seen[v] = i",
+        "O(n)", "O(n)"),
+    ("hashmap_iteration", "frequency_count"): (
+        "freq = {}\nfor v in a:\n    freq[v] = freq.get(v, 0) + 1\nreturn freq",
+        "O(n)", "O(k)"),
+    ("hashmap_iteration", "anagram_check"): (
+        "if len(s) != len(t): return False\nfreq = {}\nfor c in s: freq[c] = freq.get(c, 0) + 1\nfor c in t: freq[c] = freq.get(c, 0) - 1\nreturn all(v == 0 for v in freq.values())",
+        "O(n)", "O(k)"),
+
+    # sliding_window_variable
+    ("sliding_window_variable", "longest_no_repeat"): (
+        "seen = {}\nl = best = 0\nfor r, c in enumerate(s):\n    if c in seen and seen[c] >= l:\n        l = seen[c] + 1\n    seen[c] = r\n    best = max(best, r - l + 1)",
+        "O(n)", "O(k)"),
+    ("sliding_window_variable", "longest_at_most_k_distinct"): (
+        "freq = {}\nl = best = 0\nfor r, c in enumerate(s):\n    freq[c] = freq.get(c, 0) + 1\n    while len(freq) > k:\n        freq[s[l]] -= 1\n        if freq[s[l]] == 0: del freq[s[l]]\n        l += 1\n    best = max(best, r - l + 1)",
+        "O(n)", "O(k)"),
+
+    # binary_search_index
+    ("binary_search_index", "find_target"): (
+        "l, r = 0, len(a) - 1\nwhile l <= r:\n    m = (l + r) // 2\n    if a[m] == target: return m\n    elif a[m] < target: l = m + 1\n    else: r = m - 1\nreturn -1",
+        "O(log n)", "O(1)"),
+    ("binary_search_index", "first_occurrence"): (
+        "l, r = 0, len(a) - 1\nans = -1\nwhile l <= r:\n    m = (l + r) // 2\n    if a[m] >= target:\n        if a[m] == target: ans = m\n        r = m - 1\n    else: l = m + 1\nreturn ans",
+        "O(log n)", "O(1)"),
+
+    # monotonic_stack
+    ("monotonic_stack", "next_greater"): (
+        "stack = []\nresult = [-1] * n\nfor i in range(n):\n    while stack and a[stack[-1]] < a[i]:\n        result[stack.pop()] = a[i]\n    stack.append(i)",
+        "O(n)", "O(n)"),
+    ("monotonic_stack", "daily_temperatures"): (
+        "stack = []\ndays = [0] * n\nfor i in range(n):\n    while stack and t[stack[-1]] < t[i]:\n        j = stack.pop()\n        days[j] = i - j\n    stack.append(i)",
+        "O(n)", "O(n)"),
+
+    # prefix_sum
+    ("prefix_sum", "build_prefix"): (
+        "prefix = [0] * (n + 1)\nfor i in range(n):\n    prefix[i + 1] = prefix[i] + a[i]",
+        "O(n)", "O(n)"),
+    ("prefix_sum", "range_sum_query"): (
+        "# After preprocessing prefix[]:\nrange_sum(l, r) = prefix[r + 1] - prefix[l]",
+        "O(1) / query", "O(n) prep"),
+}
+
+
+def _polish(scene, title, algorithm: str, scene_key: str):
+    """Build a CodePanel + ComplexityBadge for an existing pattern scene.
+
+    Returns (code_panel, badge_vgroup_or_None). Caller should FadeIn both
+    early in construct() and optionally code_panel.anim_dim_all() to set
+    the initial dim state.
+    """
+    entry = _PATTERN_CATALOG.get((scene_key, algorithm))
+    if entry is None:
+        return None, None
+    pseudo, t_complex, s_complex = entry
+    code_panel = CodePanel(pseudo, anchor=UL, font_size=14, max_width=4.0)
+    badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
+    badge.vgroup.next_to(title, RIGHT, buff=0.3)
+    return code_panel, badge.vgroup
+
+
 # ===========================================================================
 #  ALGORITHM STEP GENERATORS (pure Python, no Manim imports inside)
 # ===========================================================================
@@ -205,6 +288,7 @@ class TwoPointersOppositeScene(Scene):
             "reverse_array":   "Two Pointers — Reverse Array",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "two_pointers_opposite")
 
         # Strip
         strip = ArrayStrip(arr, position=UP * 0.6)
@@ -214,7 +298,12 @@ class TwoPointersOppositeScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
         self.wait(0.3)
 
         # Pointers
@@ -339,6 +428,7 @@ class HashMapIterationScene(Scene):
             "anagram_check":    "HashMap — Anagram Frequencies",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "hashmap_iteration")
 
         # Place array left-of-center to leave room for hashmap on the right
         strip = ArrayStrip(arr, position=LEFT * 2.5 + UP * 0.4)
@@ -348,7 +438,12 @@ class HashMapIterationScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         # HashMap panel on the right
         hmap = HashMapPanel(anchor=UR, title="HashMap")
@@ -669,6 +764,7 @@ class SlidingWindowVariableScene(Scene):
             "longest_at_most_k_distinct": f"Sliding Window — At Most {k or 2} Distinct",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "sliding_window_variable")
 
         strip = ArrayStrip(arr, position=LEFT * 2.0 + UP * 0.4)
 
@@ -677,7 +773,12 @@ class SlidingWindowVariableScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         zone = HighlightZone(strip, 0, 0, color=YELLOW)
         L_ptr = Pointer("L", color=PTR_COLORS["L"]).place_below(strip, 0)
@@ -811,6 +912,7 @@ class BinarySearchIndexScene(Scene):
             "first_occurrence": f"Binary Search — first occurrence of {target}",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "binary_search_index")
 
         strip = ArrayStrip(arr, position=UP * 0.6)
 
@@ -819,7 +921,12 @@ class BinarySearchIndexScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         L_p = Pointer("L", color=PTR_COLORS["L"]).place_below(strip, 0)
         R_p = Pointer("R", color=PTR_COLORS["R"]).place_below(strip, len(arr) - 1)
@@ -1011,6 +1118,7 @@ class MonotonicStackScene(Scene):
             "daily_temperatures":  "Monotonic Stack — Daily Temperatures",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "monotonic_stack")
 
         strip = ArrayStrip(arr, position=LEFT * 1.5 + UP * 0.5)
 
@@ -1019,7 +1127,12 @@ class MonotonicStackScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         i_ptr = Pointer("i", color=PTR_COLORS["i"]).place_below(strip, 0)
         self.play(FadeIn(i_ptr.vgroup))
@@ -1123,6 +1236,16 @@ class PrefixSumScene(Scene):
             "range_sum_query":   f"Prefix Sum — Range Query [{query_range}]" if query_range else "Prefix Sum — Range Query",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        # Use UR anchor for the code panel — UL would collide with the in_strip label
+        catalog_entry = _PATTERN_CATALOG.get(("prefix_sum", algorithm))
+        code_panel = None
+        badge_v = None
+        if catalog_entry is not None:
+            pseudo, t_complex, s_complex = catalog_entry
+            code_panel = CodePanel(pseudo, anchor=UR, font_size=14, max_width=4.0)
+            _badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
+            _badge.vgroup.next_to(title, RIGHT, buff=0.3)
+            badge_v = _badge.vgroup
 
         # Input array on top
         in_strip = ArrayStrip(arr, position=UP * 1.4)
@@ -1138,8 +1261,13 @@ class PrefixSumScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(in_strip.vgroup), Write(in_strip.indices), FadeIn(in_lbl))
         self.play(FadeIn(pre_strip.vgroup), Write(pre_strip.indices), FadeIn(pre_lbl))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         steps, result = _prefix_sum_steps(arr, algorithm, query_range)
         act = action_text(steps[0]["action"]) if steps else action_text("...")
