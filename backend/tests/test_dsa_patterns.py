@@ -664,3 +664,48 @@ def test_matrix_spiral_renders(tmp_path):
                 {"matrix": [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
                  "operation": "spiral"}),
         tmp_path, "MatrixRotationScene")
+
+
+# ---------------------------------------------------------------------------
+# RecursionTreeDCScene — merge_sort
+# ---------------------------------------------------------------------------
+
+def test_merge_sort_sorts():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _merge_sort_steps
+    _, sorted_arr, _ = _merge_sort_steps([3, 1, 4, 1, 5])
+    assert sorted_arr == [1, 1, 3, 4, 5]
+
+
+def test_merge_sort_already_sorted():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _merge_sort_steps
+    _, sorted_arr, _ = _merge_sort_steps([1, 2, 3, 4])
+    assert sorted_arr == [1, 2, 3, 4]
+
+
+def test_merge_sort_reverse():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _merge_sort_steps
+    _, sorted_arr, _ = _merge_sort_steps([5, 4, 3, 2, 1])
+    assert sorted_arr == [1, 2, 3, 4, 5]
+
+
+def test_merge_sort_single_element():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _merge_sort_steps
+    _, sorted_arr, nodes = _merge_sort_steps([42])
+    assert sorted_arr == [42]
+    # Single-element array → no children spawned, just the root
+    assert len(nodes) == 1
+
+
+@pytest.mark.integration
+def test_recursion_tree_merge_sort_renders(tmp_path):
+    _ok(_render(tmp_path, "RecursionTreeDCScene",
+                {"array": [3, 1, 4, 1, 5]}),
+        tmp_path, "RecursionTreeDCScene")

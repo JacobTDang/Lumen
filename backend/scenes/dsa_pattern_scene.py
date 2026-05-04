@@ -2883,6 +2883,210 @@ class FloydCycleScene(Scene):
 
 
 # ===========================================================================
+#  Phase 7B Scene 7 — RecursionTreeDCScene
+# ===========================================================================
+#
+#  Divide-and-conquer recursion tree for merge_sort. The tree builds
+#  top-down in BFS order during the SPLIT phase, then collapses
+#  bottom-up during the MERGE phase. Each leaf is a single element
+#  (already sorted); merges combine two sorted children into one.
+# ---------------------------------------------------------------------------
+
+def _merge_sort_steps(arr: list) -> tuple:
+    """Returns (steps, sorted_arr, nodes_meta).
+
+    nodes_meta[i] = (parent_index, slice_list, l, r)
+    Step kinds: 'split' (spawn child node), 'merge' (combine two children
+                into parent's sorted result), 'done'
+    """
+    if not arr:
+        return [], [], []
+
+    nodes = [(None, list(arr), 0, len(arr) - 1)]
+    children_of = {0: []}
+
+    # BFS to build the full tree
+    queue = [0]
+    while queue:
+        cur = queue.pop(0)
+        _, _, l, r = nodes[cur]
+        if l >= r:
+            continue
+        m = (l + r) // 2
+        left_idx  = len(nodes)
+        right_idx = left_idx + 1
+        nodes.append((cur, list(arr[l:m + 1]),    l, m))
+        nodes.append((cur, list(arr[m + 1:r + 1]), m + 1, r))
+        children_of[cur].extend([left_idx, right_idx])
+        children_of[left_idx]  = []
+        children_of[right_idx] = []
+        queue.append(left_idx)
+        queue.append(right_idx)
+
+    steps = []
+    # Split phase in BFS order (skip root which already exists)
+    for idx in range(1, len(nodes)):
+        parent_idx, slc, _, _ = nodes[idx]
+        steps.append({"kind": "split", "node_idx": idx,
+                      "parent_idx": parent_idx, "label": str(slc),
+                      "action": f"split → {slc}"})
+
+    # Merge phase in reverse-BFS order (leaves first, then up)
+    sorted_at = {}
+    for idx in range(len(nodes) - 1, -1, -1):
+        _, _, l, r = nodes[idx]
+        if l == r:
+            sorted_at[idx] = [arr[l]]
+        else:
+            kids = children_of[idx]
+            left_sorted  = sorted_at[kids[0]]
+            right_sorted = sorted_at[kids[1]]
+            merged = []
+            i = j = 0
+            while i < len(left_sorted) and j < len(right_sorted):
+                if left_sorted[i] <= right_sorted[j]:
+                    merged.append(left_sorted[i]); i += 1
+                else:
+                    merged.append(right_sorted[j]); j += 1
+            merged.extend(left_sorted[i:])
+            merged.extend(right_sorted[j:])
+            sorted_at[idx] = merged
+            steps.append({"kind": "merge", "node_idx": idx,
+                          "label": str(merged),
+                          "action": f"merge → {merged}"})
+
+    steps.append({"kind": "done", "label": str(sorted_at[0]),
+                  "action": f"sorted = {sorted_at[0]}"})
+    return steps, sorted_at[0], nodes
+
+
+_MERGE_SORT_PSEUDOCODE = """
+def merge_sort(a):
+    if len(a) <= 1: return a
+    m = len(a) // 2
+    left  = merge_sort(a[:m])
+    right = merge_sort(a[m:])
+    return merge(left, right)
+""".strip()
+
+
+class RecursionTreeDCScene(Scene):
+    """Divide-and-conquer recursion tree (merge_sort).
+
+    Schema: {array: List[int], algorithm: "merge_sort", caption: str}
+    """
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = load_params()
+        array = p.get("array", [3, 1, 4, 1, 5])
+        cap   = p.get("caption", "")
+
+        title = Text("Merge Sort — Recursion Tree",
+                     font_size=28).to_edge(UP, buff=0.3)
+        badge = ComplexityBadge(time="O(n log n)", space="O(n)", font_size=14)
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+
+        if cap:
+            show_title_card(self, cap)
+            self.play(FadeIn(caption_strip(cap)), run_time=0.3)
+        self.play(Write(title), FadeIn(badge.vgroup))
+
+        # Input array shown above the recursion tree
+        in_strip = ArrayStrip(array, position=UP * 2.4)
+        # Recursion tree centered, taking most of the lower screen
+        rt = RecursionTree(root_label=str(array),
+                           position=DOWN * 0.4,
+                           width=8.5, level_gap=0.85, node_radius=0.34)
+
+        code_panel = CodePanel(_MERGE_SORT_PSEUDOCODE, anchor=UL,
+                               font_size=12, max_width=4.0)
+
+        self.play(FadeIn(in_strip.vgroup), Write(in_strip.indices),
+                  FadeIn(rt.vgroup), FadeIn(code_panel.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.2)
+
+        steps, sorted_arr, nodes_meta = _merge_sort_steps(array)
+        if not steps:
+            return
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        # Map nodes_meta index → tree node id (root is 0; children get IDs as spawned)
+        meta_to_tree = {0: 0}
+
+        for step in steps:
+            kind = step["kind"]
+
+            if kind == "split":
+                self.play(code_panel.anim_highlight(3), run_time=0.15)
+                parent_meta = step["parent_idx"]
+                parent_tree = meta_to_tree[parent_meta]
+                new_id, anims = rt.anim_spawn_child(parent_tree, step["label"])
+                meta_to_tree[step["node_idx"]] = new_id
+                if anims:
+                    self.play(*anims, run_time=0.45, rate_func=smooth)
+
+                # Mark single-element nodes (leaves) green = sorted base case
+                meta_idx = step["node_idx"]
+                _, slc, l, r = nodes_meta[meta_idx]
+                if l == r:
+                    leaf_node = rt.nodes[new_id]
+                    self.play(leaf_node[0].animate.set_fill(KEEP, opacity=0.85),
+                              run_time=0.2)
+
+            elif kind == "merge":
+                self.play(code_panel.anim_highlight(5), run_time=0.15)
+                meta_idx = step["node_idx"]
+                tree_id  = meta_to_tree[meta_idx]
+                node = rt.nodes[tree_id]
+
+                # Update the node's label to the sorted slice
+                font = max(13, int(18 * (rt.node_radius / 0.30)))
+                new_label = Text(step["label"], font_size=font, color=WHITE)
+                if new_label.width > 2 * rt.node_radius - 0.05:
+                    new_label.scale((2 * rt.node_radius - 0.05) / max(new_label.width, 0.001))
+                new_label.move_to(node[1].get_center())
+
+                # Flash both children green to show they're being merged
+                child_anims = []
+                for cid in [c for (p, c) in rt.edges if p == tree_id]:
+                    child_anims.append(Indicate(rt.nodes[cid], color=KEEP,
+                                                scale_factor=1.15))
+                if child_anims:
+                    self.play(*child_anims, run_time=0.35)
+                self.play(Transform(node[1], new_label),
+                          node[0].animate.set_fill(KEEP, opacity=0.7),
+                          run_time=0.4)
+
+            elif kind == "done":
+                # Final result: highlight all root cells in green
+                self.play(rt.nodes[0][0].animate.set_fill(KEEP, opacity=0.9),
+                          Indicate(rt.nodes[0], color=KEEP, scale_factor=1.25),
+                          run_time=0.45)
+                rb = result_box(f"sorted = {sorted_arr}",
+                                font_size=22).to_edge(DOWN, buff=1.75)
+                if rb.width > 13:
+                    rb.scale(13 / rb.width)
+                rb[1].set_color(KEEP)
+                cmp = BruteForceComparison(
+                    brute=("Bubble / insertion sort", "O(n²)"),
+                    optimal=("Divide & conquer + merge", "O(n log n)"),
+                )
+                self.play(FadeOut(act), FadeIn(rb))
+                self.wait(0.3)
+                self.play(FadeIn(cmp.vgroup), run_time=0.4)
+                break
+
+            self.play(Transform(act, action_text(step["action"])), run_time=0.2)
+            self.wait(0.1)
+
+        self.wait(0.6)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ===========================================================================
 #  Phase 7B Scene 6 — MatrixRotationScene
 # ===========================================================================
 #
