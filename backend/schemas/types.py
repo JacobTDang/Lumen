@@ -377,6 +377,70 @@ class SegmentTreeSchema(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Phase 7 — additional pattern scenes
+# ---------------------------------------------------------------------------
+
+class FloydCycleSchema(BaseModel):
+    scene: Literal["floyd_cycle"] = "floyd_cycle"
+    values: List[int] = Field(..., min_length=1, max_length=10)
+    cycle_at: Optional[int] = None
+    caption: str = ""
+
+
+class TrappingRainWaterSchema(BaseModel):
+    scene: Literal["trapping_rain_water"] = "trapping_rain_water"
+    heights: List[int] = Field(..., min_length=2, max_length=12)
+    caption: str = ""
+
+
+class GreedyIntervalSchema(BaseModel):
+    scene: Literal["greedy_interval"] = "greedy_interval"
+    values: List[int] = Field(..., min_length=1, max_length=10)
+    algorithm: Literal["jump_game", "gas_station"] = "jump_game"
+    caption: str = ""
+
+
+class BitManipulationSchema(BaseModel):
+    scene: Literal["bit_manipulation"] = "bit_manipulation"
+    values: List[int] = Field(..., min_length=1, max_length=8)
+    operation: Literal["single_number", "count_bits"] = "single_number"
+    caption: str = ""
+
+
+class TopologicalSortSchema(BaseModel):
+    scene: Literal["topological_sort"] = "topological_sort"
+    num_nodes: int = Field(default=5, ge=2, le=8)
+    edges: List[List[int]] = Field(..., max_length=15)
+    caption: str = ""
+
+
+class MatrixRotationSchema(BaseModel):
+    scene: Literal["matrix_rotation"] = "matrix_rotation"
+    matrix: List[List[int]] = Field(..., min_length=1, max_length=5)
+    operation: Literal["rotate_90", "spiral"] = "rotate_90"
+    caption: str = ""
+
+    @field_validator("matrix")
+    @classmethod
+    def _matrix_shape(cls, v: List[List[int]]) -> List[List[int]]:
+        if not v or not v[0]:
+            raise ValueError("matrix must have at least one row and one column")
+        cols = len(v[0])
+        if any(len(row) != cols for row in v):
+            raise ValueError("matrix rows must all have the same length")
+        if cols > 5:
+            raise ValueError("matrix columns must not exceed 5")
+        return v
+
+
+class RecursionTreeDCSchema(BaseModel):
+    scene: Literal["recursion_tree_dc"] = "recursion_tree_dc"
+    array: List[int] = Field(..., min_length=1, max_length=8)
+    algorithm: Literal["merge_sort"] = "merge_sort"
+    caption: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Arithmetic schemas
 # ---------------------------------------------------------------------------
 
@@ -741,6 +805,13 @@ VisualizationSchema = (
     | UnionFindSchema
     | DijkstraSchema
     | SegmentTreeSchema
+    | FloydCycleSchema
+    | TrappingRainWaterSchema
+    | GreedyIntervalSchema
+    | BitManipulationSchema
+    | TopologicalSortSchema
+    | MatrixRotationSchema
+    | RecursionTreeDCSchema
 )
 
 

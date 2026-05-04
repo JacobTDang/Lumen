@@ -108,6 +108,38 @@ ADVANCED DSA PATTERNS:
     params: {"array": [int, ...], "queries": [[l,r], ...]}
     use for: range sum queries, range min/max queries, online range problems
 
+PHASE 7 PATTERNS (newer, prefer over legacy when applicable):
+  floyd_cycle — Floyd's tortoise & hare cycle detection
+    params: {"values": [int, ...], "cycle_at": int|null}
+    use for: linked list cycle detection, find duplicate (LC 287), happy number
+    note: cycle_at = index where the tail loops back; null = no cycle
+
+  trapping_rain_water — two-pointer water trapping on a histogram
+    params: {"heights": [int, ...]}
+    use for: trapping rain water (LC 42), container that catches water
+
+  greedy_interval — greedy reach/tank-based decisions
+    params: {"values": [int, ...], "algorithm": "jump_game"|"gas_station"}
+    use for: jump game (LC 55), gas station (LC 134), reach-based greedy
+
+  bit_manipulation — bit-level XOR / Brian-Kernighan
+    params: {"values": [int, ...], "operation": "single_number"|"count_bits"}
+    use for: single number (LC 136 XOR-fold), count set bits (LC 191)
+
+  topological_sort — Kahn's BFS topological sort
+    params: {"num_nodes": int, "edges": [[u, v], ...]}
+    use for: course schedule (LC 207, 210), dependency resolution, DAG ordering
+
+  matrix_rotation — in-place 2D matrix transformation
+    params: {"matrix": [[int, ...], ...], "operation": "rotate_90"|"spiral"}
+    use for: rotate matrix 90° (LC 48), spiral matrix (LC 54)
+    note: matrix max 5x5 for visual budget
+
+  recursion_tree_dc — divide-and-conquer recursion tree (merge sort)
+    params: {"array": [int, ...], "algorithm": "merge_sort"}
+    use for: merge sort, divide-and-conquer visualization, "how does merge sort work"
+    note: array max 8 elements for visual budget
+
 LEGACY ARRAYS (only fall back if no pattern above fits):
   array_pointer — generic two-pointer or binary search
     params: {"array": [...], "algorithm": "binary_search"|"two_pointers"|"palindrome",
@@ -166,6 +198,13 @@ Pattern routing (tiebreakers):
 - connected components / disjoint set / union-find → union_find
 - shortest path on weighted graph / network delay → dijkstra
 - range query / segment tree / online range → segment_tree
+- linked list cycle / find duplicate / cycle detection → floyd_cycle
+- trapping rain water / water between bars → trapping_rain_water
+- jump game / gas station / greedy reach → greedy_interval
+- single number XOR / count bits / bit tricks → bit_manipulation
+- course schedule / topological order / DAG → topological_sort
+- rotate matrix 90° / spiral matrix → matrix_rotation
+- merge sort / divide and conquer recursion → recursion_tree_dc
 
 Planning rules:
 - Use small realistic data (arrays 5-8 elements, trees 7-15 nodes, graphs 5-7 nodes)
@@ -196,6 +235,10 @@ _VALID_DSA_TOOLS = {
     "kadanes", "interval_merging", "backtracking_subsets", "lru_cache",
     "grid_traversal", "heap_ops", "dp_2d", "trie_ops",
     "union_find", "dijkstra", "segment_tree",
+    # phase 7 — visual depth + missing patterns
+    "floyd_cycle", "trapping_rain_water", "greedy_interval",
+    "bit_manipulation", "topological_sort", "matrix_rotation",
+    "recursion_tree_dc",
 }
 
 

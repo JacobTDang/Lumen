@@ -96,6 +96,14 @@ SCENE_REGISTRY = {
     "union_find":              ("scenes/dsa_pattern_scene.py", "UnionFindScene"),
     "dijkstra":                ("scenes/dsa_pattern_scene.py", "DijkstraScene"),
     "segment_tree":            ("scenes/dsa_pattern_scene.py", "SegmentTreeScene"),
+    # DSA — Phase 7 (visual depth + 7 missing patterns)
+    "floyd_cycle":             ("scenes/dsa_pattern_scene.py", "FloydCycleScene"),
+    "trapping_rain_water":     ("scenes/dsa_pattern_scene.py", "TrappingRainWaterScene"),
+    "greedy_interval":         ("scenes/dsa_pattern_scene.py", "GreedyIntervalScene"),
+    "bit_manipulation":        ("scenes/dsa_pattern_scene.py", "BitManipulationScene"),
+    "topological_sort":        ("scenes/dsa_pattern_scene.py", "TopologicalSortScene"),
+    "matrix_rotation":         ("scenes/dsa_pattern_scene.py", "MatrixRotationScene"),
+    "recursion_tree_dc":       ("scenes/dsa_pattern_scene.py", "RecursionTreeDCScene"),
     # Arithmetic
     "number_line":        ("scenes/arithmetic_scene.py",  "NumberLineScene"),
     "fraction":           ("scenes/arithmetic_scene.py",  "FractionScene"),

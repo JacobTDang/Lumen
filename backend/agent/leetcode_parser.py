@@ -35,10 +35,13 @@ from schemas.types import (
     BinarySearchAnswerSchema,
     BinarySearchIndexSchema,
     BacktrackingSubsetsSchema,
+    BitManipulationSchema,
     DijkstraSchema,
     DP2DSchema,
     DPArraySchema,
+    FloydCycleSchema,
     GraphSchema,
+    GreedyIntervalSchema,
     GridTraversalSchema,
     HashMapIterationSchema,
     HeapOpsSchema,
@@ -46,11 +49,15 @@ from schemas.types import (
     KadanesSchema,
     LRUCacheSchema,
     LinkedListSchema,
+    MatrixRotationSchema,
     MonotonicStackSchema,
     PrefixSumSchema,
+    RecursionTreeDCSchema,
     SegmentTreeSchema,
     SlidingWindowVariableSchema,
     StackQueueSchema,
+    TopologicalSortSchema,
+    TrappingRainWaterSchema,
     TreeTraversalSchema,
     TrieOpsSchema,
     TwoPointersOppositeSchema,
@@ -89,6 +96,14 @@ _SCENE_SCHEMAS: dict[str, Type[BaseModel]] = {
     "graph_traversal":         GraphSchema,
     "dp_array":                DPArraySchema,
     "stack_queue":             StackQueueSchema,
+    # Phase 7 — visual depth + 7 missing patterns
+    "floyd_cycle":             FloydCycleSchema,
+    "trapping_rain_water":     TrappingRainWaterSchema,
+    "greedy_interval":         GreedyIntervalSchema,
+    "bit_manipulation":        BitManipulationSchema,
+    "topological_sort":        TopologicalSortSchema,
+    "matrix_rotation":         MatrixRotationSchema,
+    "recursion_tree_dc":       RecursionTreeDCSchema,
 }
 
 _SCENE_KEYS = sorted(_SCENE_SCHEMAS.keys())
@@ -199,6 +214,38 @@ ADVANCED PATTERNS
     params: {array: list[int], queries: list[[l,r]]}
     when: range sum queries, range min/max queries (cap array 8)
 
+PHASE 7 PATTERNS (newer — prefer over legacy when applicable)
+  floyd_cycle — tortoise & hare cycle detection
+    params: {values: list[int], cycle_at: int|null}
+    when: linked list cycle detection, find duplicate (LC 287)
+    note: cycle_at is the index where the tail loops back; null = no cycle
+
+  trapping_rain_water — two-pointer water trapping on a histogram
+    params: {heights: list[int]}
+    when: trapping rain water (LC 42)
+
+  greedy_interval — greedy reach/tank-based decisions
+    params: {values: list[int], algorithm: "jump_game"|"gas_station"}
+    when: jump game (LC 55), gas station (LC 134)
+
+  bit_manipulation — XOR-fold or Brian-Kernighan
+    params: {values: list[int], operation: "single_number"|"count_bits"}
+    when: single number (LC 136), count set bits (LC 191)
+
+  topological_sort — Kahn's BFS topo sort
+    params: {num_nodes: int, edges: list[[u,v]]}
+    when: course schedule (LC 207, 210), DAG ordering (cap nodes 8)
+
+  matrix_rotation — in-place 2D matrix transformation
+    params: {matrix: list[list[int]], operation: "rotate_90"|"spiral"}
+    when: rotate matrix 90° (LC 48), spiral matrix (LC 54)
+    note: matrix max 5x5
+
+  recursion_tree_dc — divide-and-conquer recursion tree
+    params: {array: list[int], algorithm: "merge_sort"}
+    when: merge sort visualization, "how does merge sort work"
+    note: array max 8 elements
+
 LINKED LIST / TREE / GRAPH / DP / STACK
   linked_list      — params: {values: list[int], algorithm: "reverse"|"find_middle"|"merge_sorted", values2?: list[int]}
   tree_traversal   — params: {values: list[int|null], algorithm: "bfs"|"dfs"|"inorder"|"preorder"|"postorder"|"height"}
@@ -225,6 +272,13 @@ ROUTING TIEBREAKERS
 - "LRU" / "design cache" → lru_cache
 - "k-largest" / "k-smallest" / "top K" → heap_ops
 - "range sum query" / "segment tree" → segment_tree (or prefix_sum if no updates)
+- "linked list cycle" / "find duplicate number" / "happy number" → floyd_cycle
+- "trapping rain water" / "water between bars" → trapping_rain_water
+- "jump game" / "gas station" / "greedy reach" → greedy_interval
+- "single number" XOR / "count bits" / bit-manipulation tricks → bit_manipulation
+- "course schedule" / "topological order" / DAG dependency resolution → topological_sort
+- "rotate matrix 90°" / "spiral matrix" → matrix_rotation
+- "merge sort" / divide-and-conquer recursion visualization → recursion_tree_dc
 
 Respond with ONLY a single JSON object — no markdown fences, no prose before or after.
 
