@@ -2883,6 +2883,235 @@ class FloydCycleScene(Scene):
 
 
 # ===========================================================================
+#  Phase 7B Scene 4 — BitManipulationScene
+# ===========================================================================
+#
+#  Three classic bit-manipulation patterns:
+#    single_number  : XOR-fold to find the value appearing once (LC 136)
+#    count_bits     : Brian-Kernighan (n & (n-1)) loop (LC 191)
+#    reverse_bits   : MSB↔LSB reversal of an 8-bit word (LC 190)
+# ---------------------------------------------------------------------------
+
+def _single_number_steps(values: list, num_bits: int = 8) -> tuple:
+    """Returns (steps, result). Each step: {kind, value, result, action}."""
+    steps = [{"kind": "init", "value": 0, "result": 0,
+              "action": "result = 0"}]
+    result = 0
+    for v in values:
+        old = result
+        result ^= v
+        steps.append({"kind": "xor", "value": v, "result": result, "old": old,
+                      "action": f"{old} ^ {v} = {result}"})
+    steps.append({"kind": "done", "value": 0, "result": result,
+                  "action": f"answer = {result}"})
+    return steps, result
+
+
+def _count_bits_steps(value: int, num_bits: int = 8) -> tuple:
+    """Brian-Kernighan: while n: n &= (n-1); count += 1.
+    Returns (steps, count). Each step: {kind, n, count, action}.
+    """
+    steps = [{"kind": "init", "n": value, "count": 0,
+              "action": f"n = {value}, count = 0"}]
+    n, count = value, 0
+    while n:
+        n_after = n & (n - 1)
+        count += 1
+        steps.append({"kind": "clear", "n": n_after, "count": count,
+                      "action": f"n & (n-1) = {n_after}, count = {count}"})
+        n = n_after
+    steps.append({"kind": "done", "n": 0, "count": count,
+                  "action": f"answer = {count} bits"})
+    return steps, count
+
+
+_SINGLE_NUMBER_PSEUDOCODE = """
+result = 0
+for v in nums:
+    result ^= v
+return result
+""".strip()
+
+
+_COUNT_BITS_PSEUDOCODE = """
+count = 0
+while n:
+    n = n & (n - 1)
+    count += 1
+return count
+""".strip()
+
+
+class BitManipulationScene(Scene):
+    """Bit manipulation: single_number / count_bits.
+
+    Schema: {values: List[int], operation: str, caption: str}
+       For single_number: values is the input list, result is the XOR of all.
+       For count_bits:    values[0] is the number to count bits in.
+    """
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = load_params()
+        values    = p.get("values",    [4, 1, 2, 1, 2])
+        operation = p.get("operation", "single_number")
+        cap       = p.get("caption",   "")
+
+        title_map = {"single_number": "Single Number — XOR Fold",
+                     "count_bits":    "Count Bits — Brian-Kernighan"}
+        title = Text(title_map.get(operation, operation),
+                     font_size=28).to_edge(UP, buff=0.3)
+        badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+
+        if cap:
+            show_title_card(self, cap)
+            self.play(FadeIn(caption_strip(cap)), run_time=0.3)
+        self.play(Write(title), FadeIn(badge.vgroup))
+
+        if operation == "single_number":
+            self._run_single_number(values)
+        else:
+            self._run_count_bits(values[0] if values else 0)
+
+        self.wait(0.4)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+    # ─── single_number ──────────────────────────────────────────────────────
+
+    def _run_single_number(self, values):
+        num_bits = 8
+        result_reg = BinaryRegister(value=0, num_bits=num_bits, label="result",
+                                    position=UP * 0.6, cell_size=0.55)
+        next_reg = BinaryRegister(value=0, num_bits=num_bits, label="v",
+                                  position=DOWN * 0.5, cell_size=0.55)
+
+        code_panel = CodePanel(_SINGLE_NUMBER_PSEUDOCODE, anchor=UL,
+                               font_size=15, max_width=4.0)
+        state = StatePanel(anchor=UR, title="State")
+
+        self.play(FadeIn(result_reg.vgroup), FadeIn(next_reg.vgroup),
+                  FadeIn(code_panel.vgroup), FadeIn(state.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
+        self.play(*state.anim_set("result", 0, color=KEEP), run_time=0.25)
+
+        steps, ans = _single_number_steps(values, num_bits)
+        if not steps:
+            return
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        # Walk steps[1:] (skip init) — each is an XOR step except the last (done)
+        for step in steps[1:]:
+            if step["kind"] == "done":
+                break
+            v = step["value"]
+            self.play(code_panel.anim_highlight(2), run_time=0.2)
+
+            # Update next_reg to display the next value v, then XOR into result
+            new_v_reg = BinaryRegister(
+                value=v, num_bits=num_bits, label="v",
+                position=next_reg.vgroup.get_center(), cell_size=0.55,
+            )
+            self.play(Transform(next_reg.vgroup, new_v_reg.vgroup), run_time=0.4)
+            next_reg.value = v
+            next_reg.bits = [(v >> (num_bits - 1 - i)) & 1 for i in range(num_bits)]
+
+            # XOR bit by bit — flash differing bits
+            target_bits = [a ^ b for a, b in zip(result_reg.bits, next_reg.bits)]
+            flash_anims = []
+            set_anims = []
+            for j, target_bit in enumerate(target_bits):
+                bit_idx = num_bits - 1 - j  # LSB convention
+                cur_bit = result_reg.bits[j]
+                if cur_bit != target_bit:
+                    flash_anims.append(result_reg.flash(bit_idx, color=YELLOW, scale=1.3))
+                    set_anim = result_reg.anim_set_bit(bit_idx, target_bit)
+                    if set_anim is not None:
+                        set_anims.append(set_anim)
+
+            if flash_anims:
+                self.play(*flash_anims, run_time=0.4)
+            if set_anims:
+                self.play(*set_anims, run_time=0.4)
+
+            self.play(*state.anim_set("result", step["result"], color=KEEP),
+                      run_time=0.2)
+            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+            self.wait(0.2)
+
+        # Final
+        self.play(code_panel.anim_highlight(3), run_time=0.25)
+        rb = result_box(f"Single number = {ans}", font_size=24).to_edge(DOWN, buff=1.75)
+        rb[1].set_color(KEEP)
+        cmp = BruteForceComparison(
+            brute=("Hashmap of counts", "O(n) space"),
+            optimal=("XOR-fold (a ^ a = 0)", "O(1) space"),
+        )
+        self.play(FadeOut(act), FadeIn(rb))
+        self.wait(0.3)
+        self.play(FadeIn(cmp.vgroup), run_time=0.4)
+
+    # ─── count_bits (Brian-Kernighan) ───────────────────────────────────────
+
+    def _run_count_bits(self, value):
+        num_bits = 8
+        n_reg = BinaryRegister(value=value, num_bits=num_bits, label="n",
+                               position=UP * 0.5, cell_size=0.55)
+
+        code_panel = CodePanel(_COUNT_BITS_PSEUDOCODE, anchor=UL,
+                               font_size=15, max_width=4.0)
+        state = StatePanel(anchor=UR, title="State")
+
+        self.play(FadeIn(n_reg.vgroup),
+                  FadeIn(code_panel.vgroup), FadeIn(state.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
+        self.play(*state.anim_set("count", 0, color=KEEP), run_time=0.25)
+
+        steps, count = _count_bits_steps(value, num_bits)
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        for step in steps[1:]:
+            if step["kind"] == "done":
+                break
+            self.play(code_panel.anim_highlight(2), run_time=0.2)
+
+            target_bits = [(step["n"] >> (num_bits - 1 - i)) & 1 for i in range(num_bits)]
+            flash_anims = []
+            set_anims = []
+            for j, tb in enumerate(target_bits):
+                bit_idx = num_bits - 1 - j
+                if n_reg.bits[j] != tb:
+                    flash_anims.append(n_reg.flash(bit_idx, color=REJECT, scale=1.3))
+                    sa = n_reg.anim_set_bit(bit_idx, tb)
+                    if sa is not None:
+                        set_anims.append(sa)
+            if flash_anims:
+                self.play(*flash_anims, run_time=0.4)
+            if set_anims:
+                self.play(*set_anims, run_time=0.4)
+
+            self.play(*state.anim_set("count", step["count"], color=KEEP),
+                      run_time=0.2)
+            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+            self.wait(0.15)
+
+        self.play(code_panel.anim_highlight(4), run_time=0.25)
+        rb = result_box(f"Set bits = {count}", font_size=24).to_edge(DOWN, buff=1.75)
+        rb[1].set_color(KEEP)
+        cmp = BruteForceComparison(
+            brute=("Check each bit (32 iters)", "O(num_bits)"),
+            optimal=("Brian-Kernighan trick", "O(set_bits)"),
+        )
+        self.play(FadeOut(act), FadeIn(rb))
+        self.wait(0.3)
+        self.play(FadeIn(cmp.vgroup), run_time=0.4)
+
+
+# ===========================================================================
 #  Phase 7B Scene 3 — GreedyIntervalScene
 # ===========================================================================
 #

@@ -505,3 +505,57 @@ def test_greedy_gas_station_renders(tmp_path):
     _ok(_render(tmp_path, "GreedyIntervalScene",
                 {"values": [-2, -2, -2, 3, 3], "algorithm": "gas_station"}),
         tmp_path, "GreedyIntervalScene")
+
+
+# ---------------------------------------------------------------------------
+# BitManipulationScene — single_number + count_bits
+# ---------------------------------------------------------------------------
+
+def test_bit_single_number_lc136():
+    """LC 136: [4,1,2,1,2] → 4."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _single_number_steps
+    steps, ans = _single_number_steps([4, 1, 2, 1, 2])
+    assert ans == 4
+    assert steps[-1]["kind"] == "done"
+
+
+def test_bit_single_number_singleton():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _single_number_steps
+    _, ans = _single_number_steps([7])
+    assert ans == 7
+
+
+def test_bit_count_bits_brian_kernighan():
+    """0b10110 has 3 set bits."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _count_bits_steps
+    steps, count = _count_bits_steps(0b10110)
+    assert count == 3
+    assert steps[-1]["kind"] == "done"
+
+
+def test_bit_count_bits_zero():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _count_bits_steps
+    _, count = _count_bits_steps(0)
+    assert count == 0
+
+
+@pytest.mark.integration
+def test_bit_single_number_renders(tmp_path):
+    _ok(_render(tmp_path, "BitManipulationScene",
+                {"values": [4, 1, 2, 1, 2], "operation": "single_number"}),
+        tmp_path, "BitManipulationScene")
+
+
+@pytest.mark.integration
+def test_bit_count_bits_renders(tmp_path):
+    _ok(_render(tmp_path, "BitManipulationScene",
+                {"values": [22], "operation": "count_bits"}),
+        tmp_path, "BitManipulationScene")
