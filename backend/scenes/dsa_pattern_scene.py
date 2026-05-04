@@ -88,6 +88,81 @@ _PATTERN_CATALOG = {
     ("prefix_sum", "range_sum_query"): (
         "# After preprocessing prefix[]:\nrange_sum(l, r) = prefix[r + 1] - prefix[l]",
         "O(1) / query", "O(n) prep"),
+
+    # two_pointers_same_dir
+    ("two_pointers_same_dir", "remove_duplicates"): (
+        "slow = 0\nfor fast in range(1, len(a)):\n    if a[fast] != a[slow]:\n        slow += 1\n        a[slow] = a[fast]\nreturn slow + 1",
+        "O(n)", "O(1)"),
+    ("two_pointers_same_dir", "move_zeros"): (
+        "slow = 0\nfor fast in range(len(a)):\n    if a[fast] != 0:\n        a[slow], a[fast] = a[fast], a[slow]\n        slow += 1",
+        "O(n)", "O(1)"),
+
+    # binary_search_answer
+    ("binary_search_answer", "default"): (
+        "lo, hi = min_val, max_val\nwhile lo < hi:\n    mid = (lo + hi) // 2\n    if predicate(mid):\n        hi = mid\n    else:\n        lo = mid + 1\nreturn lo",
+        "O(log range)", "O(1)"),
+
+    # interval_merging
+    ("interval_merging", "default"): (
+        "intervals.sort(key=lambda x: x[0])\nmerged = []\nfor s, e in intervals:\n    if merged and merged[-1][1] >= s:\n        merged[-1][1] = max(merged[-1][1], e)\n    else:\n        merged.append([s, e])",
+        "O(n log n)", "O(n)"),
+
+    # backtracking_subsets
+    ("backtracking_subsets", "subsets"): (
+        "def dfs(i, path):\n    if i == len(a):\n        out.append(path[:])\n        return\n    dfs(i + 1, path)            # exclude\n    dfs(i + 1, path + [a[i]])  # include",
+        "O(2^n)", "O(n)"),
+    ("backtracking_subsets", "permutations"): (
+        "def dfs(used, path):\n    if len(path) == len(a):\n        out.append(path[:]); return\n    for i in range(len(a)):\n        if not used[i]:\n            used[i] = True\n            dfs(used, path + [a[i]])\n            used[i] = False",
+        "O(n!)", "O(n)"),
+
+    # lru_cache
+    ("lru_cache", "default"): (
+        "def get(k):\n    if k in cache: move_to_head(k); return cache[k]\n    return -1\ndef put(k, v):\n    if k in cache: update + move_to_head\n    elif size == capacity: evict_tail()\n    add_to_head(k, v)",
+        "O(1) per op", "O(capacity)"),
+
+    # grid_traversal
+    ("grid_traversal", "bfs"): (
+        "queue = [(start, 0)]\nvisited[start] = True\nwhile queue:\n    (r, c), d = queue.popleft()\n    if (r, c) == target: return d\n    for nr, nc in neighbors(r, c):\n        if grid[nr][nc] == 0 and not visited[nr][nc]:\n            visited[nr][nc] = True\n            queue.append(((nr, nc), d + 1))",
+        "O(rc)", "O(rc)"),
+    ("grid_traversal", "dfs"): (
+        "def dfs(r, c):\n    if (r, c) == target: return True\n    visited[r][c] = True\n    for nr, nc in neighbors(r, c):\n        if grid[nr][nc] == 0 and not visited[nr][nc]:\n            if dfs(nr, nc): return True\n    return False",
+        "O(rc)", "O(rc)"),
+
+    # heap_ops
+    ("heap_ops", "default"): (
+        "def push(v):\n    heap.append(v); sift_up(len(heap) - 1)\ndef pop():\n    swap(0, -1); top = heap.pop()\n    sift_down(0)\n    return top",
+        "O(log n) per op", "O(n)"),
+
+    # dp_2d
+    ("dp_2d", "lcs"): (
+        "for i in 1..m:\n    for j in 1..n:\n        if s1[i-1] == s2[j-1]:\n            dp[i][j] = dp[i-1][j-1] + 1\n        else:\n            dp[i][j] = max(dp[i-1][j], dp[i][j-1])",
+        "O(mn)", "O(mn)"),
+    ("dp_2d", "edit_distance"): (
+        "for i in 0..m:\n    for j in 0..n:\n        if i == 0: dp[i][j] = j\n        elif j == 0: dp[i][j] = i\n        elif s1[i-1] == s2[j-1]:\n            dp[i][j] = dp[i-1][j-1]\n        else:\n            dp[i][j] = 1 + min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])",
+        "O(mn)", "O(mn)"),
+    ("dp_2d", "unique_paths"): (
+        "for i in 0..m:\n    for j in 0..n:\n        if i == 0 or j == 0: dp[i][j] = 1\n        else: dp[i][j] = dp[i-1][j] + dp[i][j-1]",
+        "O(mn)", "O(mn)"),
+
+    # trie_ops
+    ("trie_ops", "default"): (
+        "def insert(word):\n    node = root\n    for c in word:\n        if c not in node.children:\n            node.children[c] = TrieNode()\n        node = node.children[c]\n    node.is_end = True",
+        "O(L)", "O(N · L)"),
+
+    # union_find
+    ("union_find", "default"): (
+        "def find(x):\n    while parent[x] != x:\n        parent[x] = parent[parent[x]]  # path compression\n        x = parent[x]\n    return x\ndef union(a, b):\n    ra, rb = find(a), find(b)\n    if ra != rb: parent[ra] = rb",
+        "~O(α(n)) per op", "O(n)"),
+
+    # dijkstra
+    ("dijkstra", "default"): (
+        "dist[source] = 0\npq = [(0, source)]\nwhile pq:\n    d, u = heappop(pq)\n    if d > dist[u]: continue\n    for v, w in adj[u]:\n        if dist[u] + w < dist[v]:\n            dist[v] = dist[u] + w\n            heappush(pq, (dist[v], v))",
+        "O((V+E) log V)", "O(V)"),
+
+    # segment_tree
+    ("segment_tree", "default"): (
+        "def build(node, l, r):\n    if l == r: tree[node] = a[l]; return\n    m = (l + r) // 2\n    build(2*node, l, m)\n    build(2*node + 1, m + 1, r)\n    tree[node] = tree[2*node] + tree[2*node + 1]",
+        "O(n) build, O(log n) query", "O(n)"),
 }
 
 
@@ -590,6 +665,7 @@ class TwoPointersSameDirScene(Scene):
             "move_zeros":        "Two Pointers — Move Zeros to End",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "two_pointers_same_dir")
 
         strip = ArrayStrip(arr, position=UP * 0.4)
 
@@ -598,7 +674,12 @@ class TwoPointersSameDirScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         slow_p = Pointer("slow", color=PTR_COLORS["slow"], label_size=14).place_below(strip, 0)
         fast_p = Pointer("fast", color=PTR_COLORS["fast"], label_size=14).place_below(strip, 0, extra_down=0.35)
@@ -1003,6 +1084,7 @@ class BinarySearchAnswerScene(Scene):
         cap     = p.get("caption", "")
 
         title = Text("Binary Search on Answer Space", font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "binary_search_answer")
         # Use a virtual array of values [min_v..max_v]
         values = list(range(min_v, max_v + 1))
         strip = ArrayStrip(values, position=UP * 0.4)
@@ -1012,7 +1094,12 @@ class BinarySearchAnswerScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         L_p = Pointer("L", color=PTR_COLORS["L"]).place_below(strip, 0)
         R_p = Pointer("R", color=PTR_COLORS["R"]).place_below(strip, len(values) - 1)
@@ -1512,6 +1599,7 @@ class IntervalMergingScene(Scene):
         cap = p.get("caption", "")
 
         title = Text("Merge Overlapping Intervals", font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "interval_merging")
         bars = IntervalBars(intervals, position=UP * 0.2)
 
         if cap:
@@ -1519,7 +1607,12 @@ class IntervalMergingScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(bars.vgroup))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         steps, merged = _interval_merging_steps(intervals)
         act = action_text(steps[0]["action"]) if steps else action_text("...")
@@ -1615,6 +1708,7 @@ class UnionFindScene(Scene):
         cap = p.get("caption", "")
 
         title = Text("Union-Find — Disjoint Set Forest", font_size=26).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "union_find")
         strip = ArrayStrip(list(range(n)), position=UP * 0.5)
         parent_lbl = Text("parent[]:", font_size=18, color=GRAY).next_to(strip.vgroup, LEFT, buff=0.3)
 
@@ -1623,7 +1717,12 @@ class UnionFindScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(strip.vgroup), Write(strip.indices), FadeIn(parent_lbl))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         state = StatePanel(anchor=UR, title="UF")
         self.play(FadeIn(state.vgroup))
@@ -1740,15 +1839,21 @@ class LRUCacheScene(Scene):
         cap_text = p.get("caption", "")
 
         title = Text(f"LRU Cache (capacity={capacity})", font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "lru_cache")
 
         if cap_text:
             show_title_card(self, cap_text)
             self.play(FadeIn(caption_strip(cap_text)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
 
         dll = DoublyLinkedListPanel(position=ORIGIN + UP * 0.2)
         self.play(FadeIn(dll.vgroup))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         hmap = HashMapPanel(anchor=UR, title="HashMap")
         self.play(FadeIn(hmap.vgroup))
@@ -1864,6 +1969,7 @@ class GridTraversalScene(Scene):
 
         title = Text(f"Grid {algorithm.upper()} — ({start[0]},{start[1]}) -> ({target[0]},{target[1]})",
                      font_size=26).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "grid_traversal")
 
         display = [["·" if c == 0 else "#" for c in row] for row in grid]
         gp = GridPanel(display, position=ORIGIN + DOWN * 0.1)
@@ -1878,7 +1984,12 @@ class GridTraversalScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(gp.vgroup))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         steps, path = _grid_traversal_steps(grid, start, target, algorithm)
         act = action_text(steps[0]["action"])
@@ -2002,12 +2113,15 @@ class HeapOpsScene(Scene):
 
         title = Text(f"{heap_type.capitalize()}-Heap Operations",
                      font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "heap_ops")
 
         if cap:
             show_title_card(self, cap)
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
 
         steps, final = _heap_ops_steps(operations, heap_type)
 
@@ -2018,6 +2132,9 @@ class HeapOpsScene(Scene):
         for _, _, e in tree.edges:
             e.set_opacity(0)
         self.play(FadeIn(tree.vgroup))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         state = StatePanel(anchor=UR, title="Heap")
         self.play(FadeIn(state.vgroup))
@@ -2166,6 +2283,7 @@ class DP2DScene(Scene):
             "unique_paths": f"Unique Paths - {input1}x{input2} grid",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=26).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "dp_2d")
 
         if algorithm == "unique_paths":
             m = max(int(input1) if str(input1).isdigit() else 3, 1)
@@ -2181,7 +2299,12 @@ class DP2DScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(gp.vgroup))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         steps, table, answer = _dp_2d_steps(algorithm, input1, input2)
         act = action_text(steps[0]["action"]) if steps else action_text("...")
@@ -2284,16 +2407,22 @@ class BacktrackingSubsetsScene(Scene):
 
         title_text = "Backtracking — Subsets" if algorithm == "subsets" else "Backtracking — Permutations"
         title = Text(title_text, font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, algorithm, "backtracking_subsets")
 
         if cap:
             show_title_card(self, cap)
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
 
         rt = RecursionTree(root_label="[]", position=DOWN * 0.4,
                            width=10.0, level_gap=0.85, node_radius=0.30)
         self.play(FadeIn(rt.root))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         # Current path strip on the right
         path_lbl = Text("path: []", font_size=18, color=WHITE).to_corner(UR, buff=0.5)
@@ -2401,12 +2530,18 @@ class TrieOpsScene(Scene):
         cap = p.get("caption", "")
 
         title = Text("Trie — Insert + Search", font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "trie_ops")
 
         if cap:
             show_title_card(self, cap)
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         # Build the trie inline as a static layout so we can fade in nodes/edges in order
         # Internal: each node is keyed by its prefix string; root = ""
@@ -2594,16 +2729,22 @@ class DijkstraScene(Scene):
         cap = p.get("caption", "")
 
         title = Text(f"Dijkstra — shortest paths from {source}", font_size=26).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "dijkstra")
 
         if cap:
             show_title_card(self, cap)
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
 
         gp = GraphPanel(num_nodes, edges, position=ORIGIN + DOWN * 0.2,
                          radius=2.0, node_radius=0.30)
         self.play(FadeIn(gp.vgroup))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         dist_panel = HashMapPanel(anchor=UR, title="dist[]")
         self.play(FadeIn(dist_panel.vgroup))
@@ -2697,12 +2838,18 @@ class SegmentTreeScene(Scene):
         cap = p.get("caption", "")
 
         title = Text(f"Segment Tree — range sum queries", font_size=26).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _polish(self, title, "default", "segment_tree")
 
         if cap:
             show_title_card(self, cap)
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         steps, results, size, tree = _segment_tree_steps(arr, queries)
 
