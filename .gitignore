@@ -8,3 +8,21 @@ backend/.env.example
 backend/media/
 backend/backend/
 .DS_Store
+
+# Node / frontend build artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+*.log
+*.tsbuildinfo
+
+# Editor / tooling
+.claude/
+.idea/
+.vscode/
+
+# Stray / test artifacts
+new_mainfile.tsx
+backend/integration_audit.log
+backend/scripts/warmup.log

@@ -1,55 +1,273 @@
+import json
 import os
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from google.genai import types as genai_types
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from agent.classifier import classify_domain
 from agent.dsa_planner import plan_dsa
 from agent.explainer import explain_problem
+from agent.gemini_client import call_gemini
 from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
+from schemas.types import StepPlan
 
 _TOPICS = [
+    # ── DSA: sorting ──────────────────────────────────────────────
+    {"id": "bubble-sort", "name": "Bubble Sort", "category": "dsa",
+     "keywords": ["bubble sort", "bubblesort"],
+     "description": "Pairwise compare-and-swap until the array is sorted."},
     {"id": "merge-sort", "name": "Merge Sort", "category": "dsa",
      "keywords": ["merge sort", "mergesort", "divide and conquer sort"],
      "description": "Recursive divide-and-merge visualization with comparison highlights."},
     {"id": "quick-sort", "name": "Quick Sort", "category": "dsa",
      "keywords": ["quick sort", "quicksort", "partition"],
-     "description": "Pivot-based partitioning shown step by step."},
+     "description": "Pivot-based Lomuto partitioning shown step by step."},
+    # ── DSA: searching ─────────────────────────────────────────────
     {"id": "binary-search", "name": "Binary Search", "category": "dsa",
      "keywords": ["binary search", "log n search"],
-     "description": "Halving the search space on a sorted array."},
+     "description": "Halving the search space on a sorted array via L/M/R pointers."},
+    {"id": "binary-search-answer", "name": "Binary Search on Answer", "category": "dsa",
+     "keywords": ["binary search on answer", "search the answer", "koko bananas", "capacity to ship"],
+     "description": "Search a numeric answer space, not array indices (e.g. minimum eating speed)."},
+    # ── DSA: two pointers ─────────────────────────────────────────
+    {"id": "two-pointers", "name": "Two Pointers (Opposite Ends)", "category": "dsa",
+     "keywords": ["two pointers", "two-pointer", "left right pointer"],
+     "description": "L from the left, R from the right, converge inward."},
+    {"id": "two-pointers-fast-slow", "name": "Two Pointers (Same Direction)", "category": "dsa",
+     "keywords": ["fast slow pointer", "fast and slow", "remove duplicates", "move zeros"],
+     "description": "Slow + fast pointers both starting from the left."},
+    {"id": "palindrome", "name": "Palindrome Check", "category": "dsa",
+     "keywords": ["palindrome"],
+     "description": "Two pointers converging from each end of a string."},
+    {"id": "container-water", "name": "Container With Most Water", "category": "dsa",
+     "keywords": ["container with most water", "container water", "max water"],
+     "description": "Two-pointer sweep to find the rectangle of maximum area."},
+    # ── DSA: sliding window ───────────────────────────────────────
+    {"id": "sliding-window", "name": "Sliding Window", "category": "dsa",
+     "keywords": ["sliding window", "longest substring", "longest no repeat", "longest unique"],
+     "description": "Expanding/contracting window with a hashmap counter."},
+    # ── DSA: hashing ──────────────────────────────────────────────
+    {"id": "two-sum", "name": "Two Sum (HashMap)", "category": "dsa",
+     "keywords": ["two sum", "twosum", "2 sum", "pair sum"],
+     "description": "Iterate the array; for each value v, check if (target − v) is already in the hashmap."},
+    {"id": "frequency-count", "name": "Frequency Count", "category": "dsa",
+     "keywords": ["frequency count", "frequency map", "count occurrences", "majority element"],
+     "description": "Walk the array, accumulating counts of each value in a hashmap."},
+    {"id": "anagram-check", "name": "Anagram Check", "category": "dsa",
+     "keywords": ["anagram", "valid anagram"],
+     "description": "Increment for letters in s, decrement for letters in t — all zero means anagram."},
+    # ── DSA: stacks & queues ──────────────────────────────────────
+    {"id": "monotonic-stack", "name": "Monotonic Stack", "category": "dsa",
+     "keywords": ["monotonic stack", "next greater element", "daily temperatures"],
+     "description": "Stack maintains a monotonic invariant; pops on new violations."},
+    {"id": "stack-queue", "name": "Stack & Queue", "category": "dsa",
+     "keywords": ["stack operations", "queue operations", "lifo", "fifo", "valid parentheses"],
+     "description": "Animated push/pop or enqueue/dequeue operations."},
+    # ── DSA: prefix / running sums ────────────────────────────────
+    {"id": "prefix-sum", "name": "Prefix Sum", "category": "dsa",
+     "keywords": ["prefix sum", "cumulative sum", "running total"],
+     "description": "Build a cumulative array; subarray sums become O(1) range queries."},
+    {"id": "kadanes", "name": "Kadane's Algorithm", "category": "dsa",
+     "keywords": ["kadane", "kadanes", "maximum subarray", "max subarray sum", "largest contiguous"],
+     "description": "Running max-subarray sum — keep a current sum and a best-so-far."},
+    # ── DSA: linked lists ─────────────────────────────────────────
+    {"id": "reverse-linked-list", "name": "Reverse Linked List", "category": "dsa",
+     "keywords": ["reverse linked list", "reverse list", "reverse a linked list"],
+     "description": "Three-pointer walk: prev, curr, next — flip each pointer in turn."},
+    {"id": "linked-list-middle", "name": "Find Middle of Linked List", "category": "dsa",
+     "keywords": ["middle of linked list", "find middle", "fast slow linked list"],
+     "description": "Slow + fast pointer technique for finding the middle node."},
+    {"id": "merge-sorted-lists", "name": "Merge Two Sorted Lists", "category": "dsa",
+     "keywords": ["merge two sorted lists", "merge sorted lists", "merge linked lists"],
+     "description": "Stitch two sorted linked lists together with a single pass."},
+    # ── DSA: trees ────────────────────────────────────────────────
+    {"id": "tree-bfs", "name": "Tree BFS (Level Order)", "category": "dsa",
+     "keywords": ["tree bfs", "level order traversal", "breadth first tree"],
+     "description": "Visit nodes level by level using a queue."},
+    {"id": "tree-dfs", "name": "Tree DFS", "category": "dsa",
+     "keywords": ["tree dfs", "depth first tree", "depth-first tree"],
+     "description": "Recursive depth-first walk through a binary tree."},
+    {"id": "tree-inorder", "name": "Inorder Traversal", "category": "dsa",
+     "keywords": ["inorder traversal", "in-order traversal"],
+     "description": "Left subtree → root → right subtree."},
+    {"id": "trie", "name": "Trie", "category": "dsa",
+     "keywords": ["trie", "prefix tree", "autocomplete"],
+     "description": "Character-by-character insert and lookup in a prefix tree."},
+    # ── DSA: graphs ───────────────────────────────────────────────
+    {"id": "graph-bfs", "name": "Graph BFS", "category": "dsa",
+     "keywords": ["graph bfs", "breadth first search", "shortest path unweighted"],
+     "description": "BFS frontier expansion across a graph from a source node."},
+    {"id": "graph-dfs", "name": "Graph DFS", "category": "dsa",
+     "keywords": ["graph dfs", "depth first search graph"],
+     "description": "DFS stack-based traversal through a graph."},
+    {"id": "dijkstra", "name": "Dijkstra's Shortest Path", "category": "dsa",
+     "keywords": ["dijkstra", "shortest path", "weighted shortest path", "network delay"],
+     "description": "Greedy edge-relaxation on a weighted graph."},
+    {"id": "union-find", "name": "Union Find (Disjoint Set)", "category": "dsa",
+     "keywords": ["union find", "union-find", "disjoint set", "connected components"],
+     "description": "Parent[] array + union/find operations on a disjoint-set forest."},
+    # ── DSA: grid ─────────────────────────────────────────────────
+    {"id": "grid-bfs", "name": "Grid BFS", "category": "dsa",
+     "keywords": ["grid bfs", "shortest path on grid", "flood fill", "number of islands", "matrix bfs"],
+     "description": "BFS over a 2D grid — frontier expands from start until target is reached."},
+    # ── DSA: heaps ────────────────────────────────────────────────
+    {"id": "heap-ops", "name": "Heap (Priority Queue)", "category": "dsa",
+     "keywords": ["heap", "priority queue", "min heap", "max heap", "k largest", "k smallest", "top k"],
+     "description": "Push/pop with sift up/down on a binary heap."},
+    # ── DSA: intervals ────────────────────────────────────────────
+    {"id": "merge-intervals", "name": "Merge Intervals", "category": "dsa",
+     "keywords": ["merge intervals", "interval merging", "overlapping intervals", "meeting rooms"],
+     "description": "Sort by start, sweep left-to-right merging overlaps."},
+    # ── DSA: dynamic programming (1D) ─────────────────────────────
+    {"id": "fibonacci-dp", "name": "Fibonacci (DP)", "category": "dsa",
+     "keywords": ["fibonacci dp", "fibonacci dynamic", "fib dp"],
+     "description": "Bottom-up Fibonacci: each cell = sum of the previous two."},
+    {"id": "climbing-stairs", "name": "Climbing Stairs", "category": "dsa",
+     "keywords": ["climbing stairs", "climb stairs", "staircase ways"],
+     "description": "Number of distinct paths to step n: dp[i] = dp[i-1] + dp[i-2]."},
+    {"id": "house-robber", "name": "House Robber", "category": "dsa",
+     "keywords": ["house robber", "rob houses"],
+     "description": "dp[i] = max(dp[i-1], dp[i-2] + nums[i]) — non-adjacent maximum."},
+    # ── DSA: dynamic programming (2D) ─────────────────────────────
+    {"id": "lcs", "name": "Longest Common Subsequence", "category": "dsa",
+     "keywords": ["longest common subsequence", "lcs"],
+     "description": "2D DP table over two strings; arrows show dependencies."},
+    {"id": "edit-distance", "name": "Edit Distance", "category": "dsa",
+     "keywords": ["edit distance", "levenshtein"],
+     "description": "Min insert/delete/replace operations to transform one string into another."},
+    {"id": "unique-paths", "name": "Unique Paths", "category": "dsa",
+     "keywords": ["unique paths", "grid paths", "robot paths"],
+     "description": "Count distinct paths from top-left to bottom-right of a grid."},
+    # ── DSA: backtracking ─────────────────────────────────────────
+    {"id": "subsets", "name": "Subsets", "category": "dsa",
+     "keywords": ["subsets", "power set", "all subsets"],
+     "description": "Decision tree: include or skip each element."},
+    {"id": "permutations", "name": "Permutations", "category": "dsa",
+     "keywords": ["permutations", "all permutations"],
+     "description": "Decision tree exploring every ordering of the input set."},
+    # ── DSA: design ───────────────────────────────────────────────
+    {"id": "lru-cache", "name": "LRU Cache", "category": "dsa",
+     "keywords": ["lru cache", "least recently used", "design lru"],
+     "description": "HashMap + doubly-linked list with eviction on capacity overflow."},
+    {"id": "segment-tree", "name": "Segment Tree", "category": "dsa",
+     "keywords": ["segment tree", "range query tree", "range sum tree"],
+     "description": "Build + range query on a segment tree."},
+    # ── Calculus ──────────────────────────────────────────────────
     {"id": "chain-rule", "name": "Chain Rule", "category": "calculus",
      "keywords": ["chain rule", "composite derivative", "f(g(x))"],
      "description": "Derivative of nested functions, layer by layer."},
+    {"id": "derivative-power-rule", "name": "Power Rule", "category": "calculus",
+     "keywords": ["power rule", "derivative of x^n"],
+     "description": "Why d/dx[x^n] = n·x^(n-1)."},
+    {"id": "limit", "name": "Limit", "category": "calculus",
+     "keywords": ["limit of f", "limit as x approaches", "lim x", "one-sided limit"],
+     "description": "Watch f(x) approach a limit point from both sides."},
+    {"id": "critical-points", "name": "Critical Points", "category": "calculus",
+     "keywords": ["critical points", "critical point", "maxima minima", "extrema", "local max"],
+     "description": "Local max, min, and inflection points marked on a curve."},
+    {"id": "riemann-sum", "name": "Riemann Sum", "category": "calculus",
+     "keywords": ["riemann sum", "rectangles under curve", "left riemann", "right riemann"],
+     "description": "Approximate area under a curve with N rectangles."},
+    {"id": "ftc", "name": "Fundamental Theorem of Calculus", "category": "calculus",
+     "keywords": ["fundamental theorem of calculus", "ftc", "first fundamental theorem"],
+     "description": "The connection between differentiation and integration."},
+    {"id": "area-between-curves", "name": "Area Between Curves", "category": "calculus",
+     "keywords": ["area between curves", "area between two curves", "region between curves"],
+     "description": "Area enclosed between two curves over an interval."},
+    {"id": "average-value", "name": "Average Value of a Function", "category": "calculus",
+     "keywords": ["average value of a function", "mean value of a function", "function average"],
+     "description": "Mean value of f over [a, b] shown as a horizontal line."},
+    {"id": "arc-length", "name": "Arc Length", "category": "calculus",
+     "keywords": ["arc length", "length of a curve"],
+     "description": "Length of a curve approximated by line segments."},
+    {"id": "u-substitution", "name": "u-Substitution", "category": "calculus",
+     "keywords": ["u substitution", "u-substitution", "u sub", "integration by substitution"],
+     "description": "Integration by substitution, walked through step by step."},
+    {"id": "integration-by-parts", "name": "Integration by Parts", "category": "calculus",
+     "keywords": ["integration by parts", "by parts", "ibp"],
+     "description": "Integration by parts: ∫u dv = uv − ∫v du."},
+    {"id": "improper-integral", "name": "Improper Integral", "category": "calculus",
+     "keywords": ["improper integral", "infinite integral", "integral to infinity"],
+     "description": "Integrals with infinite bounds or discontinuities."},
+    {"id": "volume-revolution", "name": "Volume of Revolution (Disk)", "category": "calculus",
+     "keywords": ["volume of revolution", "disk method", "solid of revolution"],
+     "description": "Volume of a solid formed by rotating f(x) around the x-axis."},
     {"id": "washer-method", "name": "Washer Method", "category": "calculus",
-     "keywords": ["washer method", "volume of revolution", "disk method"],
+     "keywords": ["washer method", "disk method"],
      "description": "Volume of solids of revolution using stacked washers."},
     {"id": "shell-method", "name": "Cylindrical Shell Method", "category": "calculus",
      "keywords": ["cylindrical shell", "shell method", "shells"],
      "description": "Volume by unwrapping concentric cylindrical shells."},
-    {"id": "long-division", "name": "Long Division", "category": "arithmetic",
-     "keywords": ["long division", "divide"],
-     "description": "Step-by-step division algorithm."},
-    {"id": "derivative-power-rule", "name": "Power Rule", "category": "calculus",
-     "keywords": ["power rule", "derivative of x^n"],
-     "description": "Why d/dx[x^n] = n·x^(n-1)."},
-    {"id": "torque", "name": "Torque", "category": "physics",
-     "keywords": ["torque", "rotational force"],
-     "description": "Force × lever arm visualized on a rotating body."},
-    {"id": "matrix-multiply", "name": "Matrix Multiplication", "category": "linalg",
-     "keywords": ["matrix multiply", "matmul"],
-     "description": "Row-by-column dot products animated."},
+    {"id": "cross-section", "name": "Volume by Cross Sections", "category": "calculus",
+     "keywords": ["volume by cross sections", "cross section", "known cross sections"],
+     "description": "Volume of a solid built from known cross-sections."},
+    {"id": "taylor-series", "name": "Taylor Series", "category": "calculus",
+     "keywords": ["taylor series", "taylor polynomial", "maclaurin series"],
+     "description": "Polynomial approximation of f(x) centered at a point."},
+    {"id": "sequence", "name": "Recursive Sequence", "category": "calculus",
+     "keywords": ["recursive sequence", "iteration sequence", "recurrence relation"],
+     "description": "Plot terms of a recursive sequence aₙ = f(aₙ₋₁)."},
+    {"id": "cobweb", "name": "Cobweb Diagram", "category": "calculus",
+     "keywords": ["cobweb diagram", "cobweb plot", "fixed point iteration"],
+     "description": "Visualize fixed-point iteration on a single function."},
+    # ── Algebra ───────────────────────────────────────────────────
+    {"id": "linear-function", "name": "Linear Function", "category": "calculus",
+     "keywords": ["linear function", "y = mx + b", "slope intercept"],
+     "description": "Plot a linear function with slope and intercept."},
+    {"id": "quadratic", "name": "Quadratic Function", "category": "calculus",
+     "keywords": ["quadratic function", "parabola", "vertex form", "ax^2 + bx + c"],
+     "description": "Parabola with vertex, axis of symmetry, and roots marked."},
+    {"id": "inequality", "name": "Inequality", "category": "calculus",
+     "keywords": ["graph inequality", "linear inequality", "polynomial inequality"],
+     "description": "Region of x satisfying an inequality."},
+    {"id": "exponential-function", "name": "Exponential Function", "category": "calculus",
+     "keywords": ["exponential function", "exponential growth", "exponential decay", "e^x"],
+     "description": "Exponential growth or decay with key points highlighted."},
+    {"id": "function-transformation", "name": "Function Transformation", "category": "calculus",
+     "keywords": ["function transformation", "graph transformation", "shift scale reflect"],
+     "description": "Side-by-side comparison of base and transformed functions."},
+    # ── Arithmetic ────────────────────────────────────────────────
+    {"id": "fraction", "name": "Fractions", "category": "arithmetic",
+     "keywords": ["fractions", "compare fractions", "add fractions", "fraction strip"],
+     "description": "Fraction visualization: represent, compare, add, or subtract."},
+    # ── Trig ──────────────────────────────────────────────────────
+    {"id": "trig-unit-circle", "name": "Trig Unit Circle", "category": "calculus",
+     "keywords": ["unit circle", "trig unit circle", "sine cosine projection"],
+     "description": "Unit circle with rotating angle and sine/cosine projections."},
+    # ── 3D / Multivariable ────────────────────────────────────────
+    {"id": "surface-plot", "name": "3D Surface Plot", "category": "calculus",
+     "keywords": ["3d surface", "surface plot", "z = f(x,y)", "two variable function"],
+     "description": "3D surface plot of z = f(x, y)."},
+    {"id": "contour", "name": "Contour Map", "category": "calculus",
+     "keywords": ["contour map", "contour plot", "level curves"],
+     "description": "Contour map of a 2D function with level curves."},
+    {"id": "vector-field", "name": "Vector Field", "category": "calculus",
+     "keywords": ["vector field", "vector flow"],
+     "description": "2D vector field with arrows showing direction at each point."},
+    {"id": "partial-derivative", "name": "Partial Derivative", "category": "calculus",
+     "keywords": ["partial derivative", "partial derivatives", "∂f/∂x", "df/dx of f(x,y)"],
+     "description": "Partial derivative shown as a slice of the surface."},
 ]
+
+_MIME_FROM_EXT = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "png": "image/png", "webp": "image/webp",
+    "pdf": "application/pdf",
+}
+_ALLOWED_MIMES = frozenset(_MIME_FROM_EXT.values())
 
 
 def create_app(testing: bool = False) -> Flask:
     app = Flask(__name__)
     app.config["TESTING"] = testing
     CORS(app)
+
+    # ── existing endpoints ────────────────────────────────────────
 
     @app.get("/health")
     def health():
@@ -72,7 +290,7 @@ def create_app(testing: bool = False) -> Flask:
 
     @app.post("/ask")
     def ask():
-        body     = request.get_json(silent=True) or {}
+        body = request.get_json(silent=True) or {}
         question = body.get("question", "").strip()
         if not question:
             return jsonify({"error": "question is required"}), 400
@@ -80,15 +298,11 @@ def create_app(testing: bool = False) -> Flask:
         try:
             lesson = plan_dsa(question) if domain == "dsa" else plan_math(question)
         except ValueError as e:
-            app.logger.warning(f"planner ValueError on q={question[:120]!r}: {e}")
-            return jsonify({
-                "error": "Could not understand the question. Try rephrasing it.",
-            }), 422
-        except Exception as e:
-            app.logger.exception(f"planner unexpected error on q={question[:120]!r}")
-            return jsonify({
-                "error": "Internal planning error. Please try again.",
-            }), 422
+            app.logger.warning("planner ValueError on q=%r: %s", question[:120], e)
+            return jsonify({"error": "Could not understand the question. Try rephrasing it."}), 422
+        except Exception:
+            app.logger.exception("planner unexpected error on q=%r", question[:120])
+            return jsonify({"error": "Internal planning error. Please try again."}), 422
         job_id = submit_lesson(lesson.steps)
         return jsonify({
             "job_id":      job_id,
@@ -99,12 +313,15 @@ def create_app(testing: bool = False) -> Flask:
 
     @app.post("/render")
     def render():
-        body   = request.get_json(silent=True) or {}
-        scene  = body.get("scene")
+        body = request.get_json(silent=True) or {}
+        scene = body.get("scene")
         params = body.get("params", {})
         if not scene:
             return jsonify({"error": "scene is required"}), 400
-        job_id = submit_render(scene, params)
+        # Route through submit_lesson so single-scene renders share the
+        # content-hash cache (so /prerender on boot warms /render too).
+        step = StepPlan(tool=scene, params=params, caption=params.get("caption", ""))
+        job_id = submit_lesson([step])
         return jsonify({"job_id": job_id}), 202
 
     @app.get("/status/<job_id>")
@@ -117,18 +334,179 @@ def create_app(testing: bool = False) -> Flask:
     @app.get("/media/<path:filename>")
     def serve_media(filename):
         media_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "media"))
-        # Belt-and-suspenders: send_from_directory protects against ".." but we
-        # also resolve symlinks and confirm the result is still under media/.
         target = os.path.realpath(os.path.join(media_dir, filename))
         if not target.startswith(media_dir + os.sep):
             return jsonify({"error": "forbidden"}), 403
         return send_from_directory(media_dir, filename)
 
+    # ── Gemini-backed /api/* endpoints ───────────────────────────
+
+    @app.get("/api/topics")
+    def api_topics():
+        return jsonify({"topics": _TOPICS})
+
+    @app.post("/api/ocr")
+    def api_ocr():
+        if "file" not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        file = request.files["file"]
+        if not file.filename:
+            return jsonify({"error": "No file selected"}), 400
+
+        mime_type = file.mimetype or "application/octet-stream"
+        if mime_type == "application/octet-stream":
+            ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+            mime_type = _MIME_FROM_EXT.get(ext, mime_type)
+        if mime_type not in _ALLOWED_MIMES:
+            return jsonify({"error": f"Unsupported file type: {mime_type}"}), 400
+
+        try:
+            file_bytes = file.read()
+            prompt = (
+                "Extract all text from this image or document exactly as it appears. "
+                "Preserve line breaks. Do not summarize, do not add commentary, just transcribe."
+            )
+            contents = [prompt, genai_types.Part.from_bytes(data=file_bytes, mime_type=mime_type)]
+            response = call_gemini(contents)
+            return jsonify({"text": response.text})
+        except Exception as exc:
+            app.logger.exception("OCR failed")
+            return jsonify({"error": "OCR failed", "detail": str(exc)}), 500
+
+    @app.post("/api/format-note")
+    def api_format_note():
+        body = request.get_json(silent=True) or {}
+        raw_text = body.get("rawText", "").strip()
+        if not raw_text:
+            return jsonify({"error": "rawText is required"}), 400
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "html":  {"type": "string"},
+            },
+            "required": ["title", "html"],
+        }
+        prompt = (
+            "You are turning a raw note transcription into a clean, well-structured "
+            "study note. Return a JSON object with:\n"
+            "- title: a short descriptive title (max 60 characters)\n"
+            "- html: well-structured semantic HTML\n\n"
+            "HTML rules:\n"
+            "- Allowed tags ONLY: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>\n"
+            "- No CSS, no scripts, no inline styles, no class attributes, no <div>/<span>.\n"
+            "- Structure with clear visual hierarchy:\n"
+            "    * Open with one short overview paragraph (1–2 sentences).\n"
+            "    * Use <h2> for major sections (e.g. Definitions, Examples, Steps, Notes).\n"
+            "    * Use <h3> for sub-sections inside a major section.\n"
+            "    * Keep prose paragraphs short — 2 to 4 sentences max — so the note "
+            "      is scannable.\n"
+            "- Use <strong> liberally to highlight:\n"
+            "    * Key terms on first definition (e.g. <strong>derivative</strong>).\n"
+            "    * Names of theorems, methods, formulas, or rules.\n"
+            "    * Important numerical values, results, and final answers.\n"
+            "    * Anything the reader should remember.\n"
+            "- Use <em> sparingly for emphasis or contrast within a sentence.\n"
+            "- Use <ul> for unordered lists (properties, characteristics, examples).\n"
+            "- Use <ol> for ordered lists (steps, procedures, sequential reasoning).\n"
+            "- Wrap each list item in its own <li>; do NOT merge multiple steps into one <li>.\n"
+            "- Each section should have its own heading + content; do not pile everything "
+            "  into one <h2> block. Aim for 2–5 sections.\n"
+            "- Preserve the original meaning; reorganize and clarify, but do not invent "
+            "  facts or add content not present in the source.\n\n"
+            f"Source text:\n{raw_text}"
+        )
+        try:
+            response = call_gemini(prompt, response_schema=schema)
+            return jsonify(json.loads(response.text))
+        except Exception as exc:
+            app.logger.exception("format-note failed")
+            return jsonify({"error": "format-note failed", "detail": str(exc)}), 500
+
+    @app.post("/api/parse-problem")
+    def api_parse_problem():
+        body = request.get_json(silent=True) or {}
+        raw_text = body.get("rawText", "").strip()
+        topics_list = body.get("topics", [])
+        if not raw_text:
+            return jsonify({"error": "rawText is required"}), 400
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "problem": {"type": "string"},
+                "topicId": {"type": ["string", "null"]},
+            },
+            "required": ["problem", "topicId"],
+        }
+        topics_summary = "\n".join(
+            f'- id: {t.get("id")}, name: {t.get("name")}, '
+            f'keywords: {", ".join(t.get("keywords", []))}'
+            for t in topics_list
+        )
+        prompt = (
+            "Identify which of the available animation topics best matches this student problem. "
+            "Return a JSON object with:\n"
+            "- problem: cleaned-up problem statement\n"
+            "- topicId: the id of the matching topic, or null if none match\n\n"
+            f"Problem:\n{raw_text}\n\n"
+            f"Available topics:\n{topics_summary or '(none provided)'}"
+        )
+        try:
+            response = call_gemini(prompt, response_schema=schema)
+            return jsonify(json.loads(response.text))
+        except Exception as exc:
+            app.logger.exception("parse-problem failed")
+            return jsonify({"error": "parse-problem failed", "detail": str(exc)}), 500
+
+    @app.post("/api/breakdown")
+    def api_breakdown():
+        body = request.get_json(silent=True) or {}
+        problem = body.get("problem", "").strip()
+        topic = body.get("topic") or {}
+        topic_name = topic.get("name", "").strip()
+        topic_description = topic.get("description", "").strip()
+        if not topic_name:
+            return jsonify({"error": "topic.name is required"}), 400
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string"},
+                            "body":  {"type": "string"},
+                        },
+                        "required": ["label", "body"],
+                    },
+                },
+            },
+            "required": ["sections"],
+        }
+        prompt = (
+            f"Break down this problem step by step in the context of {topic_name}.\n"
+            f"Topic: {topic_name} — {topic_description}\n"
+            f"Problem: {problem or '(general explanation of the topic)'}\n\n"
+            "Return a JSON object with a 'sections' array of 3-5 objects, each with:\n"
+            "- label: short title (1-4 words)\n"
+            "- body: 1-2 sentence explanation\n\n"
+            f"Be specific about what each part represents in the context of {topic_name}."
+        )
+        try:
+            response = call_gemini(prompt, response_schema=schema)
+            return jsonify(json.loads(response.text))
+        except Exception as exc:
+            app.logger.exception("api/breakdown failed")
+            return jsonify({"error": "breakdown failed", "detail": str(exc)}), 500
+
     return app
 
 
 if __name__ == "__main__":
-    # use_reloader=False is critical: the dev reloader wipes the in-memory
-    # _jobs dict mid-render whenever any file is touched, leaving polling
-    # frontends stuck on a now-orphaned job_id.
+    # use_reloader=False: the dev reloader wipes the in-memory _jobs dict
+    # mid-render whenever any file is touched, orphaning polling frontends.
     create_app().run(debug=True, use_reloader=False, port=5000)
