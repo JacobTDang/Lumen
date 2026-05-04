@@ -331,3 +331,67 @@ def test_segment_tree_basic(tmp_path):
                 {"array": [1, 3, 5, 7],
                  "queries": [[1, 3], [0, 3]]}),
         tmp_path, "SegmentTreeScene")
+
+
+# ===========================================================================
+# Phase 7B — new pattern scenes
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# FloydCycleScene — step generator unit tests
+# ---------------------------------------------------------------------------
+
+def test_floyd_cycle_no_cycle_terminates():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _floyd_cycle_steps
+    steps, has_cycle = _floyd_cycle_steps([1, 2, 3, 4], None)
+    assert has_cycle is False
+    assert steps[-1]["kind"] == "no_cycle"
+
+
+def test_floyd_cycle_with_cycle_meets():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _floyd_cycle_steps
+    # 1→2→3→4→2 (back to index 1)
+    steps, has_cycle = _floyd_cycle_steps([1, 2, 3, 4], 1)
+    assert has_cycle is True
+    assert steps[-1]["kind"] == "meet"
+    assert steps[-1]["slow"] == steps[-1]["fast"]
+
+
+def test_floyd_cycle_self_loop():
+    """Single node pointing to itself: cycle at index 0."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _floyd_cycle_steps
+    steps, has_cycle = _floyd_cycle_steps([42], 0)
+    assert has_cycle is True
+
+
+def test_floyd_cycle_empty_input():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _floyd_cycle_steps
+    steps, has_cycle = _floyd_cycle_steps([], None)
+    assert steps == []
+    assert has_cycle is False
+
+
+# ---------------------------------------------------------------------------
+# FloydCycleScene — integration render tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_floyd_cycle_with_cycle_renders(tmp_path):
+    _ok(_render(tmp_path, "FloydCycleScene",
+                {"values": [1, 2, 3, 4, 5], "cycle_at": 1}),
+        tmp_path, "FloydCycleScene")
+
+
+@pytest.mark.integration
+def test_floyd_cycle_no_cycle_renders(tmp_path):
+    _ok(_render(tmp_path, "FloydCycleScene",
+                {"values": [1, 2, 3, 4], "cycle_at": None}),
+        tmp_path, "FloydCycleScene")

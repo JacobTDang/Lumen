@@ -20,6 +20,7 @@ from scenes.dsa_primitives import (
     ComparisonMarker, StackWidget, DependencyArc,
     GridPanel, BinaryTreePanel, RecursionTree, IntervalBars,
     DoublyLinkedListPanel, GraphPanel, CodePanel,
+    ComplexityBadge, InvariantOverlay, BruteForceComparison, BinaryRegister,
     load_params, show_title_card, caption_strip, result_box, action_text,
 )
 
@@ -2642,4 +2643,240 @@ class SegmentTreeScene(Scene):
         rb[1].set_color(KEEP)
         self.play(FadeOut(act), FadeIn(rb))
         self.wait(0.9)
+
+
+# ===========================================================================
+#  Phase 7B Scene 1 — FloydCycleScene
+# ===========================================================================
+#
+#  Floyd's tortoise & hare cycle detection on a linked list.
+#  The slow pointer advances by 1 per step, fast by 2. If they meet →
+#  cycle detected. If fast reaches null → no cycle.
+# ---------------------------------------------------------------------------
+
+def _floyd_cycle_steps(values: list, cycle_at) -> tuple:
+    """
+    Returns (steps: list[dict], has_cycle: bool).
+
+    `cycle_at` is the index where the tail loops back to (None for no cycle).
+    Each step: {kind: 'init'|'move'|'meet'|'no_cycle', slow: int|None,
+                fast: int|None, action: str}
+    """
+    n = len(values)
+    if n == 0:
+        return [], False
+
+    def nxt(i):
+        if i is None:
+            return None
+        if i + 1 < n:
+            return i + 1
+        return cycle_at  # may be None for "tail → null"
+
+    steps = [{"kind": "init", "slow": 0, "fast": 0,
+              "action": "slow = fast = head (index 0)"}]
+
+    slow, fast = 0, 0
+    safety = 0
+    while True:
+        safety += 1
+        if safety > 200:  # bound — should never trigger for valid inputs
+            return steps, False
+
+        new_slow = nxt(slow)
+        f1 = nxt(fast)
+        new_fast = nxt(f1) if f1 is not None else None
+
+        # Walk the fast pointer two hops; if either hop hits null, no cycle.
+        if f1 is None or new_fast is None:
+            steps.append({"kind": "no_cycle", "slow": new_slow, "fast": None,
+                          "action": "fast reached null → no cycle"})
+            return steps, False
+
+        slow, fast = new_slow, new_fast
+        steps.append({"kind": "move", "slow": slow, "fast": fast,
+                      "action": f"slow→{slow}, fast→{fast}"})
+
+        if slow == fast:
+            steps.append({"kind": "meet", "slow": slow, "fast": fast,
+                          "action": f"slow == fast at index {slow} → cycle"})
+            return steps, True
+
+
+_FLOYD_PSEUDOCODE = """
+slow = fast = head
+while fast and fast.next:
+    slow = slow.next
+    fast = fast.next.next
+    if slow == fast: return True
+return False
+""".strip()
+
+
+class FloydCycleScene(Scene):
+    """Floyd's tortoise-and-hare cycle detection.
+
+    Schema: {values: List[int], cycle_at: int|null, caption: str}
+    """
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = load_params()
+        values    = p.get("values",   [1, 2, 3, 4, 5])
+        cycle_at  = p.get("cycle_at", 1)   # default: cycle back to index 1
+        cap       = p.get("caption",  "")
+
+        title = Text("Floyd's Cycle Detection", font_size=28).to_edge(UP, buff=0.3)
+        badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+
+        if cap:
+            show_title_card(self, cap)
+            self.play(FadeIn(caption_strip(cap)), run_time=0.3)
+        self.play(Write(title), FadeIn(badge.vgroup))
+
+        # Build the chain horizontally
+        n = len(values)
+        spacing = min(1.6, 9.5 / max(n, 1))
+        start_x = -(n - 1) * spacing / 2
+        nodes = []
+        for i, v in enumerate(values):
+            cx = start_x + i * spacing
+            circle = Circle(radius=0.32, color=WHITE, fill_color="#1f2937",
+                            fill_opacity=0.9, stroke_width=2)
+            label  = Text(str(v), font_size=18, color=WHITE)
+            node   = VGroup(circle, label).move_to(np.array([cx, 0.4, 0]))
+            nodes.append(node)
+
+        arrows = []
+        for i in range(n - 1):
+            arr = Arrow(nodes[i].get_right(), nodes[i + 1].get_left(),
+                        buff=0.05, color=GRAY, stroke_width=2,
+                        max_tip_length_to_length_ratio=0.25)
+            arrows.append(arr)
+
+        # null label and tail arrow OR cycle-back arc
+        cycle_arc = None
+        null_lbl, null_arr = None, None
+        if cycle_at is None:
+            null_lbl = Text("null", font_size=14, color=GRAY).next_to(nodes[-1], RIGHT, buff=0.3)
+            null_arr = Arrow(nodes[-1].get_right(), null_lbl.get_left(),
+                             buff=0.05, color=GRAY, stroke_width=2,
+                             max_tip_length_to_length_ratio=0.2)
+        else:
+            # Curved arc from tail back up over the chain to nodes[cycle_at]
+            cycle_arc = CurvedArrow(
+                start_point=nodes[-1].get_top() + UP * 0.05,
+                end_point=nodes[cycle_at].get_top() + UP * 0.05,
+                color="#f59e0b", stroke_width=2.5, angle=-PI * 0.65,
+                tip_length=0.18,
+            )
+
+        # Code panel (UL) and state panel (UR)
+        code_panel = CodePanel(_FLOYD_PSEUDOCODE, anchor=UL,
+                               font_size=14, max_width=3.8)
+        state = StatePanel(anchor=UR, title="State")
+
+        chain_grp = VGroup(*nodes, *arrows)
+        if null_lbl is not None:
+            chain_grp.add(null_lbl, null_arr)
+        if cycle_arc is not None:
+            chain_grp.add(cycle_arc)
+
+        self.play(FadeIn(chain_grp), FadeIn(code_panel.vgroup), FadeIn(state.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
+
+        # Pointer arrows (small triangles below the active node)
+        slow_lbl = Text("slow", font_size=14, color=PTR_COLORS["slow"], weight=BOLD)
+        fast_lbl = Text("fast", font_size=14, color=PTR_COLORS["fast"], weight=BOLD)
+        slow_arrow = Triangle(color=PTR_COLORS["slow"], fill_opacity=1.0).scale(0.16).rotate(PI)
+        fast_arrow = Triangle(color=PTR_COLORS["fast"], fill_opacity=1.0).scale(0.16).rotate(PI)
+        slow_grp = VGroup(slow_arrow, slow_lbl).arrange(DOWN, buff=0.05)
+        fast_grp = VGroup(fast_arrow, fast_lbl).arrange(DOWN, buff=0.05)
+
+        def _place(grp, idx, extra=0.0):
+            grp.next_to(nodes[idx], DOWN, buff=0.18 + extra)
+
+        _place(slow_grp, 0)
+        _place(fast_grp, 0, extra=0.5)   # offset fast below slow when at same node
+        self.play(FadeIn(slow_grp), FadeIn(fast_grp))
+
+        self.play(*state.anim_set("slow", 0, color=PTR_COLORS["slow"]),
+                  *state.anim_set("fast", 0, color=PTR_COLORS["fast"]),
+                  run_time=0.3)
+
+        steps, has_cycle = _floyd_cycle_steps(values, cycle_at)
+        if not steps:
+            return
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        for step in steps[1:]:   # skip init (already shown)
+            kind = step["kind"]
+
+            if kind == "no_cycle":
+                self.play(code_panel.anim_highlight(1), run_time=0.3)  # while-cond fails
+                self.play(FadeOut(fast_grp), run_time=0.3)
+                self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+                break
+
+            slow_i, fast_i = step["slow"], step["fast"]
+            # line 2: slow = slow.next  (highlight then move)
+            self.play(code_panel.anim_highlight(2), run_time=0.2)
+            new_slow_grp = slow_grp.copy()
+            _place(new_slow_grp, slow_i)
+            move_slow = Transform(slow_grp, new_slow_grp)
+
+            # line 3: fast = fast.next.next
+            self.play(move_slow, run_time=0.4, rate_func=smooth)
+            self.play(code_panel.anim_highlight(3), run_time=0.2)
+            new_fast_grp = fast_grp.copy()
+            _place(new_fast_grp, fast_i,
+                   extra=0.5 if slow_i == fast_i else 0.0)
+            self.play(Transform(fast_grp, new_fast_grp), run_time=0.45, rate_func=smooth)
+
+            self.play(*state.anim_set("slow", slow_i, color=PTR_COLORS["slow"]),
+                      *state.anim_set("fast", fast_i, color=PTR_COLORS["fast"]),
+                      run_time=0.25)
+
+            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+
+            if kind == "meet":
+                # line 4: if slow == fast: return True
+                self.play(code_panel.anim_highlight(4), run_time=0.2)
+                self.play(
+                    Indicate(nodes[slow_i][0], color=KEEP, scale_factor=1.4),
+                    Indicate(slow_grp, color=KEEP, scale_factor=1.3),
+                    Indicate(fast_grp, color=KEEP, scale_factor=1.3),
+                    run_time=0.6,
+                )
+                # Highlight cycle arc green
+                if cycle_arc is not None:
+                    self.play(cycle_arc.animate.set_color(KEEP), run_time=0.3)
+                break
+
+            self.wait(0.15)
+
+        # Result + brute force comparison
+        if has_cycle:
+            result_text = f"Cycle detected at index {steps[-1]['slow']}"
+            cmp = BruteForceComparison(
+                brute=("Hashset of seen nodes", "O(n) space"),
+                optimal=("Tortoise & hare", "O(1) space"),
+            )
+        else:
+            self.play(code_panel.anim_highlight(5), run_time=0.25)  # return False
+            result_text = "No cycle (fast reached null)"
+            cmp = BruteForceComparison(
+                brute=("Mark each node visited", "O(n) extra space"),
+                optimal=("Tortoise & hare", "O(1) extra space"),
+            )
+
+        rb = result_box(result_text, font_size=22).to_edge(DOWN, buff=1.75)
+        rb[1].set_color(KEEP if has_cycle else REJECT)
+        self.play(FadeOut(act), FadeIn(rb))
+        self.wait(0.3)
+        self.play(FadeIn(cmp.vgroup), run_time=0.4)
+        self.wait(1.0)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
