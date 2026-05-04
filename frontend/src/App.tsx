@@ -34,13 +34,15 @@ import {
   X,
   Check,
   FileImage,
+  Code as CodeIcon,
+  Loader2,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
 
-type Route = "home" | "notes" | "animations" | "import-notes" | "import-animations";
+type Route = "home" | "notes" | "animations" | "import-notes" | "import-animations" | "paste-leetcode";
 
 interface SideNote {
   id: string;
@@ -1062,6 +1064,34 @@ async function parseProblem(
 }
 
 // ─────────────────────────────────────────────────────────────
+// /api/parse-leetcode — full paste-to-render path
+// Returns scene + params extracted from the problem prose, ready
+// to POST directly to /render (skipping the planner / topic match).
+// ─────────────────────────────────────────────────────────────
+
+interface ParsedLeetcode {
+  title: string;
+  scene: string;
+  params: Record<string, any>;
+  explanation: string;
+  why_this_pattern: string;
+}
+
+async function parseLeetcode(rawText: string): Promise<ParsedLeetcode> {
+  const res = await fetch(`${flaskBase()}/api/parse-leetcode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rawText }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = err.detail || err.error || `HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────
 // localStorage persistence
 // ─────────────────────────────────────────────────────────────
 
@@ -1632,6 +1662,7 @@ const Sidebar: React.FC<{
     { key: "animations", label: "Animations", icon: <Play size={16} strokeWidth={1.5} /> },
     { key: "import-notes", label: "Import notes", icon: <FileImage size={16} strokeWidth={1.5} /> },
     { key: "import-animations", label: "Import problem", icon: <Upload size={16} strokeWidth={1.5} /> },
+    { key: "paste-leetcode", label: "Paste LeetCode", icon: <CodeIcon size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -4032,6 +4063,390 @@ const ImportError: React.FC<{ message: string; onRetry: () => void }> = ({ messa
 );
 
 // ─────────────────────────────────────────────────────────────
+// PasteLeetCodePage — paste prose -> /api/parse-leetcode -> /render
+//
+// Skips OCR + planner; uses the structured /api/parse-leetcode endpoint
+// that extracts {scene, params, explanation, why_this_pattern} from the
+// raw problem text, then directly POSTs to /render with the matched
+// scene + extracted inputs.
+// ─────────────────────────────────────────────────────────────
+
+type PasteState =
+  | { kind: "idle" }
+  | { kind: "parsing" }
+  | { kind: "rendering"; parsed: ParsedLeetcode; progress: number }
+  | { kind: "ready"; parsed: ParsedLeetcode; videoUrl: string }
+  | { kind: "error"; message: string };
+
+const SAMPLE_PROBLEMS: { label: string; text: string }[] = [
+  {
+    label: "Two Sum",
+    text:
+      "Given an array of integers nums = [2, 7, 11, 15] and an integer " +
+      "target = 9, return indices of the two numbers such that they add up " +
+      "to target. You may assume each input has exactly one solution, and " +
+      "you may not use the same element twice.",
+  },
+  {
+    label: "Trapping Rain Water",
+    text:
+      "Given n non-negative integers heights = [0,1,0,2,1,0,1,3,2,1,2,1] " +
+      "representing an elevation map where the width of each bar is 1, " +
+      "compute how much water it can trap after raining.",
+  },
+  {
+    label: "Course Schedule",
+    text:
+      "There are 4 courses you have to take, labeled from 0 to 3. Some " +
+      "courses have prerequisites, given as an array of pairs " +
+      "[[1,0],[2,1],[3,2]] meaning to take course a you must first take " +
+      "course b. Return any valid order in which you should take the courses.",
+  },
+];
+
+const PasteLeetCodePage: React.FC = () => {
+  const [text, setText] = useState("");
+  const [state, setState] = useState<PasteState>({ kind: "idle" });
+
+  const isBusy = state.kind === "parsing" || state.kind === "rendering";
+
+  const handleVisualize = useCallback(async () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    setState({ kind: "parsing" });
+
+    let parsed: ParsedLeetcode;
+    try {
+      parsed = await parseLeetcode(trimmed);
+    } catch (e) {
+      setState({
+        kind: "error",
+        message:
+          e instanceof Error
+            ? e.message
+            : "Couldn't parse the problem. Try rephrasing or pasting the example input.",
+      });
+      return;
+    }
+
+    setState({ kind: "rendering", parsed, progress: 0 });
+
+    const flaskUrl = flaskBase();
+    try {
+      const renderRes = await fetch(`${flaskUrl}/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scene: parsed.scene,
+          params: { caption: parsed.title, ...parsed.params },
+        }),
+      });
+      if (!renderRes.ok) {
+        const detail = await renderRes.text().catch(() => "");
+        setState({
+          kind: "error",
+          message: `Render failed (${renderRes.status}): ${detail.slice(0, 160)}`,
+        });
+        return;
+      }
+      const { job_id: jobId } = await renderRes.json();
+      if (!jobId) {
+        setState({ kind: "error", message: "Render returned no job_id" });
+        return;
+      }
+      // Synthetic topicId so the live-progress map stays partitioned per paste.
+      const result = await pollJob(flaskUrl, jobId, `paste-${jobId}`);
+      if (result.status === "ready") {
+        setState({ kind: "ready", parsed, videoUrl: result.videoUrl });
+      } else {
+        setState({
+          kind: "error",
+          message: result.error || "render failed",
+        });
+      }
+    } catch (e) {
+      setState({
+        kind: "error",
+        message: e instanceof Error ? e.message : "Render failed",
+      });
+    }
+  }, [text]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (!isBusy) handleVisualize();
+    }
+  };
+
+  const buttonLabel =
+    state.kind === "parsing"
+      ? "Detecting pattern…"
+      : state.kind === "rendering"
+        ? "Rendering…"
+        : "Visualize";
+
+  return (
+    <div
+      className="h-full overflow-y-auto"
+      style={{ background: C.bg, color: C.text, fontFamily: BODY }}
+    >
+      <div className="max-w-3xl mx-auto px-8 py-10">
+        <header className="mb-8">
+          <h1
+            style={{
+              fontFamily: SANS,
+              fontSize: 32,
+              fontWeight: 600,
+              letterSpacing: "-0.02em",
+              marginBottom: 8,
+            }}
+          >
+            Paste a LeetCode problem
+          </h1>
+          <p style={{ color: C.textMuted, fontSize: 14, lineHeight: 1.6 }}>
+            We'll detect the pattern, extract your example input, and render an
+            animated walkthrough using the actual numbers from your problem.
+          </p>
+        </header>
+
+        {/* Sample problems row */}
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <span style={{ fontSize: 12, color: C.textFaint }}>Try a sample:</span>
+          {SAMPLE_PROBLEMS.map((s) => (
+            <motion.button
+              key={s.label}
+              onClick={() => setText(s.text)}
+              disabled={isBusy}
+              whileHover={isBusy ? {} : { background: C.surface }}
+              whileTap={isBusy ? {} : { scale: 0.97 }}
+              transition={{ duration: 0.15 }}
+              className="px-2.5 py-1 rounded"
+              style={{
+                fontSize: 12,
+                color: C.textMuted,
+                border: `1px solid ${C.borderAlt}`,
+                background: "transparent",
+                opacity: isBusy ? 0.5 : 1,
+                cursor: isBusy ? "not-allowed" : "pointer",
+              }}
+            >
+              {s.label}
+            </motion.button>
+          ))}
+        </div>
+
+        <textarea
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (state.kind === "error") setState({ kind: "idle" });
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Paste the full problem text including the example input (e.g. nums = [2,7,11,15], target = 9)..."
+          rows={14}
+          maxLength={4000}
+          disabled={isBusy}
+          spellCheck={false}
+          className="w-full p-4 rounded-md outline-none resize-y"
+          style={{
+            background: C.surface,
+            color: C.text,
+            border: `1px solid ${C.borderAlt}`,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 13,
+            lineHeight: 1.55,
+            minHeight: 280,
+          }}
+        />
+
+        <div className="mt-3 flex items-center justify-between">
+          <span style={{ fontSize: 11, color: C.textFaint }}>
+            {text.length} / 4000 — Cmd/Ctrl+Enter to visualize
+          </span>
+          <motion.button
+            onClick={handleVisualize}
+            disabled={isBusy || !text.trim()}
+            whileHover={isBusy || !text.trim() ? {} : { scale: 1.02 }}
+            whileTap={isBusy || !text.trim() ? {} : { scale: 0.97 }}
+            transition={{ duration: 0.15 }}
+            className="px-4 py-2 rounded-md flex items-center gap-2"
+            style={{
+              background: text.trim() && !isBusy ? C.accent : C.borderAlt,
+              color: "#ffffff",
+              fontFamily: BODY,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: isBusy || !text.trim() ? "not-allowed" : "pointer",
+              opacity: isBusy || !text.trim() ? 0.7 : 1,
+            }}
+          >
+            {isBusy && (
+              <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+            )}
+            {buttonLabel}
+          </motion.button>
+        </div>
+
+        {/* Error banner */}
+        <AnimatePresence>
+          {state.kind === "error" && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2, ease: EASE }}
+              className="mt-4 p-3 rounded-md"
+              style={{
+                background: "rgba(239, 68, 68, 0.10)",
+                border: "1px solid rgba(239, 68, 68, 0.35)",
+                color: "#fca5a5",
+                fontSize: 13,
+              }}
+            >
+              <strong style={{ color: "#fecaca" }}>Couldn't visualize.</strong>{" "}
+              {state.message}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Result */}
+        <AnimatePresence>
+          {(state.kind === "rendering" || state.kind === "ready") && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25, ease: EASE }}
+              className="mt-8"
+            >
+              <div className="mb-4">
+                <h2
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 22,
+                    fontWeight: 600,
+                    letterSpacing: "-0.01em",
+                    marginBottom: 4,
+                  }}
+                >
+                  {state.parsed.title}
+                </h2>
+                <code
+                  style={{
+                    fontSize: 12,
+                    color: C.textFaint,
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  }}
+                >
+                  scene: {state.parsed.scene}
+                </code>
+              </div>
+
+              {/* Video container */}
+              <div
+                className="rounded-md overflow-hidden mb-6"
+                style={{
+                  background: "#0d1117",
+                  border: `1px solid ${C.borderAlt}`,
+                  aspectRatio: "16 / 9",
+                }}
+              >
+                {state.kind === "ready" ? (
+                  <motion.video
+                    key="video"
+                    autoPlay
+                    controls
+                    loop
+                    src={state.videoUrl}
+                    className="w-full h-full object-contain"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2
+                        size={28}
+                        className="animate-spin"
+                        strokeWidth={1.5}
+                        color={C.textMuted}
+                      />
+                      <span style={{ color: C.textMuted, fontSize: 13 }}>
+                        Rendering animation…
+                      </span>
+                      <span style={{ color: C.textFaint, fontSize: 11 }}>
+                        ~25-40 seconds
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Why this pattern wins */}
+              {state.parsed.why_this_pattern && (
+                <div
+                  className="p-4 rounded-md mb-4"
+                  style={{
+                    background: C.surface,
+                    border: `1px solid ${C.borderAlt}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.05em",
+                      color: C.textFaint,
+                      textTransform: "uppercase",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Why this pattern wins
+                  </div>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>
+                    {state.parsed.why_this_pattern}
+                  </p>
+                </div>
+              )}
+
+              {/* Approach / explanation */}
+              {state.parsed.explanation && (
+                <div
+                  className="p-4 rounded-md"
+                  style={{
+                    background: C.surface,
+                    border: `1px solid ${C.borderAlt}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.05em",
+                      color: C.textFaint,
+                      textTransform: "uppercase",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Approach
+                  </div>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>
+                    {state.parsed.explanation}
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 // Root App
 // ─────────────────────────────────────────────────────────────
 
@@ -4169,6 +4584,7 @@ export default function App() {
               />
             )}
             {route === "import-animations" && <ImportAnimationsPage topics={topics} />}
+            {route === "paste-leetcode" && <PasteLeetCodePage />}
           </motion.div>
         </AnimatePresence>
       </main>
