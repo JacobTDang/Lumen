@@ -862,6 +862,28 @@ async function generateAnimation(
 ): Promise<AnimResult> {
   const flaskUrl = flaskBase();
 
+  // Phase 9: extract scene + params from highlighted text when it looks
+  // like a real problem statement (has digits or brackets and is long
+  // enough to contain inputs). The parser returns {scene, params} keyed
+  // off the user's literal example values, which then flows through the
+  // existing `direct = override ?? TOPIC_SCENE_MAP[topic.id]` path below.
+  // Falls through silently to the topic default if the parser fails or
+  // the text is too short to extract anything useful.
+  const hasInputs =
+    !!extraContext &&
+    /[\[\]0-9]/.test(extraContext) &&
+    extraContext.trim().length >= 15;
+  if (!override && hasInputs) {
+    try {
+      const parsed = await parseLeetcode(extraContext as string);
+      if (parsed?.scene && parsed?.params) {
+        override = { scene: parsed.scene, params: parsed.params };
+      }
+    } catch (e) {
+      console.warn("parseLeetcode failed, using TOPIC_SCENE_MAP fallback:", e);
+    }
+  }
+
   // Fast path: explicit override (from an inline expression like "4+4"),
   // or a direct scene mapping for a known topic. Either way, skip the LLM
   // planner and hit /render with explicit scene + params — this avoids the
