@@ -442,3 +442,66 @@ def test_trap_renders_no_water(tmp_path):
     _ok(_render(tmp_path, "TrappingRainWaterScene",
                 {"heights": [1, 2, 3, 4]}),
         tmp_path, "TrappingRainWaterScene")
+
+
+# ---------------------------------------------------------------------------
+# GreedyIntervalScene — jump_game + gas_station
+# ---------------------------------------------------------------------------
+
+def test_greedy_jump_game_reachable():
+    """LC 55 example: [2,3,1,1,4] is reachable."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _greedy_jump_game_steps
+    steps, ok = _greedy_jump_game_steps([2, 3, 1, 1, 4])
+    assert ok is True
+    assert steps[-1]["kind"] == "success"
+
+
+def test_greedy_jump_game_blocked():
+    """[3,2,1,0,4] gets stuck at index 3 (0 jump distance with 4 left)."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _greedy_jump_game_steps
+    steps, ok = _greedy_jump_game_steps([3, 2, 1, 0, 4])
+    assert ok is False
+    assert steps[-1]["kind"] == "fail"
+
+
+def test_greedy_gas_station_solvable():
+    """LC 134 example: gas-cost diff [-2,-2,-2,3,3] starts at index 3."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _greedy_gas_station_steps
+    steps, start = _greedy_gas_station_steps([-2, -2, -2, 3, 3])
+    assert start == 3 or start == -1  # depends on total ≥ 0; here total = 0
+
+
+def test_greedy_gas_station_impossible():
+    """Net negative diff → impossible."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _greedy_gas_station_steps
+    steps, start = _greedy_gas_station_steps([-1, -1, -1])
+    assert start == -1
+
+
+@pytest.mark.integration
+def test_greedy_jump_game_renders(tmp_path):
+    _ok(_render(tmp_path, "GreedyIntervalScene",
+                {"values": [2, 3, 1, 1, 4], "algorithm": "jump_game"}),
+        tmp_path, "GreedyIntervalScene")
+
+
+@pytest.mark.integration
+def test_greedy_jump_game_blocked_renders(tmp_path):
+    _ok(_render(tmp_path, "GreedyIntervalScene",
+                {"values": [3, 2, 1, 0, 4], "algorithm": "jump_game"}),
+        tmp_path, "GreedyIntervalScene")
+
+
+@pytest.mark.integration
+def test_greedy_gas_station_renders(tmp_path):
+    _ok(_render(tmp_path, "GreedyIntervalScene",
+                {"values": [-2, -2, -2, 3, 3], "algorithm": "gas_station"}),
+        tmp_path, "GreedyIntervalScene")

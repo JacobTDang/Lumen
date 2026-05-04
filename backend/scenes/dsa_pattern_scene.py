@@ -2883,6 +2883,288 @@ class FloydCycleScene(Scene):
 
 
 # ===========================================================================
+#  Phase 7B Scene 3 — GreedyIntervalScene
+# ===========================================================================
+#
+#  Greedy "reach"-based decisions for jump_game and gas_station.
+#  jump_game: max_reach = max(max_reach, i + nums[i]); fail if max_reach < i.
+#  gas_station: track running tank; reset start when it goes negative.
+# ---------------------------------------------------------------------------
+
+def _greedy_jump_game_steps(values: list) -> tuple:
+    """Returns (steps, can_reach_end). Each step:
+        {kind: 'examine'|'success'|'fail', i: int, max_reach: int,
+         action: str}
+    """
+    n = len(values)
+    if n == 0:
+        return [], True  # vacuous
+    steps = [{"kind": "examine", "i": 0, "max_reach": 0,
+              "action": "max_reach = 0"}]
+    max_reach = 0
+    for i in range(n):
+        if i > max_reach:
+            steps.append({"kind": "fail", "i": i, "max_reach": max_reach,
+                          "action": f"i={i} > max_reach={max_reach} → STUCK"})
+            return steps, False
+        max_reach = max(max_reach, i + values[i])
+        steps.append({"kind": "examine", "i": i, "max_reach": max_reach,
+                      "action": f"i={i}, jump≤{values[i]}, max_reach={max_reach}"})
+        if max_reach >= n - 1:
+            steps.append({"kind": "success", "i": i, "max_reach": max_reach,
+                          "action": f"max_reach {max_reach} ≥ {n-1} → REACHABLE"})
+            return steps, True
+    return steps, False
+
+
+def _greedy_gas_station_steps(values: list) -> tuple:
+    """Returns (steps, start_index_or_-1). values is gas - cost per station.
+    Each step: {kind: 'examine'|'reset'|'done', i: int, tank: int,
+                start: int, total: int, action: str}
+    """
+    n = len(values)
+    if n == 0:
+        return [], -1
+    total = 0
+    tank = 0
+    start = 0
+    steps = [{"kind": "examine", "i": 0, "tank": 0, "start": 0, "total": 0,
+              "action": "tank=0, start=0"}]
+    for i in range(n):
+        diff = values[i]
+        total += diff
+        tank  += diff
+        if tank < 0:
+            steps.append({"kind": "reset", "i": i, "tank": 0,
+                          "start": i + 1, "total": total,
+                          "action": f"tank<0 at {i} → start ← {i+1}"})
+            tank = 0
+            start = i + 1
+        else:
+            steps.append({"kind": "examine", "i": i, "tank": tank,
+                          "start": start, "total": total,
+                          "action": f"i={i}, +{diff} → tank={tank}"})
+    if total < 0:
+        steps.append({"kind": "done", "i": n - 1, "tank": tank,
+                      "start": -1, "total": total,
+                      "action": "total<0 → impossible"})
+        return steps, -1
+    steps.append({"kind": "done", "i": n - 1, "tank": tank,
+                  "start": start, "total": total,
+                  "action": f"answer = {start}"})
+    return steps, start
+
+
+_JUMP_GAME_PSEUDOCODE = """
+max_reach = 0
+for i in range(n):
+    if i > max_reach: return False
+    max_reach = max(max_reach, i + a[i])
+    if max_reach >= n-1: return True
+return False
+""".strip()
+
+
+_GAS_STATION_PSEUDOCODE = """
+tank = total = 0
+start = 0
+for i in range(n):
+    tank  += diff[i]
+    total += diff[i]
+    if tank < 0:
+        start = i + 1
+        tank = 0
+return start if total >= 0 else -1
+""".strip()
+
+
+class GreedyIntervalScene(Scene):
+    """Jump Game (LC 55) or Gas Station (LC 134) — greedy with reach state.
+
+    Schema: {values: List[int], algorithm: "jump_game"|"gas_station", caption}
+    """
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = load_params()
+        values    = p.get("values",    [2, 3, 1, 1, 4])
+        algorithm = p.get("algorithm", "jump_game")
+        cap       = p.get("caption",   "")
+
+        title_map = {"jump_game": "Jump Game — Greedy Reach",
+                     "gas_station": "Gas Station — Running Tank"}
+        title = Text(title_map.get(algorithm, algorithm),
+                     font_size=28).to_edge(UP, buff=0.3)
+        badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+
+        if cap:
+            show_title_card(self, cap)
+            self.play(FadeIn(caption_strip(cap)), run_time=0.3)
+        self.play(Write(title), FadeIn(badge.vgroup))
+
+        strip = ArrayStrip(values, position=UP * 0.4)
+
+        pseudo = _JUMP_GAME_PSEUDOCODE if algorithm == "jump_game" else _GAS_STATION_PSEUDOCODE
+        code_panel = CodePanel(pseudo, anchor=UL, font_size=14, max_width=4.0)
+        state = StatePanel(anchor=UR, title="State")
+
+        self.play(FadeIn(strip.vgroup), Write(strip.indices),
+                  FadeIn(code_panel.vgroup), FadeIn(state.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
+
+        i_ptr = Pointer("i", color=PTR_COLORS["i"]).place_below(strip, 0)
+        self.play(FadeIn(i_ptr.vgroup))
+
+        if algorithm == "jump_game":
+            self._run_jump_game(values, strip, code_panel, state, i_ptr)
+        else:
+            self._run_gas_station(values, strip, code_panel, state, i_ptr)
+
+        self.wait(0.4)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+    # ─── jump_game ──────────────────────────────────────────────────────────
+
+    def _run_jump_game(self, values, strip, code_panel, state, i_ptr):
+        n = len(values)
+        steps, ok = _greedy_jump_game_steps(values)
+        if not steps:
+            return
+
+        self.play(*state.anim_set("max_reach", 0, color=KEEP), run_time=0.25)
+
+        # Reach zone — a translucent bar above the strip showing max_reach
+        reach_zone = Rectangle(
+            width=strip.cell_size * 0.95, height=0.18,
+            stroke_width=0, fill_color=KEEP, fill_opacity=0.55,
+        )
+        reach_zone.next_to(strip.cell_top(0), UP, buff=0.08)
+        self.play(FadeIn(reach_zone), run_time=0.25)
+
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        for step in steps[1:]:
+            kind = step["kind"]
+            i = step["i"]
+            mr = step["max_reach"]
+
+            self.play(i_ptr.anim_move_to(strip, i),
+                      strip.anim_set_fill(i, HILITE, 0.85),
+                      code_panel.anim_highlight(2),
+                      run_time=0.35, rate_func=smooth)
+
+            if kind == "fail":
+                self.play(code_panel.anim_highlight(2), run_time=0.15)
+                self.play(strip.flash(i, color=REJECT, scale=1.25), run_time=0.3)
+                self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+                rb = result_box("Cannot reach end", font_size=24).to_edge(DOWN, buff=1.75)
+                rb[1].set_color(REJECT)
+                self.play(FadeIn(rb))
+                return
+
+            # Update reach zone width to span [0..mr]
+            new_w = strip.cell_size * (mr - 0 + 1)
+            new_w = min(new_w, strip.cell_size * n)
+            new_x = strip.cell_top(0)[0] + (mr * strip.cell_size) / 2
+            new_zone = Rectangle(
+                width=new_w * 0.95, height=0.18,
+                stroke_width=0, fill_color=KEEP, fill_opacity=0.55,
+            ).move_to(np.array([new_x, reach_zone.get_center()[1], 0]))
+            self.play(Transform(reach_zone, new_zone),
+                      code_panel.anim_highlight(3),
+                      run_time=0.35)
+
+            self.play(*state.anim_set("max_reach", mr, color=KEEP), run_time=0.2)
+            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+            self.play(strip.anim_set_fill(i, KEEP, 0.55), run_time=0.15)
+
+            if kind == "success":
+                self.play(code_panel.anim_highlight(4), run_time=0.2)
+                self.play(strip.flash(n - 1, color=KEEP, scale=1.3), run_time=0.4)
+                rb = result_box("Reachable", font_size=24).to_edge(DOWN, buff=1.75)
+                rb[1].set_color(KEEP)
+                cmp = BruteForceComparison(
+                    brute=("DFS over all jumps", "O(2^n)"),
+                    optimal=("Greedy max_reach", "O(n)"),
+                )
+                self.play(FadeOut(act), FadeIn(rb))
+                self.wait(0.3)
+                self.play(FadeIn(cmp.vgroup), run_time=0.4)
+                return
+
+            self.wait(0.15)
+
+    # ─── gas_station ────────────────────────────────────────────────────────
+
+    def _run_gas_station(self, values, strip, code_panel, state, i_ptr):
+        n = len(values)
+        steps, ans = _greedy_gas_station_steps(values)
+        if not steps:
+            return
+
+        self.play(*state.anim_set("tank", 0, color=KEEP),
+                  *state.anim_set("start", 0, color=PTR_COLORS["L"]),
+                  *state.anim_set("total", 0, color=BLUE),
+                  run_time=0.3)
+
+        # start_marker — small triangle above strip
+        start_marker = Triangle(color=PTR_COLORS["L"], fill_opacity=1.0).scale(0.14)
+        start_marker.next_to(strip.cell_top(0), UP, buff=0.05)
+        self.play(FadeIn(start_marker), run_time=0.25)
+
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        for step in steps[1:]:
+            kind = step["kind"]
+            i = step["i"]
+
+            self.play(i_ptr.anim_move_to(strip, i),
+                      code_panel.anim_highlight(3),
+                      run_time=0.3, rate_func=smooth)
+
+            if kind == "reset":
+                self.play(code_panel.anim_highlight(5), run_time=0.2)
+                self.play(strip.flash(i, color=REJECT, scale=1.25), run_time=0.3)
+                # move start_marker to i+1
+                if step["start"] < n:
+                    new_marker = start_marker.copy().next_to(
+                        strip.cell_top(step["start"]), UP, buff=0.05)
+                    self.play(Transform(start_marker, new_marker), run_time=0.35)
+                self.play(*state.anim_set("tank", 0, color=KEEP),
+                          *state.anim_set("start", step["start"], color=PTR_COLORS["L"]),
+                          *state.anim_set("total", step["total"], color=BLUE),
+                          run_time=0.25)
+            elif kind == "examine":
+                self.play(strip.flash(i, color=HILITE, scale=1.15), run_time=0.2)
+                self.play(*state.anim_set("tank", step["tank"], color=KEEP),
+                          *state.anim_set("total", step["total"], color=BLUE),
+                          run_time=0.25)
+            elif kind == "done":
+                self.play(code_panel.anim_highlight(8), run_time=0.2)
+                if ans == -1:
+                    rb = result_box("Impossible (total < 0)", font_size=24).to_edge(DOWN, buff=1.75)
+                    rb[1].set_color(REJECT)
+                else:
+                    rb = result_box(f"Start at index {ans}", font_size=24).to_edge(DOWN, buff=1.75)
+                    rb[1].set_color(KEEP)
+                cmp = BruteForceComparison(
+                    brute=("Try every start", "O(n²)"),
+                    optimal=("Single pass + reset", "O(n)"),
+                )
+                self.play(FadeOut(act), FadeIn(rb))
+                self.wait(0.3)
+                self.play(FadeIn(cmp.vgroup), run_time=0.4)
+                return
+
+            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+            self.wait(0.1)
+
+
+# ===========================================================================
 #  Phase 7B Scene 2 — TrappingRainWaterScene
 # ===========================================================================
 #
