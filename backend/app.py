@@ -12,6 +12,7 @@ from agent.classifier import classify_domain
 from agent.dsa_planner import plan_dsa
 from agent.explainer import explain_problem
 from agent.gemini_client import call_gemini
+from agent.leetcode_parser import parse_problem as parse_leetcode_problem
 from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
 from schemas.types import StepPlan
@@ -459,6 +460,28 @@ def create_app(testing: bool = False) -> Flask:
         except Exception as exc:
             app.logger.exception("parse-problem failed")
             return jsonify({"error": "parse-problem failed", "detail": str(exc)}), 500
+
+    @app.post("/api/parse-leetcode")
+    def api_parse_leetcode():
+        """Parse a pasted LeetCode problem into a renderable {scene, params}.
+
+        Frontend can POST the returned scene+params straight to /render, skipping
+        the planner. Use this when the user pastes a full problem statement
+        (with example inputs) rather than a short conversational question.
+        """
+        body = request.get_json(silent=True) or {}
+        raw_text = body.get("rawText", "").strip()
+        if not raw_text:
+            return jsonify({"error": "rawText is required"}), 400
+        try:
+            parsed = parse_leetcode_problem(raw_text)
+        except ValueError as exc:
+            app.logger.warning("parse-leetcode rejected: %s", exc)
+            return jsonify({"error": "could not parse problem", "detail": str(exc)}), 422
+        except Exception as exc:
+            app.logger.exception("parse-leetcode failed")
+            return jsonify({"error": "parse-leetcode failed", "detail": str(exc)}), 500
+        return jsonify(parsed.model_dump())
 
     @app.post("/api/breakdown")
     def api_breakdown():
