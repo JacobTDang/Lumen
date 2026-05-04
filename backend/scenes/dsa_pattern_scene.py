@@ -2883,6 +2883,233 @@ class FloydCycleScene(Scene):
 
 
 # ===========================================================================
+#  Phase 7B Scene 5 — TopologicalSortScene (Kahn's algorithm)
+# ===========================================================================
+#
+#  Compute in_degree[] for every node, enqueue nodes with in_degree 0,
+#  pop one at a time and decrement neighbors. Result is a valid topo order.
+# ---------------------------------------------------------------------------
+
+def _topological_sort_steps(num_nodes: int, edges: list) -> tuple:
+    """Returns (steps, order). Order is a list[int]. Each step:
+        {kind: 'init'|'enqueue'|'pop'|'decrement'|'cycle'|'done',
+         node?: int, in_degree: list[int], queue: list[int],
+         order: list[int], action: str}
+    """
+    in_deg = [0] * num_nodes
+    adj = [[] for _ in range(num_nodes)]
+    for e in edges:
+        u, v = e[0], e[1]
+        adj[u].append(v)
+        in_deg[v] += 1
+
+    steps = [{"kind": "init", "in_degree": list(in_deg),
+              "queue": [], "order": [],
+              "action": f"in_degree = {in_deg}"}]
+
+    queue = [i for i in range(num_nodes) if in_deg[i] == 0]
+    if queue:
+        steps.append({"kind": "enqueue", "node": queue[:],
+                      "in_degree": list(in_deg), "queue": list(queue),
+                      "order": [],
+                      "action": f"enqueue zero-in-degree nodes: {queue}"})
+
+    order = []
+    safety = 0
+    while queue:
+        safety += 1
+        if safety > num_nodes * 4:  # cycle safeguard
+            steps.append({"kind": "cycle", "in_degree": list(in_deg),
+                          "queue": list(queue), "order": list(order),
+                          "action": "cycle detected"})
+            return steps, order
+
+        u = queue.pop(0)
+        order.append(u)
+        steps.append({"kind": "pop", "node": u,
+                      "in_degree": list(in_deg), "queue": list(queue),
+                      "order": list(order),
+                      "action": f"pop {u} → order = {order}"})
+
+        for v in adj[u]:
+            in_deg[v] -= 1
+            if in_deg[v] == 0:
+                queue.append(v)
+                steps.append({"kind": "decrement", "node": v,
+                              "in_degree": list(in_deg), "queue": list(queue),
+                              "order": list(order),
+                              "action": f"in_deg[{v}] → 0, enqueue"})
+            else:
+                steps.append({"kind": "decrement", "node": v,
+                              "in_degree": list(in_deg), "queue": list(queue),
+                              "order": list(order),
+                              "action": f"in_deg[{v}] → {in_deg[v]}"})
+
+    if any(d > 0 for d in in_deg):
+        steps.append({"kind": "cycle", "in_degree": list(in_deg),
+                      "queue": [], "order": list(order),
+                      "action": "remaining in_degrees > 0 → cycle"})
+        return steps, order
+
+    steps.append({"kind": "done", "in_degree": list(in_deg),
+                  "queue": [], "order": list(order),
+                  "action": f"order = {order}"})
+    return steps, order
+
+
+_TOPO_SORT_PSEUDOCODE = """
+in_deg = [count incoming]
+queue = [v for in_deg[v]==0]
+while queue:
+    u = queue.popleft()
+    order.append(u)
+    for v in adj[u]:
+        in_deg[v] -= 1
+        if in_deg[v]==0: queue.append(v)
+""".strip()
+
+
+class TopologicalSortScene(Scene):
+    """Kahn's topological sort on a directed graph.
+
+    Schema: {num_nodes: int, edges: List[[u,v]], caption: str}
+    """
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = load_params()
+        num_nodes = p.get("num_nodes", 5)
+        edges     = p.get("edges",     [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]])
+        cap       = p.get("caption",   "")
+
+        title = Text("Topological Sort — Kahn's Algorithm",
+                     font_size=26).to_edge(UP, buff=0.3)
+        badge = ComplexityBadge(time="O(V+E)", space="O(V+E)", font_size=14)
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+
+        if cap:
+            show_title_card(self, cap)
+            self.play(FadeIn(caption_strip(cap)), run_time=0.3)
+        self.play(Write(title), FadeIn(badge.vgroup))
+
+        # Graph centered slightly left so right side has room for queue/order
+        graph = GraphPanel(num_nodes, edges, position=LEFT * 1.6,
+                           radius=1.8, node_radius=0.28, directed=True)
+
+        # in_degree strip below the graph
+        in_deg_init = [0] * num_nodes
+        for e in edges:
+            in_deg_init[e[1]] += 1
+        in_strip = ArrayStrip(in_deg_init, position=DOWN * 2.1 + LEFT * 1.6,
+                              cell_size=0.45)
+        in_lbl = Text("in_degree", font_size=14, color=GRAY).next_to(
+            in_strip.vgroup, LEFT, buff=0.2)
+
+        # Queue (StackWidget reused as queue — push/pop from one end)
+        queue_w = StackWidget(position=RIGHT * 3.5 + UP * 0.8,
+                              cell_w=0.85, cell_h=0.45, max_visible=6,
+                              title="queue")
+        # StackWidget already has its own title; no separate label needed
+        queue_lbl = VGroup()
+
+        # Order display (text that grows as we add)
+        order_lbl = Text("order: [ ]", font_size=18, color=KEEP).to_edge(DOWN, buff=2.6)
+
+        code_panel = CodePanel(_TOPO_SORT_PSEUDOCODE, anchor=UL,
+                               font_size=13, max_width=4.0)
+
+        self.play(FadeIn(graph.vgroup), FadeIn(in_strip.vgroup),
+                  Write(in_strip.indices), FadeIn(in_lbl),
+                  FadeIn(queue_w.vgroup), FadeIn(queue_lbl),
+                  FadeIn(code_panel.vgroup), FadeIn(order_lbl))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
+
+        steps, order = _topological_sort_steps(num_nodes, edges)
+        if not steps:
+            return
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        for step in steps[1:]:
+            kind = step["kind"]
+
+            if kind == "enqueue":
+                self.play(code_panel.anim_highlight(1), run_time=0.2)
+                # Glow each zero-in-degree node green and push to queue
+                for nid in step["node"]:
+                    self.play(
+                        graph.anim_set_node_color(nid, KEEP, opacity=0.85),
+                        run_time=0.25,
+                    )
+                    item, anims = queue_w.anim_push(nid, color=KEEP)
+                    if anims:
+                        self.play(*anims, run_time=0.25)
+
+            elif kind == "pop":
+                self.play(code_panel.anim_highlight(3), run_time=0.2)
+                u = step["node"]
+                # Remove from queue widget (returns (popped_val, anims_list))
+                _, pop_anims = queue_w.anim_pop()
+                if pop_anims:
+                    self.play(*pop_anims, run_time=0.3)
+                # Glow + dim popped node
+                self.play(graph.anim_set_node_color(u, "#475569", opacity=0.5),
+                          run_time=0.3)
+                # Update order label
+                new_order_lbl = Text(f"order: {step['order']}",
+                                     font_size=18, color=KEEP).to_edge(DOWN, buff=2.6)
+                self.play(Transform(order_lbl, new_order_lbl), run_time=0.25)
+
+            elif kind == "decrement":
+                v = step["node"]
+                self.play(code_panel.anim_highlight(6), run_time=0.15)
+                anims = [in_strip.anim_set_value(v, step["in_degree"][v]),
+                         in_strip.flash(v, color=YELLOW, scale=1.2)]
+                if step["order"]:
+                    edge_anim = graph.anim_flash_edge(step["order"][-1], v,
+                                                      color=YELLOW)
+                    if edge_anim is not None:
+                        anims.append(edge_anim)
+                self.play(*anims, run_time=0.35)
+                if step["in_degree"][v] == 0:
+                    self.play(code_panel.anim_highlight(7), run_time=0.15)
+                    self.play(graph.anim_set_node_color(v, KEEP, opacity=0.85),
+                              run_time=0.2)
+                    item, anims = queue_w.anim_push(v, color=KEEP)
+                    if anims:
+                        self.play(*anims, run_time=0.25)
+
+            elif kind == "cycle":
+                self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+                rb = result_box("Cycle detected — no valid order",
+                                font_size=22).to_edge(DOWN, buff=1.75)
+                rb[1].set_color(REJECT)
+                self.play(FadeIn(rb))
+                self.wait(1.0)
+                self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+                return
+
+            elif kind == "done":
+                break
+
+            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+            self.wait(0.15)
+
+        rb = result_box(f"order = {order}", font_size=22).to_edge(DOWN, buff=1.75)
+        rb[1].set_color(KEEP)
+        cmp = BruteForceComparison(
+            brute=("DFS + post-order", "O(V+E) (more nuanced)"),
+            optimal=("Kahn's BFS w/ in_degree", "O(V+E)"),
+        )
+        self.play(FadeOut(act), FadeIn(rb))
+        self.wait(0.3)
+        self.play(FadeIn(cmp.vgroup), run_time=0.4)
+        self.wait(1.0)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ===========================================================================
 #  Phase 7B Scene 4 — BitManipulationScene
 # ===========================================================================
 #

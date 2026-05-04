@@ -559,3 +559,53 @@ def test_bit_count_bits_renders(tmp_path):
     _ok(_render(tmp_path, "BitManipulationScene",
                 {"values": [22], "operation": "count_bits"}),
         tmp_path, "BitManipulationScene")
+
+
+# ---------------------------------------------------------------------------
+# TopologicalSortScene
+# ---------------------------------------------------------------------------
+
+def test_topo_sort_linear_chain():
+    """0→1→2→3→4 must produce [0,1,2,3,4]."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _topological_sort_steps
+    _, order = _topological_sort_steps(5, [[0, 1], [1, 2], [2, 3], [3, 4]])
+    assert order == [0, 1, 2, 3, 4]
+
+
+def test_topo_sort_diamond():
+    """Diamond: 0→{1,2}→3→4 is a valid topo order."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _topological_sort_steps
+    _, order = _topological_sort_steps(5, [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]])
+    assert order[0] == 0          # 0 always first
+    assert order[-1] == 4         # 4 always last
+    assert set(order[1:3]) == {1, 2}   # 1 and 2 in middle
+
+
+def test_topo_sort_cycle():
+    """0→1→2→0 has a cycle and produces no valid order."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _topological_sort_steps
+    steps, order = _topological_sort_steps(3, [[0, 1], [1, 2], [2, 0]])
+    assert steps[-1]["kind"] == "cycle"
+    assert len(order) < 3
+
+
+@pytest.mark.integration
+def test_topo_sort_renders_diamond(tmp_path):
+    _ok(_render(tmp_path, "TopologicalSortScene",
+                {"num_nodes": 5,
+                 "edges": [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]]}),
+        tmp_path, "TopologicalSortScene")
+
+
+@pytest.mark.integration
+def test_topo_sort_renders_cycle(tmp_path):
+    _ok(_render(tmp_path, "TopologicalSortScene",
+                {"num_nodes": 3,
+                 "edges": [[0, 1], [1, 2], [2, 0]]}),
+        tmp_path, "TopologicalSortScene")
