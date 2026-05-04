@@ -8,8 +8,42 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from agent.classifier import classify_domain
 from agent.dsa_planner import plan_dsa
+from agent.explainer import explain_problem
 from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
+
+_TOPICS = [
+    {"id": "merge-sort", "name": "Merge Sort", "category": "dsa",
+     "keywords": ["merge sort", "mergesort", "divide and conquer sort"],
+     "description": "Recursive divide-and-merge visualization with comparison highlights."},
+    {"id": "quick-sort", "name": "Quick Sort", "category": "dsa",
+     "keywords": ["quick sort", "quicksort", "partition"],
+     "description": "Pivot-based partitioning shown step by step."},
+    {"id": "binary-search", "name": "Binary Search", "category": "dsa",
+     "keywords": ["binary search", "log n search"],
+     "description": "Halving the search space on a sorted array."},
+    {"id": "chain-rule", "name": "Chain Rule", "category": "calculus",
+     "keywords": ["chain rule", "composite derivative", "f(g(x))"],
+     "description": "Derivative of nested functions, layer by layer."},
+    {"id": "washer-method", "name": "Washer Method", "category": "calculus",
+     "keywords": ["washer method", "volume of revolution", "disk method"],
+     "description": "Volume of solids of revolution using stacked washers."},
+    {"id": "shell-method", "name": "Cylindrical Shell Method", "category": "calculus",
+     "keywords": ["cylindrical shell", "shell method", "shells"],
+     "description": "Volume by unwrapping concentric cylindrical shells."},
+    {"id": "long-division", "name": "Long Division", "category": "arithmetic",
+     "keywords": ["long division", "divide"],
+     "description": "Step-by-step division algorithm."},
+    {"id": "derivative-power-rule", "name": "Power Rule", "category": "calculus",
+     "keywords": ["power rule", "derivative of x^n"],
+     "description": "Why d/dx[x^n] = n·x^(n-1)."},
+    {"id": "torque", "name": "Torque", "category": "physics",
+     "keywords": ["torque", "rotational force"],
+     "description": "Force × lever arm visualized on a rotating body."},
+    {"id": "matrix-multiply", "name": "Matrix Multiplication", "category": "linalg",
+     "keywords": ["matrix multiply", "matmul"],
+     "description": "Row-by-column dot products animated."},
+]
 
 
 def create_app(testing: bool = False) -> Flask:
@@ -20,6 +54,21 @@ def create_app(testing: bool = False) -> Flask:
     @app.get("/health")
     def health():
         return jsonify({"status": "ok"})
+
+    @app.get("/topics")
+    def topics():
+        return jsonify({"topics": _TOPICS})
+
+    @app.post("/breakdown")
+    def breakdown():
+        body = request.get_json(silent=True) or {}
+        topic_name = body.get("topicName", "").strip()
+        topic_description = body.get("topicDescription", "").strip()
+        problem = body.get("problem", "").strip()
+        if not topic_name:
+            return jsonify({"error": "topicName is required"}), 400
+        sections = explain_problem(problem, topic_name, topic_description)
+        return jsonify({"sections": sections})
 
     @app.post("/ask")
     def ask():

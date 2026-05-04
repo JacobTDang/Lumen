@@ -169,19 +169,69 @@ const MOCK_TOPICS: AnimatableTopic[] = [
   },
 ];
 
-// MOCK: replace with `await fetch(\`${import.meta.env.VITE_FLASK_URL}/api/topics\`)`
-async function MOCK_fetchTopics(): Promise<AnimatableTopic[]> {
-  await new Promise((r) => setTimeout(r, 300));
-  return MOCK_TOPICS;
+async function fetchTopics(): Promise<AnimatableTopic[]> {
+  const flaskUrl =
+    (import.meta.env.VITE_FLASK_URL as string | undefined) ||
+    "http://localhost:5000";
+  try {
+    const res = await fetch(`${flaskUrl}/topics`);
+    if (!res.ok) throw new Error(`/topics ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data.topics) ? data.topics : MOCK_TOPICS;
+  } catch {
+    return MOCK_TOPICS;
+  }
 }
 
-// MOCK: replace with `await fetch(\`${import.meta.env.VITE_FLASK_URL}/api/animate\`, { method: 'POST', body: JSON.stringify({ topic, params }) })`
-async function MOCK_generateAnimation(
-  topic: AnimatableTopic
-): Promise<{ videoUrl: string; status: "ready" }> {
-  await new Promise((r) => setTimeout(r, 1800));
-  // In the real app, Flask returns a video URL after Manim renders
-  return { videoUrl: `placeholder://${topic.id}`, status: "ready" };
+async function generateAnimation(
+  topic: AnimatableTopic,
+  extraContext?: string
+): Promise<{ videoUrl: string; status: "ready" | "error"; error?: string }> {
+  const flaskUrl =
+    (import.meta.env.VITE_FLASK_URL as string | undefined) ||
+    "http://localhost:5000";
+  const question = extraContext
+    ? `${topic.name}: ${extraContext}`
+    : `${topic.name}: ${topic.description}`;
+
+  try {
+    const askRes = await fetch(`${flaskUrl}/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    if (!askRes.ok) {
+      const detail = await askRes.text().catch(() => "");
+      return { videoUrl: `placeholder://${topic.id}`, status: "error",
+                error: `/ask ${askRes.status}: ${detail.slice(0, 120)}` };
+    }
+    const ask = await askRes.json();
+    const jobId: string = ask.job_id;
+    if (!jobId) {
+      return { videoUrl: `placeholder://${topic.id}`, status: "error",
+                error: "/ask returned no job_id" };
+    }
+
+    const deadline = Date.now() + 120_000;   // 2-minute timeout
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 800));
+      const statusRes = await fetch(`${flaskUrl}/status/${jobId}`);
+      if (!statusRes.ok) continue;
+      const job = await statusRes.json();
+      if (job.status === "done" && job.url) {
+        return { videoUrl: `${flaskUrl}${job.url}`, status: "ready" };
+      }
+      if (job.status === "error") {
+        return { videoUrl: `placeholder://${topic.id}`, status: "error",
+                  error: job.error || "render failed" };
+      }
+    }
+    return { videoUrl: `placeholder://${topic.id}`, status: "error",
+              error: "render timed out after 120s" };
+  } catch (e) {
+    return { videoUrl: `placeholder://${topic.id}`, status: "error",
+              error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 // MOCK: replace with `await fetch(\`${import.meta.env.VITE_BACKEND_URL}/api/ocr\`, { method: 'POST', body: formData })`
@@ -238,28 +288,31 @@ async function MOCK_parseProblem(
   };
 }
 
-// MOCK: replace with `await fetch(\`${import.meta.env.VITE_BACKEND_URL}/api/breakdown\`, ...)`
-async function MOCK_explainProblem(
+async function explainProblem(
   problem: string,
   topic: AnimatableTopic
 ): Promise<BreakdownSection[]> {
-  await new Promise((r) => setTimeout(r, 1200));
-  if (topic.id === "shell-method") {
-    return [
-      { label: "Method", body: "Cylindrical Shell Method — integrate 2π·radius·height·dx." },
-      { label: "The shell", body: "Each thin vertical strip of width dx becomes a cylindrical shell when revolved. The shell radius is x (distance from axis of rotation)." },
-      { label: "The height", body: "The shell height is the function value y = x², which represents how tall each shell stands." },
-      { label: "The hole", body: "Since the region starts at y = 0 and we revolve around the y-axis, there is no hole — but if revolving around x = 3, the radius would shift to (3 − x)." },
-      { label: "Setup", body: "V = ∫₀² 2π·x·(x²) dx = 2π ∫₀² x³ dx = 2π · [x⁴/4]₀² = 8π." },
-    ];
-  }
-  if (topic.id === "washer-method") {
-    return [
-      { label: "Method", body: "Washer Method — integrate π(R² − r²) dx along the axis." },
-      { label: "Outer radius (R)", body: "Distance from axis of rotation to the outer curve." },
-      { label: "Inner radius (r)", body: "Distance from axis of rotation to the inner curve. This is the 'hole' in the washer." },
-      { label: "The washer", body: "Each cross-section perpendicular to the axis is a flat ring (washer) with area π(R² − r²)." },
-    ];
+  const flaskUrl =
+    (import.meta.env.VITE_FLASK_URL as string | undefined) ||
+    "http://localhost:5000";
+  try {
+    const res = await fetch(`${flaskUrl}/breakdown`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        problem,
+        topicId: topic.id,
+        topicName: topic.name,
+        topicDescription: topic.description,
+      }),
+    });
+    if (!res.ok) throw new Error(`/breakdown ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data.sections) && data.sections.length > 0) {
+      return data.sections;
+    }
+  } catch {
+    // fall through to local fallback
   }
   return [
     { label: "Method", body: `${topic.name} — see animation for the visual intuition.` },
@@ -764,6 +817,8 @@ const NoteEditor: React.FC<{
     topic: AnimatableTopic;
     breakdown: BreakdownSection[] | null;
     loading: boolean;
+    videoUrl?: string;
+    error?: string;
   } | null>(null);
   const [sideNoteDraft, setSideNoteDraft] = useState<{ anchor: string; body: string } | null>(null);
 
@@ -853,11 +908,17 @@ const NoteEditor: React.FC<{
   const animate = async (topic: AnimatableTopic) => {
     setToolbar((t) => ({ ...t, visible: false }));
     setAnimating({ topic, breakdown: null, loading: true });
-    const [, sections] = await Promise.all([
-      MOCK_generateAnimation(topic),
-      MOCK_explainProblem(toolbar.selectedText, topic),
+    const [animResult, sections] = await Promise.all([
+      generateAnimation(topic, toolbar.selectedText || undefined),
+      explainProblem(toolbar.selectedText, topic),
     ]);
-    setAnimating({ topic, breakdown: sections, loading: false });
+    setAnimating({
+      topic,
+      breakdown: sections,
+      loading: false,
+      videoUrl: animResult.status === "ready" ? animResult.videoUrl : undefined,
+      error:    animResult.status === "error" ? animResult.error : undefined,
+    });
   };
 
   const startSideNote = () => {
@@ -1076,8 +1137,24 @@ const NoteEditor: React.FC<{
                         Rendering your animation...
                       </p>
                     </div>
+                  ) : animating.videoUrl ? (
+                    <video
+                      src={animating.videoUrl}
+                      autoPlay
+                      loop
+                      controls
+                      className="w-full h-full object-contain"
+                      style={{ background: "#0d1117" }}
+                    />
                   ) : (
-                    <ManimPlaceholder topic={animating.topic} />
+                    <div className="flex flex-col items-center gap-2">
+                      <ManimPlaceholder topic={animating.topic} />
+                      {animating.error && (
+                        <p style={{ fontSize: 12, color: "#A66", fontFamily: "Inter, sans-serif" }}>
+                          {animating.error}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -1876,8 +1953,8 @@ const ImportAnimationsPage: React.FC<{
       }
       setStatus({ kind: "rendering", problem: parsed.problem, topic });
       const [, breakdown] = await Promise.all([
-        MOCK_generateAnimation(topic),
-        MOCK_explainProblem(parsed.problem, topic),
+        generateAnimation(topic),
+        explainProblem(parsed.problem, topic),
       ]);
       setStatus({ kind: "ready", problem: parsed.problem, topic, breakdown });
     } catch (e: any) {
@@ -2267,7 +2344,7 @@ export default function App() {
 
   // Load topics from "Flask"
   useEffect(() => {
-    MOCK_fetchTopics().then(setTopics);
+    fetchTopics().then(setTopics);
   }, []);
 
   // Persist on every notes change
