@@ -2880,3 +2880,239 @@ class FloydCycleScene(Scene):
         self.play(FadeIn(cmp.vgroup), run_time=0.4)
         self.wait(1.0)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
+
+
+# ===========================================================================
+#  Phase 7B Scene 2 — TrappingRainWaterScene
+# ===========================================================================
+#
+#  Two-pointer water trapping on a histogram of heights. At each step,
+#  the pointer at the smaller side moves inward; water[i] accumulates
+#  as min(left_max, right_max) - height[i] for the cell being processed.
+# ---------------------------------------------------------------------------
+
+def _trapping_rain_water_steps(heights: list) -> tuple:
+    """Returns (steps, total_water).
+
+    Each step: {kind: 'init'|'move'|'fill'|'done', l: int, r: int,
+                left_max: int, right_max: int, water_at: int|null,
+                total: int, action: str}
+    """
+    n = len(heights)
+    if n < 2:
+        return [], 0
+
+    l, r = 0, n - 1
+    left_max = right_max = 0
+    total = 0
+    steps = [{"kind": "init", "l": l, "r": r, "left_max": 0, "right_max": 0,
+              "water_at": None, "total": 0,
+              "action": f"l=0, r={n-1}"}]
+
+    while l < r:
+        if heights[l] < heights[r]:
+            if heights[l] >= left_max:
+                left_max = heights[l]
+                steps.append({"kind": "move", "l": l, "r": r,
+                              "left_max": left_max, "right_max": right_max,
+                              "water_at": None, "total": total,
+                              "action": f"left_max ← {left_max} (h[{l}])"})
+            else:
+                w = left_max - heights[l]
+                total += w
+                steps.append({"kind": "fill", "l": l, "r": r,
+                              "left_max": left_max, "right_max": right_max,
+                              "water_at": l, "total": total,
+                              "action": f"water at {l}: {left_max}-{heights[l]} = {w}"})
+            l += 1
+        else:
+            if heights[r] >= right_max:
+                right_max = heights[r]
+                steps.append({"kind": "move", "l": l, "r": r,
+                              "left_max": left_max, "right_max": right_max,
+                              "water_at": None, "total": total,
+                              "action": f"right_max ← {right_max} (h[{r}])"})
+            else:
+                w = right_max - heights[r]
+                total += w
+                steps.append({"kind": "fill", "l": l, "r": r,
+                              "left_max": left_max, "right_max": right_max,
+                              "water_at": r, "total": total,
+                              "action": f"water at {r}: {right_max}-{heights[r]} = {w}"})
+            r -= 1
+
+    steps.append({"kind": "done", "l": l, "r": r,
+                  "left_max": left_max, "right_max": right_max,
+                  "water_at": None, "total": total,
+                  "action": f"total water = {total}"})
+    return steps, total
+
+
+_TRAP_PSEUDOCODE = """
+l, r = 0, n - 1
+while l < r:
+    if h[l] < h[r]:
+        if h[l] >= L: L = h[l]
+        else: total += L - h[l]
+        l += 1
+    else:
+        if h[r] >= R: R = h[r]
+        else: total += R - h[r]
+        r -= 1
+""".strip()
+
+
+class TrappingRainWaterScene(Scene):
+    """Trapping Rain Water (LC 42) — two-pointer with running max.
+
+    Schema: {heights: List[int], caption: str}
+    """
+
+    def construct(self):
+        self.camera.background_color = "#0d1117"
+        p = load_params()
+        heights = p.get("heights", [0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1])
+        cap     = p.get("caption", "")
+
+        title = Text("Trapping Rain Water", font_size=28).to_edge(UP, buff=0.3)
+        badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+
+        if cap:
+            show_title_card(self, cap)
+            self.play(FadeIn(caption_strip(cap)), run_time=0.3)
+        self.play(Write(title), FadeIn(badge.vgroup))
+
+        # Build histogram bars (variable-height rectangles)
+        n = len(heights)
+        max_h = max(max(heights), 1)
+        bar_width = min(0.7, 9.5 / n)
+        unit_h = 2.0 / max_h  # total bar area is 2 units tall
+        baseline_y = -0.8
+        start_x = -(n - 1) * bar_width / 2
+
+        bars = []
+        for i, h in enumerate(heights):
+            cx = start_x + i * bar_width
+            bar_h = max(h * unit_h, 0.05)  # tiny stub for height=0
+            bar = Rectangle(
+                width=bar_width * 0.92, height=bar_h,
+                stroke_color=WHITE, stroke_width=1,
+                fill_color="#94a3b8", fill_opacity=0.85,
+            )
+            bar.move_to(np.array([cx, baseline_y + bar_h / 2, 0]))
+            bars.append(bar)
+
+        # Index labels under each bar
+        idx_lbls = VGroup(*[
+            Text(str(i), font_size=14, color=GRAY).move_to(
+                np.array([start_x + i * bar_width, baseline_y - 0.18, 0]))
+            for i in range(n)
+        ])
+
+        bars_grp = VGroup(*bars, idx_lbls)
+
+        code_panel = CodePanel(_TRAP_PSEUDOCODE, anchor=UL,
+                               font_size=14, max_width=4.0)
+        state = StatePanel(anchor=UR, title="State")
+
+        self.play(FadeIn(bars_grp), FadeIn(code_panel.vgroup), FadeIn(state.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
+
+        # Pointer triangles below bars
+        def _ptr(label, color):
+            arrow = Triangle(color=color, fill_opacity=1.0).scale(0.16).rotate(PI)
+            lbl   = Text(label, font_size=14, color=color, weight=BOLD)
+            return VGroup(arrow, lbl).arrange(DOWN, buff=0.05)
+
+        l_ptr = _ptr("L", PTR_COLORS["L"])
+        r_ptr = _ptr("R", PTR_COLORS["R"])
+
+        def _place_ptr(ptr, idx):
+            ptr.next_to(bars[idx], DOWN, buff=0.32)
+
+        _place_ptr(l_ptr, 0)
+        _place_ptr(r_ptr, n - 1)
+        self.play(FadeIn(l_ptr), FadeIn(r_ptr))
+
+        self.play(*state.anim_set("L", 0, color=PTR_COLORS["L"]),
+                  *state.anim_set("R", 0, color=PTR_COLORS["R"]),
+                  *state.anim_set("water", 0, color=BLUE),
+                  run_time=0.3)
+
+        steps, total_water = _trapping_rain_water_steps(heights)
+        if not steps:
+            return
+        act = action_text(steps[0]["action"])
+        self.play(FadeIn(act))
+
+        water_blocks = {}  # i → Rectangle covering water[i]
+
+        for step in steps[1:]:  # skip init
+            kind = step["kind"]
+            if kind == "done":
+                break
+
+            l_i, r_i = step["l"], step["r"]
+            self.play(code_panel.anim_highlight(1), run_time=0.15)
+
+            # Move the pointer that didn't advance yet — actually both might shift
+            # depending on the previous iteration. We just place each at l_i, r_i
+            # of the current step.
+            new_l = l_ptr.copy(); _place_ptr(new_l, l_i)
+            new_r = r_ptr.copy(); _place_ptr(new_r, r_i)
+            self.play(Transform(l_ptr, new_l), Transform(r_ptr, new_r),
+                      run_time=0.35, rate_func=smooth)
+
+            if kind == "fill":
+                # Animate water filling above the bar
+                idx = step["water_at"]
+                bar = bars[idx]
+                wall_max = step["left_max"] if idx <= (l_i + r_i) // 2 else step["right_max"]
+                water_top_y = baseline_y + wall_max * unit_h
+                water_h = water_top_y - (bar.get_top()[1])
+                if water_h > 0:
+                    water = Rectangle(
+                        width=bar.width, height=water_h,
+                        stroke_width=0, fill_color="#06b6d4", fill_opacity=0.55,
+                    )
+                    water.move_to(np.array([bar.get_center()[0],
+                                            bar.get_top()[1] + water_h / 2, 0]))
+                    water_blocks[idx] = water
+                    # Highlight the relevant code line(s)
+                    line_to_hl = 5 if idx == l_i else 9
+                    self.play(code_panel.anim_highlight(line_to_hl), run_time=0.2)
+                    self.play(FadeIn(water, shift=DOWN * 0.2), run_time=0.4)
+                    self.play(Indicate(water, color="#67e8f9", scale_factor=1.05),
+                              run_time=0.3)
+            else:  # move (running max updated)
+                # Highlight the wall on the side that updated
+                idx = l_i if step["left_max"] > 0 and l_i > 0 else r_i
+                # Simpler: just check which max changed
+                self.play(code_panel.anim_highlight(4 if l_i < r_i else 8),
+                          Indicate(bars[step["l"] if step["left_max"] >= step["right_max"] else step["r"]],
+                                   color=YELLOW, scale_factor=1.1),
+                          run_time=0.35)
+
+            self.play(*state.anim_set("L", step["left_max"], color=PTR_COLORS["L"]),
+                      *state.anim_set("R", step["right_max"], color=PTR_COLORS["R"]),
+                      *state.anim_set("water", step["total"], color=BLUE),
+                      run_time=0.25)
+            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+            self.wait(0.15)
+
+        # Final result + brute force comparison
+        rb = result_box(f"Total trapped water = {total_water}",
+                        font_size=24).to_edge(DOWN, buff=1.75)
+        rb[1].set_color("#06b6d4")
+        cmp = BruteForceComparison(
+            brute=("Per-cell scan for max", "O(n²)"),
+            optimal=("Two-pointer with running max", "O(n)"),
+        )
+
+        self.play(FadeOut(act), FadeIn(rb))
+        self.wait(0.3)
+        self.play(FadeIn(cmp.vgroup), run_time=0.4)
+        self.wait(1.0)
+        self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)

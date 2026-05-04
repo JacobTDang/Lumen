@@ -395,3 +395,50 @@ def test_floyd_cycle_no_cycle_renders(tmp_path):
     _ok(_render(tmp_path, "FloydCycleScene",
                 {"values": [1, 2, 3, 4], "cycle_at": None}),
         tmp_path, "FloydCycleScene")
+
+
+# ---------------------------------------------------------------------------
+# TrappingRainWaterScene
+# ---------------------------------------------------------------------------
+
+def test_trap_classic_lc42():
+    """LC 42 example: heights = [0,1,0,2,1,0,1,3,2,1,2,1] → 6 units of water."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _trapping_rain_water_steps
+    heights = [0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]
+    steps, total = _trapping_rain_water_steps(heights)
+    assert total == 6
+    assert steps[-1]["kind"] == "done"
+
+
+def test_trap_no_water_monotonic():
+    """A monotonically increasing histogram traps zero water."""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _trapping_rain_water_steps
+    _, total = _trapping_rain_water_steps([1, 2, 3, 4, 5])
+    assert total == 0
+
+
+def test_trap_short_input():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from scenes.dsa_pattern_scene import _trapping_rain_water_steps
+    steps, total = _trapping_rain_water_steps([3])
+    assert steps == []
+    assert total == 0
+
+
+@pytest.mark.integration
+def test_trap_renders_classic(tmp_path):
+    _ok(_render(tmp_path, "TrappingRainWaterScene",
+                {"heights": [0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]}),
+        tmp_path, "TrappingRainWaterScene")
+
+
+@pytest.mark.integration
+def test_trap_renders_no_water(tmp_path):
+    _ok(_render(tmp_path, "TrappingRainWaterScene",
+                {"heights": [1, 2, 3, 4]}),
+        tmp_path, "TrappingRainWaterScene")
