@@ -1154,3 +1154,240 @@ class CodePanel:
             for j in range(self.line_count)
         ]
         return AnimationGroup(*anims, lag_ratio=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Primitive 16 — ComplexityBadge
+# ---------------------------------------------------------------------------
+
+class ComplexityBadge:
+    """
+    Small pill showing 'T: O(n) · S: O(1)' next to the scene title.
+    Static — never animated, just FadeIn at scene start.
+
+    Construction:
+        badge = ComplexityBadge(time="O(n log n)", space="O(1)")
+        badge.vgroup.next_to(title, RIGHT, buff=0.4)
+    """
+
+    def __init__(self, time: str, space: str, font_size: int = 16):
+        time_label  = Text("T:", font_size=font_size, color=GRAY, weight=BOLD)
+        time_value  = Text(time, font_size=font_size, color=BLUE, weight=BOLD)
+        sep         = Text("·", font_size=font_size, color=GRAY)
+        space_label = Text("S:", font_size=font_size, color=GRAY, weight=BOLD)
+        space_value = Text(space, font_size=font_size, color=GREEN, weight=BOLD)
+
+        row = VGroup(time_label, time_value, sep, space_label, space_value).arrange(
+            RIGHT, buff=0.12)
+        bg = SurroundingRectangle(
+            row, color="#3a4a5c", fill_color=PANEL_BG,
+            fill_opacity=0.85, buff=0.15, corner_radius=0.1, stroke_width=1,
+        )
+        self.vgroup = VGroup(bg, row)
+        self.time = time
+        self.space = space
+
+
+# ---------------------------------------------------------------------------
+# Primitive 17 — InvariantOverlay
+# ---------------------------------------------------------------------------
+
+class InvariantOverlay:
+    """
+    Small italic annotation pinned above the active strip, explaining the
+    invariant the algorithm maintains. Never moves — a "north star" for
+    the viewer.
+
+    Construction:
+        inv = InvariantOverlay("Stack stays decreasing", anchor_to=strip.vgroup)
+    """
+
+    def __init__(self, text: str, anchor_to=None, font_size: int = 18):
+        self.text = text
+        # Italic for "this is a meta-comment, not part of the data"
+        self.label = Text(text, font_size=font_size, color="#a6b0c0",
+                          slant=ITALIC)
+        if anchor_to is not None:
+            self.label.next_to(anchor_to, UP, buff=0.25)
+        self.vgroup = self.label
+
+
+# ---------------------------------------------------------------------------
+# Primitive 18 — BruteForceComparison
+# ---------------------------------------------------------------------------
+
+class BruteForceComparison:
+    """
+    Two-row comparison strip shown at scene end alongside result_box.
+    Brute force row appears red-strikethrough, optimal row appears green.
+
+    Construction:
+        cmp = BruteForceComparison(
+            brute=("Nested loops", "O(n²)"),
+            optimal=("Hashmap lookup", "O(n)"),
+        )
+
+    Defaults to anchoring above the result_box at DOWN buff=2.6.
+    """
+
+    def __init__(self, brute: tuple, optimal: tuple,
+                 font_size: int = 16, anchor_below: bool = True):
+        brute_desc, brute_complex = brute
+        opt_desc, opt_complex = optimal
+
+        # Row 1: brute force (red, strikethrough on complexity)
+        x_mark      = Text("×", font_size=font_size + 2, color=REJECT, weight=BOLD)
+        brute_label = Text(f"Brute: {brute_desc}", font_size=font_size, color="#a6b0c0")
+        brute_cx    = Text(brute_complex, font_size=font_size, color=REJECT, weight=BOLD)
+        # Strikethrough line through the complexity
+        strike = Line(
+            brute_cx.get_left() + LEFT * 0.05,
+            brute_cx.get_right() + RIGHT * 0.05,
+            stroke_width=1.5, color=REJECT,
+        ).move_to(brute_cx.get_center())
+        brute_row = VGroup(x_mark, brute_label, brute_cx, strike).arrange(RIGHT, buff=0.18)
+
+        # Row 2: optimal (green, check mark)
+        check     = Text("✓", font_size=font_size + 2, color=KEEP, weight=BOLD)
+        opt_label = Text(f"This:  {opt_desc}", font_size=font_size, color="#a6b0c0")
+        opt_cx    = Text(opt_complex, font_size=font_size, color=KEEP, weight=BOLD)
+        opt_row = VGroup(check, opt_label, opt_cx).arrange(RIGHT, buff=0.18)
+
+        rows = VGroup(brute_row, opt_row).arrange(DOWN, buff=0.12, aligned_edge=LEFT)
+        bg = SurroundingRectangle(
+            rows, color="#3a4a5c", fill_color=PANEL_BG,
+            fill_opacity=0.88, buff=0.2, corner_radius=0.12, stroke_width=1,
+        )
+        self.vgroup = VGroup(bg, rows)
+        # By default, anchor above the result_box (which sits at DOWN buff=1.75)
+        if anchor_below:
+            self.vgroup.to_edge(DOWN, buff=2.6)
+
+
+# ---------------------------------------------------------------------------
+# Primitive 19 — BinaryRegister
+# ---------------------------------------------------------------------------
+
+class BinaryRegister:
+    """
+    A row of 0/1 cells representing the bits of an integer.
+    Bit index 0 (LSB) is the rightmost cell, bit index n-1 (MSB) is leftmost.
+
+    Construction:
+        reg = BinaryRegister(value=0b10110, num_bits=8, label="x")
+        reg.vgroup.move_to(UP * 0.5)
+
+    Attributes:
+        .value      — current integer value
+        .bits       — list[int] of 0/1, MSB to LSB
+        .cells      — list[VGroup(square, text)] from MSB to LSB
+        .vgroup     — full VGroup including label + cells + bit indices
+        .label_mob  — the label Text mobject (None if no label given)
+
+    Methods:
+        .anim_set_bit(bit_idx, new_bit)             — bit_idx is 0=LSB convention
+        .anim_xor_with(other_reg, target_reg)        — populates target = self ^ other
+        .flash(bit_idx, color=YELLOW)
+        .cell_for(bit_idx)                          — returns the cell for that bit
+    """
+
+    _ON_COLOR  = "#3b82f6"   # blue when bit is 1
+    _OFF_COLOR = DEFAULT_CELL
+
+    def __init__(self, value: int, num_bits: int = 8, label: str = "",
+                 position=ORIGIN, cell_size: float = 0.7):
+        self.num_bits = num_bits
+        self.value = int(value) & ((1 << num_bits) - 1)
+        self.bits = [(self.value >> (num_bits - 1 - i)) & 1 for i in range(num_bits)]
+        self.label = label
+        self.cell_size = cell_size
+
+        # Build cells MSB→LSB (left to right on screen)
+        self.cells = []
+        for i, bit in enumerate(self.bits):
+            sq = Square(side_length=cell_size, stroke_color=WHITE, stroke_width=1.5,
+                        fill_color=(self._ON_COLOR if bit else self._OFF_COLOR),
+                        fill_opacity=(0.85 if bit else 0.5))
+            txt = Text(str(bit), font_size=int(28 * cell_size / 0.7), color=WHITE,
+                       weight=BOLD)
+            txt.move_to(sq.get_center())
+            cell = VGroup(sq, txt)
+            self.cells.append(cell)
+
+        cells_row = VGroup(*self.cells).arrange(RIGHT, buff=0.05)
+
+        # Bit index labels below each cell (LSB rightmost = bit 0)
+        self.indices = VGroup()
+        for i in range(num_bits):
+            bit_idx = num_bits - 1 - i  # leftmost = MSB = (n-1), rightmost = 0
+            lbl = Text(str(bit_idx), font_size=int(14 * cell_size / 0.7), color=GRAY)
+            lbl.next_to(self.cells[i], DOWN, buff=0.08)
+            self.indices.add(lbl)
+
+        self.label_mob = None
+        if label:
+            self.label_mob = Text(f"{label} =", font_size=int(22 * cell_size / 0.7),
+                                  color=WHITE, weight=BOLD)
+            self.label_mob.next_to(cells_row, LEFT, buff=0.25)
+            self.vgroup = VGroup(self.label_mob, cells_row, self.indices)
+        else:
+            self.vgroup = VGroup(cells_row, self.indices)
+
+        self.vgroup.move_to(position)
+
+    def cell_for(self, bit_idx: int):
+        """bit_idx uses LSB=0 convention; returns the cell mobject."""
+        if not (0 <= bit_idx < self.num_bits):
+            return None
+        # cells list is MSB→LSB; convert
+        return self.cells[self.num_bits - 1 - bit_idx]
+
+    def _list_index(self, bit_idx: int) -> int:
+        return self.num_bits - 1 - bit_idx
+
+    def anim_set_bit(self, bit_idx: int, new_bit: int):
+        """Flip the cell at bit_idx (LSB=0). Returns animation; updates .value
+        and .bits in place. If the bit is already at new_bit, returns a no-op
+        animation so callers can always self.play(...) the result."""
+        if not (0 <= bit_idx < self.num_bits):
+            return AnimationGroup()
+
+        idx = self._list_index(bit_idx)
+        new_bit = 1 if new_bit else 0
+        if self.bits[idx] == new_bit:
+            return AnimationGroup()
+
+        self.bits[idx] = new_bit
+        # rebuild self.value from bits
+        self.value = sum(b << (self.num_bits - 1 - i) for i, b in enumerate(self.bits))
+
+        cell = self.cells[idx]
+        new_text = Text(str(new_bit), font_size=int(28 * self.cell_size / 0.7),
+                        color=WHITE, weight=BOLD).move_to(cell[1].get_center())
+        new_color = self._ON_COLOR if new_bit else self._OFF_COLOR
+        new_opacity = 0.85 if new_bit else 0.5
+
+        return AnimationGroup(
+            cell[0].animate.set_fill(new_color, opacity=new_opacity),
+            Transform(cell[1], new_text),
+            lag_ratio=0.0,
+        )
+
+    def anim_xor_with(self, other: "BinaryRegister", target: "BinaryRegister"):
+        """Compute self ^ other into target. Returns a list of animations
+        the caller can unpack: self.play(*reg_a.anim_xor_with(b, t))."""
+        anims = []
+        for bit_idx in range(self.num_bits):
+            a_bit = self.bits[self._list_index(bit_idx)]
+            b_bit = other.bits[other._list_index(bit_idx)]
+            xor_bit = a_bit ^ b_bit
+            sub = target.anim_set_bit(bit_idx, xor_bit)
+            if sub is not None:
+                anims.append(sub)
+        return anims
+
+    def flash(self, bit_idx: int, color=YELLOW, scale: float = 1.25):
+        cell = self.cell_for(bit_idx)
+        if cell is None:
+            return AnimationGroup()
+        return Indicate(cell, color=color, scale_factor=scale)
