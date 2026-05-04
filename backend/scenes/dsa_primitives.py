@@ -1052,3 +1052,105 @@ class GraphPanel:
 
     def node_pos(self, i: int):
         return self.nodes[i].get_center()
+
+
+# ---------------------------------------------------------------------------
+# Primitive 15 — CodePanel
+# ---------------------------------------------------------------------------
+
+class CodePanel:
+    """
+    Pseudocode panel with per-line highlighting. Wraps `manim.Code` with
+    sensible defaults for our scene layout.
+
+    Construction:
+        code = CodePanel('''
+            for i in range(n):
+                if seen[v - target]:
+                    return seen[v - target]
+                seen[v] = i
+        ''', language="python", anchor=UL)
+
+    Attributes:
+        .vgroup       — the whole panel (Code mobject is a Group of bg + lines)
+        .code         — the underlying manim.Code object
+        .line_count   — number of code lines after dedent
+
+    Methods (all return Animations the calling Scene wraps in self.play(...)):
+        .anim_highlight(line_idx, color=YELLOW) — dim others, highlight one
+        .anim_dim_all()                          — reset every line to GRAY
+    """
+
+    _DIM_COLOR = "#666b75"
+    _DEFAULT_HILITE = YELLOW
+
+    def __init__(self, code_string: str, language: str = "python",
+                 anchor=None, font_size: int = 18, max_width: float = 4.5,
+                 buff: float = 0.3):
+        import textwrap
+        # Strip leading blank lines + common indentation so callers can pass
+        # nicely-indented multi-line strings without leaking whitespace.
+        cleaned = textwrap.dedent(code_string).strip("\n")
+        if not cleaned.strip():
+            cleaned = "# (empty)"
+
+        self.code = Code(
+            code_string=cleaned,
+            language=language,
+            add_line_numbers=False,
+            background="rectangle",
+            background_config={
+                "fill_color": PANEL_BG,
+                "fill_opacity": 0.9,
+                "stroke_color": "#3a4a5c",
+                "stroke_width": 1,
+                "buff": 0.22,
+                "corner_radius": 0.12,
+            },
+            paragraph_config={
+                "font_size": font_size,
+                "font": "Monospace",
+                "line_spacing": 0.5,
+                "disable_ligatures": True,
+            },
+        )
+        self.line_count = len(self.code.code_lines)
+
+        # Scale down if the rendered panel is wider than the budget.
+        if self.code.width > max_width:
+            self.code.scale(max_width / self.code.width)
+
+        # Public-facing handle is the Code mobject (which itself is a Group of
+        # background + paragraph). Callers FadeIn/FadeOut .vgroup.
+        self.vgroup = self.code
+
+        if anchor is not None:
+            self.vgroup.to_corner(anchor, buff=buff)
+
+    def _line(self, i: int):
+        """Safe per-line accessor; returns None if out of range."""
+        if 0 <= i < self.line_count:
+            return self.code.code_lines[i]
+        return None
+
+    def anim_highlight(self, line_idx: int, color=None):
+        """Dim every line to gray, then set the target line to `color`.
+
+        Returns an AnimationGroup the caller wraps in self.play(...).
+        Out-of-range line_idx returns a no-op AnimationGroup.
+        """
+        color = color or self._DEFAULT_HILITE
+        anims = []
+        for j in range(self.line_count):
+            line = self.code.code_lines[j]
+            target_color = color if j == line_idx else self._DIM_COLOR
+            anims.append(line.animate.set_color(target_color))
+        return AnimationGroup(*anims, lag_ratio=0.0)
+
+    def anim_dim_all(self):
+        """Reset every line to the dim color."""
+        anims = [
+            self.code.code_lines[j].animate.set_color(self._DIM_COLOR)
+            for j in range(self.line_count)
+        ]
+        return AnimationGroup(*anims, lag_ratio=0.0)

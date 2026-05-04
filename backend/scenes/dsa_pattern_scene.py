@@ -19,7 +19,7 @@ from scenes.dsa_primitives import (
     ArrayStrip, Pointer, HighlightZone, HashMapPanel, StatePanel,
     ComparisonMarker, StackWidget, DependencyArc,
     GridPanel, BinaryTreePanel, RecursionTree, IntervalBars,
-    DoublyLinkedListPanel, GraphPanel,
+    DoublyLinkedListPanel, GraphPanel, CodePanel,
     load_params, show_title_card, caption_strip, result_box, action_text,
 )
 
@@ -1236,6 +1236,15 @@ def _kadanes_steps(arr: list) -> tuple:
     return steps, (best, best_l, best_r)
 
 
+_KADANES_PSEUDOCODE = """
+cur = best = arr[0]
+for x in arr[1:]:
+    cur = max(x, cur + x)
+    best = max(best, cur)
+return best
+""".strip()
+
+
 class KadanesScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
@@ -1245,13 +1254,17 @@ class KadanesScene(Scene):
 
         title = Text("Kadane's — Maximum Subarray Sum", font_size=28).to_edge(UP, buff=0.3)
         strip = ArrayStrip(arr, position=UP * 0.5)
+        code_panel = CodePanel(_KADANES_PSEUDOCODE, anchor=UL, font_size=16, max_width=3.6)
 
         if cap:
             show_title_card(self, cap)
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
 
         self.play(Write(title))
-        self.play(FadeIn(strip.vgroup), Write(strip.indices))
+        self.play(FadeIn(strip.vgroup), Write(strip.indices), FadeIn(code_panel.vgroup))
+        self.play(code_panel.anim_dim_all(), run_time=0.2)
+        # Initialize: highlight line 0 (cur = best = arr[0])
+        self.play(code_panel.anim_highlight(0), run_time=0.25)
 
         i_ptr = Pointer("i", color=PTR_COLORS["i"]).place_below(strip, 0)
         self.play(FadeIn(i_ptr.vgroup))
@@ -1265,16 +1278,20 @@ class KadanesScene(Scene):
         act = action_text(steps[0]["action"]) if steps else action_text("...")
         self.play(FadeIn(act))
 
-        prev_best = None
         for step in steps:
             i = step["i"]
             kind = step["kind"]
 
+            # Move pointer + highlight current cell + step into the for-loop body (line 1)
             self.play(
                 i_ptr.anim_move_to(strip, i),
                 strip.anim_set_fill(i, HILITE, 0.85),
+                code_panel.anim_highlight(1),
                 run_time=0.35, rate_func=smooth,
             )
+
+            # cur = max(x, cur + x) — line 2
+            self.play(code_panel.anim_highlight(2), run_time=0.2)
 
             if kind == "reset":
                 # current_sum dropped — flash red
@@ -1282,9 +1299,11 @@ class KadanesScene(Scene):
             elif kind == "new_max":
                 self.play(strip.flash(i, color=KEEP, scale=1.25), run_time=0.25)
 
-            self.play(*state.anim_set("cur", step["current_sum"], color=YELLOW),
+            # best = max(best, cur) — line 3
+            self.play(code_panel.anim_highlight(3),
+                      *state.anim_set("cur", step["current_sum"], color=YELLOW),
                       *state.anim_set("max", step["max_sum"], color=GREEN),
-                      run_time=0.25)
+                      run_time=0.3)
             self.play(Transform(act, action_text(step["action"])), run_time=0.25)
 
             # Color the current best window in green
@@ -1296,11 +1315,11 @@ class KadanesScene(Scene):
                         strip.cells[k][0].set_fill(DEFAULT_CELL, opacity=0.5)
             else:
                 self.play(strip.anim_set_fill(i, DEFAULT_CELL, 0.55), run_time=0.15)
-                # restore best window highlight
-                for k in range(step["l"] if False else 0, len(arr)):
-                    pass  # let the green from new_max persist
 
             self.wait(0.2)
+
+        # Final return statement — line 4
+        self.play(code_panel.anim_highlight(4), run_time=0.3)
 
         # Final green-window emphasis
         for k in range(len(arr)):

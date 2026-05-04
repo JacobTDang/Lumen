@@ -9,7 +9,7 @@ from scenes.dsa_primitives import (
     ArrayStrip, Pointer, HighlightZone, HashMapPanel, StatePanel,
     ComparisonMarker, StackWidget, DependencyArc,
     GridPanel, BinaryTreePanel, RecursionTree, IntervalBars,
-    DoublyLinkedListPanel, GraphPanel,
+    DoublyLinkedListPanel, GraphPanel, CodePanel,
     DEFAULT_CELL, HILITE, KEEP, REJECT, PTR_COLORS,
     caption_strip, result_box, action_text,
 )
@@ -411,3 +411,61 @@ def test_graph_panel_animations():
     assert g.anim_set_node_color(0, "GREEN") is not None
     assert g.anim_flash_edge(0, 1) is not None
     assert g.anim_set_node_value(1, "X") is not None
+
+
+# ---------------------------------------------------------------------------
+# CodePanel
+# ---------------------------------------------------------------------------
+
+def test_code_panel_constructs_with_python():
+    panel = CodePanel("for i in range(n):\n    print(i)", language="python")
+    assert panel.vgroup is not None
+    assert panel.line_count == 2
+
+
+def test_code_panel_handles_dedent():
+    """Leading common indentation should be stripped so calling code can use
+    nicely-indented multi-line strings."""
+    code = """
+        a = 1
+        b = 2
+        c = a + b
+    """
+    panel = CodePanel(code)
+    assert panel.line_count == 3
+
+
+def test_code_panel_highlight_returns_animation():
+    panel = CodePanel("a = 1\nb = 2\nc = 3")
+    anim = panel.anim_highlight(1)
+    assert anim is not None
+
+
+def test_code_panel_dim_all_returns_animation():
+    panel = CodePanel("a = 1\nb = 2")
+    anim = panel.anim_dim_all()
+    assert anim is not None
+
+
+def test_code_panel_highlight_out_of_range_safe():
+    """Highlighting a non-existent line should not crash — returns a no-op."""
+    panel = CodePanel("a = 1\nb = 2")
+    # 5 is out of range; should silently do nothing
+    anim = panel.anim_highlight(5)
+    assert anim is not None  # no-op AnimationGroup is still non-None
+
+
+def test_code_panel_max_width_scales_down():
+    long_line = "x = " + "a" * 100
+    panel = CodePanel(long_line, max_width=4.5)
+    assert panel.vgroup.width <= 4.5 + 0.01  # floating-point epsilon
+
+
+def test_code_panel_anchors_to_corner():
+    """When anchor is given, panel should be positioned in that corner."""
+    from manim import UL
+    panel = CodePanel("a = 1", anchor=UL)
+    # UL corner is upper-left → x < 0, y > 0
+    pos = panel.vgroup.get_center()
+    assert pos[0] < 0
+    assert pos[1] > 0
