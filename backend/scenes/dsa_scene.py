@@ -117,7 +117,11 @@ def _legacy_polish(title, scene_key: str, algorithm: str, custom_code: str = "")
     code_panel = CodePanel(pseudo, anchor=UL, font_size=13, max_width=3.8)
     code_panel.is_custom = bool(custom_code)
     badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
-    badge.vgroup.next_to(title, RIGHT, buff=0.3)
+    # Avoid collision with UR-anchored panels when title is long
+    if title.width > 6.0:
+        badge.vgroup.next_to(title, DOWN, buff=0.15)
+    else:
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
     return code_panel, badge.vgroup
 
 

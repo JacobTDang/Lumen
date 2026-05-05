@@ -1081,7 +1081,7 @@ class CodePanel:
         .anim_dim_all()                          — reset every line to GRAY
     """
 
-    _DIM_COLOR = "#666b75"
+    _DIM_COLOR = "#a8b0bd"   # bright enough to read; was #666b75 (too dim)
     _DEFAULT_HILITE = YELLOW
 
     def __init__(self, code_string: str, language: str = "python",

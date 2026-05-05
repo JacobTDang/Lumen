@@ -26,8 +26,8 @@ _QUALITY_TIERS = {
     "high":   ("-qh", "1080p60"),
 }
 _QUALITY_2D = _QUALITY_TIERS.get(
-    os.environ.get("LUMEN_QUALITY", "low").lower(),
-    _QUALITY_TIERS["low"],
+    os.environ.get("LUMEN_QUALITY", "medium").lower(),
+    _QUALITY_TIERS["medium"],
 )
 _QUALITY_FLAG_2D, _QUALITY_DIR_2D = _QUALITY_2D
 # 3D scenes always render at low — surface plots are an order of magnitude

@@ -196,7 +196,13 @@ def _polish(scene, title, algorithm: str, scene_key: str, custom_code: str = "")
     code_panel = CodePanel(pseudo, anchor=UL, font_size=14, max_width=4.0)
     code_panel.is_custom = is_custom
     badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
-    badge.vgroup.next_to(title, RIGHT, buff=0.3)
+    # Long titles + a right-adjacent badge can collide with UR-anchored
+    # StatePanel/HashMapPanel. If the title is wide, drop the badge below
+    # it instead of beside; otherwise keep it inline.
+    if title.width > 6.0:
+        badge.vgroup.next_to(title, DOWN, buff=0.15)
+    else:
+        badge.vgroup.next_to(title, RIGHT, buff=0.3)
     return code_panel, badge.vgroup
 
 
