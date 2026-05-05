@@ -85,3 +85,82 @@ def test_parse_leetcode_unexpected_error_returns_500(client, mocker):
     mocker.patch("app.parse_leetcode_problem", side_effect=RuntimeError("gemini quota"))
     res = client.post("/api/parse-leetcode", json={"rawText": "anything"})
     assert res.status_code == 500
+
+
+# ── POST /api/parse-problem-v2 ────────────────────────────────────────────────
+
+def test_parse_v2_math_routes_to_math_parser(client, mocker):
+    """Math text should route through parse_math, not parse_leetcode."""
+    from agent.math_parser import ParsedMath
+    mocker.patch("app.classify_domain", return_value="math")
+    mock_result = ParsedMath(
+        title="Definite Integral",
+        scene="riemann_sum",
+        params={"expression": "x**2", "domain": [0.0, 4.0], "n": 8, "method": "midpoint", "caption": ""},
+        explanation="Approximate ∫x² dx with rectangles.",
+        why_this_pattern="Riemann sum.",
+        steps=["Step 1", "Step 2"],
+    )
+    mocker.patch("app.parse_math", return_value=mock_result)
+
+    res = client.post("/api/parse-problem-v2",
+                      json={"rawText": "Compute integral of x squared from 0 to 4"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["domain"] == "math"
+    assert data["scene"] == "riemann_sum"
+    assert data["steps"] == ["Step 1", "Step 2"]
+
+
+def test_parse_v2_dsa_routes_to_leetcode_parser(client, mocker):
+    """DSA text should route through parse_leetcode_problem."""
+    from agent.leetcode_parser import ParsedLeetCode
+    mocker.patch("app.classify_domain", return_value="dsa")
+    mock_result = ParsedLeetCode(
+        title="Two Sum",
+        scene="hashmap_iteration",
+        params={"array": [2, 7, 11, 15], "algorithm": "two_sum_hashmap", "target": 9, "caption": ""},
+        explanation="Walk array, look up complement.",
+        why_this_pattern="O(1) lookup.",
+        pseudocode="seen = {}",
+        step_lines={"match": 3},
+    )
+    mocker.patch("app.parse_leetcode_problem", return_value=mock_result)
+
+    res = client.post("/api/parse-problem-v2",
+                      json={"rawText": "Two Sum nums=[2,7,11,15] target=9"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["domain"] == "dsa"
+    assert data["scene"] == "hashmap_iteration"
+    assert data["pseudocode"] == "seen = {}"
+
+
+def test_parse_v2_missing_raw_text_returns_400(client):
+    res = client.post("/api/parse-problem-v2", json={})
+    assert res.status_code == 400
+
+
+def test_parse_v2_value_error_returns_422(client, mocker):
+    mocker.patch("app.classify_domain", return_value="math")
+    mocker.patch("app.parse_math", side_effect=ValueError("unknown math scene from model"))
+    res = client.post("/api/parse-problem-v2", json={"rawText": "garbage"})
+    assert res.status_code == 422
+
+
+def test_parse_v2_falls_back_to_dsa_when_classifier_errors(client, mocker):
+    """If the classifier raises, the endpoint defaults to DSA routing rather
+    than 500'ing — graceful degradation."""
+    from agent.leetcode_parser import ParsedLeetCode
+    mocker.patch("app.classify_domain", side_effect=RuntimeError("classifier down"))
+    mock_result = ParsedLeetCode(
+        title="Two Sum",
+        scene="hashmap_iteration",
+        params={"array": [1, 2], "algorithm": "two_sum_hashmap", "target": 3, "caption": ""},
+        explanation="x", why_this_pattern="x",
+    )
+    mocker.patch("app.parse_leetcode_problem", return_value=mock_result)
+
+    res = client.post("/api/parse-problem-v2", json={"rawText": "anything"})
+    assert res.status_code == 200
+    assert res.get_json()["domain"] == "dsa"

@@ -13,6 +13,7 @@ from agent.dsa_planner import plan_dsa
 from agent.explainer import explain_problem
 from agent.gemini_client import call_gemini
 from agent.leetcode_parser import parse_problem as parse_leetcode_problem
+from agent.math_parser import parse_math
 from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
 from schemas.types import StepPlan
@@ -460,6 +461,40 @@ def create_app(testing: bool = False) -> Flask:
         except Exception as exc:
             app.logger.exception("parse-problem failed")
             return jsonify({"error": "parse-problem failed", "detail": str(exc)}), 500
+
+    @app.post("/api/parse-problem-v2")
+    def api_parse_problem_v2():
+        """Universal paste-to-render parser. Classifies the input as math or
+        DSA and routes to the matching parser. Returns a unified shape with
+        a `domain` field; math results include `steps`, DSA results include
+        `pseudocode` + `step_lines`.
+        """
+        body = request.get_json(silent=True) or {}
+        raw_text = body.get("rawText", "").strip()
+        if not raw_text:
+            return jsonify({"error": "rawText is required"}), 400
+
+        try:
+            domain = classify_domain(raw_text)
+        except Exception:
+            app.logger.exception("classifier failed; defaulting to dsa")
+            domain = "dsa"
+
+        try:
+            if domain == "math":
+                parsed = parse_math(raw_text)
+            else:
+                parsed = parse_leetcode_problem(raw_text)
+        except ValueError as exc:
+            app.logger.warning("parse-problem-v2 rejected (%s): %s", domain, exc)
+            return jsonify({"error": "could not parse problem", "detail": str(exc)}), 422
+        except Exception as exc:
+            app.logger.exception("parse-problem-v2 failed (%s)", domain)
+            return jsonify({"error": "parse-problem-v2 failed", "detail": str(exc)}), 500
+
+        payload = parsed.model_dump()
+        payload["domain"] = domain
+        return jsonify(payload)
 
     @app.post("/api/parse-leetcode")
     def api_parse_leetcode():
