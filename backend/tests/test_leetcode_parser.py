@@ -46,6 +46,47 @@ def test_parse_two_sum_extracts_array_and_target(mocker):
     assert "complement" in result.why_this_pattern.lower() or "hashmap" in result.why_this_pattern.lower()
 
 
+def test_parse_passes_through_pseudocode_when_present(mocker):
+    """When the model returns pseudocode using the user's variable names, it
+    should round-trip into ParsedLeetCode.pseudocode."""
+    payload = json.dumps({
+        "title": "Two Sum",
+        "scene": "hashmap_iteration",
+        "params": {"array": [2, 7, 11, 15], "algorithm": "two_sum_hashmap", "target": 9},
+        "explanation": "ok",
+        "why_this_pattern": "ok",
+        "pseudocode":
+            "seen = {}\n"
+            "for i, v in enumerate(nums):\n"
+            "    if target - v in seen:\n"
+            "        return [seen[target - v], i]\n"
+            "    seen[v] = i",
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("Two sum nums=[2,7,11,15] target=9")
+    assert "nums" in result.pseudocode
+    assert "target" in result.pseudocode
+
+
+def test_parse_pseudocode_defaults_to_empty(mocker):
+    """If the model omits pseudocode, the field should default to an empty
+    string (no exception, parser still succeeds)."""
+    payload = json.dumps({
+        "title": "Kadane",
+        "scene": "kadanes",
+        "params": {"array": [1, -2, 3]},
+        "explanation": "ok",
+        "why_this_pattern": "ok",
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("max subarray of [1,-2,3]")
+    assert result.pseudocode == ""
+
+
 def test_parse_palindrome_picks_two_pointers_opposite(mocker):
     payload = json.dumps({
         "title": "Valid Palindrome",

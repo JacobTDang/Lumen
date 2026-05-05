@@ -877,7 +877,13 @@ async function generateAnimation(
     try {
       const parsed = await parseLeetcode(extraContext as string);
       if (parsed?.scene && parsed?.params) {
-        override = { scene: parsed.scene, params: parsed.params };
+        override = {
+          scene: parsed.scene,
+          params: {
+            ...parsed.params,
+            ...(parsed.pseudocode ? { pseudocode: parsed.pseudocode } : {}),
+          },
+        };
       }
     } catch (e) {
       console.warn("parseLeetcode failed, using TOPIC_SCENE_MAP fallback:", e);
@@ -1097,6 +1103,7 @@ interface ParsedLeetcode {
   params: Record<string, any>;
   explanation: string;
   why_this_pattern: string;
+  pseudocode?: string;
 }
 
 async function parseLeetcode(rawText: string): Promise<ParsedLeetcode> {
@@ -4161,7 +4168,11 @@ const PasteLeetCodePage: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scene: parsed.scene,
-          params: { caption: parsed.title, ...parsed.params },
+          params: {
+            caption: parsed.title,
+            ...parsed.params,
+            ...(parsed.pseudocode ? { pseudocode: parsed.pseudocode } : {}),
+          },
         }),
       });
       if (!renderRes.ok) {

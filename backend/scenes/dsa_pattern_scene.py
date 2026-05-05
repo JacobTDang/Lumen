@@ -166,18 +166,35 @@ _PATTERN_CATALOG = {
 }
 
 
-def _polish(scene, title, algorithm: str, scene_key: str):
+def _polish(scene, title, algorithm: str, scene_key: str, custom_code: str = ""):
     """Build a CodePanel + ComplexityBadge for an existing pattern scene.
 
-    Returns (code_panel, badge_vgroup_or_None). Caller should FadeIn both
-    early in construct() and optionally code_panel.anim_dim_all() to set
+    If `custom_code` is provided (typically from /api/parse-leetcode using
+    the user's literal variable names), it overrides the catalog template
+    and the panel is flagged `is_custom`. Synced line highlighting is
+    auto-disabled for custom code because line numbers may not match the
+    catalog's _STEP_LINE_MAPS keyed by (scene_key, algorithm).
+
+    Returns (code_panel, badge_vgroup_or_None). Caller FadeIns both early
+    in construct() and optionally calls code_panel.anim_dim_all() to set
     the initial dim state.
     """
     entry = _PATTERN_CATALOG.get((scene_key, algorithm))
-    if entry is None:
-        return None, None
-    pseudo, t_complex, s_complex = entry
+    pseudo = (custom_code or "").strip()
+    is_custom = bool(pseudo)
+
+    if not pseudo:
+        if entry is None:
+            return None, None
+        pseudo = entry[0]
+
+    if entry is not None:
+        t_complex, s_complex = entry[1], entry[2]
+    else:
+        t_complex, s_complex = "—", "—"
+
     code_panel = CodePanel(pseudo, anchor=UL, font_size=14, max_width=4.0)
+    code_panel.is_custom = is_custom
     badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
     badge.vgroup.next_to(title, RIGHT, buff=0.3)
     return code_panel, badge.vgroup
@@ -271,10 +288,13 @@ _STEP_LINE_MAPS = {
 
 def _hl_line(code_panel, scene_key: str, algorithm: str, step_kind: str):
     """Returns an anim_highlight Animation for the line corresponding to
-    step_kind, or None if there's no panel or no mapping. Callers append the
-    return value to their *anims spread when it's not None.
+    step_kind, or None if there's no panel, no mapping, or the panel is
+    showing custom user-specific pseudocode (line numbers won't match
+    the catalog's _STEP_LINE_MAPS).
     """
     if code_panel is None:
+        return None
+    if getattr(code_panel, "is_custom", False):
         return None
     table = _STEP_LINE_MAPS.get((scene_key, algorithm))
     if not table:
@@ -465,7 +485,8 @@ class TwoPointersOppositeScene(Scene):
             "reverse_array":   "Two Pointers — Reverse Array",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "two_pointers_opposite")
+        code_panel, badge_v = _polish(self, title, algorithm, "two_pointers_opposite",
+                                      custom_code=p.get("pseudocode", ""))
 
         # Strip
         strip = ArrayStrip(arr, position=UP * 0.6)
@@ -610,7 +631,8 @@ class HashMapIterationScene(Scene):
             "anagram_check":    "HashMap — Anagram Frequencies",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "hashmap_iteration")
+        code_panel, badge_v = _polish(self, title, algorithm, "hashmap_iteration",
+                                      custom_code=p.get("pseudocode", ""))
 
         # Place array left-of-center to leave room for hashmap on the right
         strip = ArrayStrip(arr, position=LEFT * 2.5 + UP * 0.4)
@@ -777,7 +799,8 @@ class TwoPointersSameDirScene(Scene):
             "move_zeros":        "Two Pointers — Move Zeros to End",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "two_pointers_same_dir")
+        code_panel, badge_v = _polish(self, title, algorithm, "two_pointers_same_dir",
+                                      custom_code=p.get("pseudocode", ""))
 
         strip = ArrayStrip(arr, position=UP * 0.4)
 
@@ -962,7 +985,8 @@ class SlidingWindowVariableScene(Scene):
             "longest_at_most_k_distinct": f"Sliding Window — At Most {k or 2} Distinct",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "sliding_window_variable")
+        code_panel, badge_v = _polish(self, title, algorithm, "sliding_window_variable",
+                                      custom_code=p.get("pseudocode", ""))
 
         strip = ArrayStrip(arr, position=LEFT * 2.0 + UP * 0.4)
 
@@ -1116,7 +1140,8 @@ class BinarySearchIndexScene(Scene):
             "first_occurrence": f"Binary Search — first occurrence of {target}",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "binary_search_index")
+        code_panel, badge_v = _polish(self, title, algorithm, "binary_search_index",
+                                      custom_code=p.get("pseudocode", ""))
 
         strip = ArrayStrip(arr, position=UP * 0.6)
 
@@ -1210,7 +1235,8 @@ class BinarySearchAnswerScene(Scene):
         cap     = p.get("caption", "")
 
         title = Text("Binary Search on Answer Space", font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "binary_search_answer")
+        code_panel, badge_v = _polish(self, title, "default", "binary_search_answer",
+                                      custom_code=p.get("pseudocode", ""))
         # Use a virtual array of values [min_v..max_v]
         values = list(range(min_v, max_v + 1))
         strip = ArrayStrip(values, position=UP * 0.4)
@@ -1331,7 +1357,8 @@ class MonotonicStackScene(Scene):
             "daily_temperatures":  "Monotonic Stack — Daily Temperatures",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "monotonic_stack")
+        code_panel, badge_v = _polish(self, title, algorithm, "monotonic_stack",
+                                      custom_code=p.get("pseudocode", ""))
 
         strip = ArrayStrip(arr, position=LEFT * 1.5 + UP * 0.5)
 
@@ -1456,11 +1483,17 @@ class PrefixSumScene(Scene):
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
         # Use UR anchor for the code panel — UL would collide with the in_strip label
         catalog_entry = _PATTERN_CATALOG.get(("prefix_sum", algorithm))
+        custom_code = (p.get("pseudocode") or "").strip()
         code_panel = None
         badge_v = None
-        if catalog_entry is not None:
-            pseudo, t_complex, s_complex = catalog_entry
+        if catalog_entry is not None or custom_code:
+            if custom_code:
+                pseudo = custom_code
+                t_complex, s_complex = (catalog_entry[1], catalog_entry[2]) if catalog_entry else ("—", "—")
+            else:
+                pseudo, t_complex, s_complex = catalog_entry
             code_panel = CodePanel(pseudo, anchor=UR, font_size=14, max_width=4.0)
+            code_panel.is_custom = bool(custom_code)
             _badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
             _badge.vgroup.next_to(title, RIGHT, buff=0.3)
             badge_v = _badge.vgroup
@@ -1607,7 +1640,10 @@ class KadanesScene(Scene):
 
         title = Text("Kadane's — Maximum Subarray Sum", font_size=28).to_edge(UP, buff=0.3)
         strip = ArrayStrip(arr, position=UP * 0.5)
-        code_panel = CodePanel(_KADANES_PSEUDOCODE, anchor=UL, font_size=16, max_width=3.6)
+        custom_code = (p.get("pseudocode") or "").strip()
+        code_panel = CodePanel(custom_code or _KADANES_PSEUDOCODE,
+                               anchor=UL, font_size=16, max_width=3.6)
+        code_panel.is_custom = bool(custom_code)
 
         if cap:
             show_title_card(self, cap)
@@ -1736,7 +1772,8 @@ class IntervalMergingScene(Scene):
         cap = p.get("caption", "")
 
         title = Text("Merge Overlapping Intervals", font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "interval_merging")
+        code_panel, badge_v = _polish(self, title, "default", "interval_merging",
+                                      custom_code=p.get("pseudocode", ""))
         bars = IntervalBars(intervals, position=UP * 0.2)
 
         if cap:
@@ -1849,7 +1886,8 @@ class UnionFindScene(Scene):
         cap = p.get("caption", "")
 
         title = Text("Union-Find — Disjoint Set Forest", font_size=26).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "union_find")
+        code_panel, badge_v = _polish(self, title, "default", "union_find",
+                                      custom_code=p.get("pseudocode", ""))
         strip = ArrayStrip(list(range(n)), position=UP * 0.5)
         parent_lbl = Text("parent[]:", font_size=18, color=GRAY).next_to(strip.vgroup, LEFT, buff=0.3)
 
@@ -1984,7 +2022,8 @@ class LRUCacheScene(Scene):
         cap_text = p.get("caption", "")
 
         title = Text(f"LRU Cache (capacity={capacity})", font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "lru_cache")
+        code_panel, badge_v = _polish(self, title, "default", "lru_cache",
+                                      custom_code=p.get("pseudocode", ""))
 
         if cap_text:
             show_title_card(self, cap_text)
@@ -2118,7 +2157,8 @@ class GridTraversalScene(Scene):
 
         title = Text(f"Grid {algorithm.upper()} — ({start[0]},{start[1]}) -> ({target[0]},{target[1]})",
                      font_size=26).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "grid_traversal")
+        code_panel, badge_v = _polish(self, title, algorithm, "grid_traversal",
+                                      custom_code=p.get("pseudocode", ""))
 
         display = [["·" if c == 0 else "#" for c in row] for row in grid]
         gp = GridPanel(display, position=ORIGIN + DOWN * 0.1)
@@ -2266,7 +2306,8 @@ class HeapOpsScene(Scene):
 
         title = Text(f"{heap_type.capitalize()}-Heap Operations",
                      font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "heap_ops")
+        code_panel, badge_v = _polish(self, title, "default", "heap_ops",
+                                      custom_code=p.get("pseudocode", ""))
 
         if cap:
             show_title_card(self, cap)
@@ -2441,7 +2482,8 @@ class DP2DScene(Scene):
             "unique_paths": f"Unique Paths - {input1}x{input2} grid",
         }
         title = Text(titles.get(algorithm, algorithm), font_size=26).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "dp_2d")
+        code_panel, badge_v = _polish(self, title, algorithm, "dp_2d",
+                                      custom_code=p.get("pseudocode", ""))
 
         if algorithm == "unique_paths":
             m = max(int(input1) if str(input1).isdigit() else 3, 1)
@@ -2565,7 +2607,8 @@ class BacktrackingSubsetsScene(Scene):
 
         title_text = "Backtracking — Subsets" if algorithm == "subsets" else "Backtracking — Permutations"
         title = Text(title_text, font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, algorithm, "backtracking_subsets")
+        code_panel, badge_v = _polish(self, title, algorithm, "backtracking_subsets",
+                                      custom_code=p.get("pseudocode", ""))
 
         if cap:
             show_title_card(self, cap)
@@ -2692,7 +2735,8 @@ class TrieOpsScene(Scene):
         cap = p.get("caption", "")
 
         title = Text("Trie — Insert + Search", font_size=28).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "trie_ops")
+        code_panel, badge_v = _polish(self, title, "default", "trie_ops",
+                                      custom_code=p.get("pseudocode", ""))
 
         if cap:
             show_title_card(self, cap)
@@ -2895,7 +2939,8 @@ class DijkstraScene(Scene):
         cap = p.get("caption", "")
 
         title = Text(f"Dijkstra — shortest paths from {source}", font_size=26).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "dijkstra")
+        code_panel, badge_v = _polish(self, title, "default", "dijkstra",
+                                      custom_code=p.get("pseudocode", ""))
 
         if cap:
             show_title_card(self, cap)
@@ -3008,7 +3053,8 @@ class SegmentTreeScene(Scene):
         cap = p.get("caption", "")
 
         title = Text(f"Segment Tree — range sum queries", font_size=26).to_edge(UP, buff=0.3)
-        code_panel, badge_v = _polish(self, title, "default", "segment_tree")
+        code_panel, badge_v = _polish(self, title, "default", "segment_tree",
+                                      custom_code=p.get("pseudocode", ""))
 
         if cap:
             show_title_card(self, cap)
@@ -3221,9 +3267,12 @@ class FloydCycleScene(Scene):
                 tip_length=0.18,
             )
 
-        # Code panel (UL) and state panel (UR)
-        code_panel = CodePanel(_FLOYD_PSEUDOCODE, anchor=UL,
+        # Code panel (UL) and state panel (UR) — prefer user-specific
+        # pseudocode from /api/parse-leetcode if present
+        _custom = (p.get("pseudocode") or "").strip()
+        code_panel = CodePanel(_custom or _FLOYD_PSEUDOCODE, anchor=UL,
                                font_size=14, max_width=3.8)
+        code_panel.is_custom = bool(_custom)
         state = StatePanel(anchor=UR, title="State")
 
         chain_grp = VGroup(*nodes, *arrows)
@@ -3448,8 +3497,10 @@ class RecursionTreeDCScene(Scene):
                            position=DOWN * 0.4,
                            width=8.5, level_gap=0.85, node_radius=0.34)
 
-        code_panel = CodePanel(_MERGE_SORT_PSEUDOCODE, anchor=UL,
+        _custom = (p.get("pseudocode") or "").strip()
+        code_panel = CodePanel(_custom or _MERGE_SORT_PSEUDOCODE, anchor=UL,
                                font_size=12, max_width=4.0)
+        code_panel.is_custom = bool(_custom)
 
         self.play(FadeIn(in_strip.vgroup), Write(in_strip.indices),
                   FadeIn(rt.vgroup), FadeIn(code_panel.vgroup))
@@ -3659,20 +3710,22 @@ class MatrixRotationScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
         self.play(Write(title), FadeIn(badge.vgroup))
 
+        custom_code = (p.get("pseudocode") or "").strip()
         if operation == "rotate_90":
-            self._run_rotate(matrix)
+            self._run_rotate(matrix, custom_code)
         else:
-            self._run_spiral(matrix)
+            self._run_spiral(matrix, custom_code)
 
         self.wait(0.4)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
     # ─── rotate_90 ──────────────────────────────────────────────────────────
 
-    def _run_rotate(self, matrix):
+    def _run_rotate(self, matrix, custom_code=""):
         grid = GridPanel(matrix, position=RIGHT * 0.5)
-        code_panel = CodePanel(_ROTATE_PSEUDOCODE, anchor=UL,
+        code_panel = CodePanel(custom_code or _ROTATE_PSEUDOCODE, anchor=UL,
                                font_size=14, max_width=4.0)
+        code_panel.is_custom = bool(custom_code)
 
         self.play(FadeIn(grid.vgroup), Write(grid.row_idx), Write(grid.col_idx),
                   FadeIn(code_panel.vgroup))
@@ -3745,10 +3798,11 @@ class MatrixRotationScene(Scene):
 
     # ─── spiral ─────────────────────────────────────────────────────────────
 
-    def _run_spiral(self, matrix):
+    def _run_spiral(self, matrix, custom_code=""):
         grid = GridPanel(matrix, position=LEFT * 1.0)
-        code_panel = CodePanel(_SPIRAL_PSEUDOCODE, anchor=UR,
+        code_panel = CodePanel(custom_code or _SPIRAL_PSEUDOCODE, anchor=UR,
                                font_size=14, max_width=4.5)
+        code_panel.is_custom = bool(custom_code)
         # Order display below
         order_lbl = Text("order: [ ]", font_size=18, color=KEEP).to_edge(DOWN, buff=2.6)
 
@@ -3926,8 +3980,10 @@ class TopologicalSortScene(Scene):
         # Order display (text that grows as we add)
         order_lbl = Text("order: [ ]", font_size=18, color=KEEP).to_edge(DOWN, buff=2.6)
 
-        code_panel = CodePanel(_TOPO_SORT_PSEUDOCODE, anchor=UL,
+        _custom = (p.get("pseudocode") or "").strip()
+        code_panel = CodePanel(_custom or _TOPO_SORT_PSEUDOCODE, anchor=UL,
                                font_size=13, max_width=4.0)
+        code_panel.is_custom = bool(_custom)
 
         self.play(FadeIn(graph.vgroup), FadeIn(in_strip.vgroup),
                   Write(in_strip.indices), FadeIn(in_lbl),
@@ -4107,25 +4163,27 @@ class BitManipulationScene(Scene):
             self.play(FadeIn(caption_strip(cap)), run_time=0.3)
         self.play(Write(title), FadeIn(badge.vgroup))
 
+        custom_code = (p.get("pseudocode") or "").strip()
         if operation == "single_number":
-            self._run_single_number(values)
+            self._run_single_number(values, custom_code)
         else:
-            self._run_count_bits(values[0] if values else 0)
+            self._run_count_bits(values[0] if values else 0, custom_code)
 
         self.wait(0.4)
         self.play(*[FadeOut(mob) for mob in self.mobjects], run_time=0.5)
 
     # ─── single_number ──────────────────────────────────────────────────────
 
-    def _run_single_number(self, values):
+    def _run_single_number(self, values, custom_code=""):
         num_bits = 8
         result_reg = BinaryRegister(value=0, num_bits=num_bits, label="result",
                                     position=UP * 0.6, cell_size=0.55)
         next_reg = BinaryRegister(value=0, num_bits=num_bits, label="v",
                                   position=DOWN * 0.5, cell_size=0.55)
 
-        code_panel = CodePanel(_SINGLE_NUMBER_PSEUDOCODE, anchor=UL,
+        code_panel = CodePanel(custom_code or _SINGLE_NUMBER_PSEUDOCODE, anchor=UL,
                                font_size=15, max_width=4.0)
+        code_panel.is_custom = bool(custom_code)
         state = StatePanel(anchor=UR, title="State")
 
         self.play(FadeIn(result_reg.vgroup), FadeIn(next_reg.vgroup),
@@ -4193,13 +4251,14 @@ class BitManipulationScene(Scene):
 
     # ─── count_bits (Brian-Kernighan) ───────────────────────────────────────
 
-    def _run_count_bits(self, value):
+    def _run_count_bits(self, value, custom_code=""):
         num_bits = 8
         n_reg = BinaryRegister(value=value, num_bits=num_bits, label="n",
                                position=UP * 0.5, cell_size=0.55)
 
-        code_panel = CodePanel(_COUNT_BITS_PSEUDOCODE, anchor=UL,
+        code_panel = CodePanel(custom_code or _COUNT_BITS_PSEUDOCODE, anchor=UL,
                                font_size=15, max_width=4.0)
+        code_panel.is_custom = bool(custom_code)
         state = StatePanel(anchor=UR, title="State")
 
         self.play(FadeIn(n_reg.vgroup),
@@ -4372,8 +4431,11 @@ class GreedyIntervalScene(Scene):
 
         strip = ArrayStrip(values, position=UP * 0.4)
 
-        pseudo = _JUMP_GAME_PSEUDOCODE if algorithm == "jump_game" else _GAS_STATION_PSEUDOCODE
+        _custom = (p.get("pseudocode") or "").strip()
+        pseudo = _custom or (_JUMP_GAME_PSEUDOCODE if algorithm == "jump_game"
+                             else _GAS_STATION_PSEUDOCODE)
         code_panel = CodePanel(pseudo, anchor=UL, font_size=14, max_width=4.0)
+        code_panel.is_custom = bool(_custom)
         state = StatePanel(anchor=UR, title="State")
 
         self.play(FadeIn(strip.vgroup), Write(strip.indices),
@@ -4661,8 +4723,10 @@ class TrappingRainWaterScene(Scene):
 
         bars_grp = VGroup(*bars, idx_lbls)
 
-        code_panel = CodePanel(_TRAP_PSEUDOCODE, anchor=UL,
+        _custom = (p.get("pseudocode") or "").strip()
+        code_panel = CodePanel(_custom or _TRAP_PSEUDOCODE, anchor=UL,
                                font_size=14, max_width=4.0)
+        code_panel.is_custom = bool(_custom)
         state = StatePanel(anchor=UR, title="State")
 
         self.play(FadeIn(bars_grp), FadeIn(code_panel.vgroup), FadeIn(state.vgroup))

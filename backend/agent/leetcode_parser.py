@@ -115,6 +115,7 @@ class ParsedLeetCode(BaseModel):
     params: dict
     explanation: str
     why_this_pattern: str
+    pseudocode: str = ""
 
 
 _SYSTEM_PROMPT = """You are converting a pasted LeetCode-style problem statement into a runnable
@@ -288,6 +289,17 @@ Required fields:
   - params:           object matching that scene's schema
   - explanation:      2-3 sentences on the algorithm approach
   - why_this_pattern: 1 sentence on why this pattern beats the brute force
+  - pseudocode:       a SHORT Python-style pseudocode (5-9 lines, max 50 chars
+                      per line) implementing the chosen scene's algorithm USING
+                      THE USER'S VARIABLE NAMES from the problem prose. If the
+                      user wrote `nums = [2,7,11,15]` and `target = 9`, your
+                      pseudocode should use `nums` and `target`, NOT `a` or `t`.
+                      If they wrote `heights`, use `heights`. If they didn't
+                      specify a name, fall back to a domain-appropriate one
+                      (`nums`, `arr`, `s`, `heights`, `intervals`, `grid`).
+                      Keep it visually digestible — this renders in a small panel.
+                      Use Python conventions: `for i in range(n):`, slicing,
+                      list comprehensions where natural. No imports.
 """
 
 
@@ -377,6 +389,7 @@ def _validate(data: dict) -> ParsedLeetCode:
         params=clean_params,
         explanation=str(data.get("explanation", "")).strip(),
         why_this_pattern=str(data.get("why_this_pattern", "")).strip(),
+        pseudocode=str(data.get("pseudocode", "")).strip(),
     )
 
 
