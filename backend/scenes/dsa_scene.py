@@ -10,6 +10,117 @@ from collections import deque
 import numpy as np
 from manim import *
 
+from scenes.dsa_primitives import CodePanel, ComplexityBadge
+
+# ---------------------------------------------------------------------------
+# Legacy pseudocode + complexity catalog (Phase 10B)
+# Same shape as _PATTERN_CATALOG in dsa_pattern_scene.py — keeps these older
+# scenes visually consistent with the modern pattern scenes (CodePanel UL,
+# ComplexityBadge next to title).
+# ---------------------------------------------------------------------------
+
+_LEGACY_CATALOG = {
+    ("array_pointer", "binary_search"): (
+        "l, r = 0, len(a) - 1\nwhile l <= r:\n    m = (l + r) // 2\n    if a[m] == target: return m\n    elif a[m] < target: l = m + 1\n    else: r = m - 1\nreturn -1",
+        "O(log n)", "O(1)"),
+    ("array_pointer", "two_pointers"): (
+        "l, r = 0, len(a) - 1\nwhile l < r:\n    s = a[l] + a[r]\n    if s == target: return [l, r]\n    elif s < target: l += 1\n    else: r -= 1",
+        "O(n)", "O(1)"),
+    ("array_pointer", "palindrome"): (
+        "l, r = 0, len(s) - 1\nwhile l < r:\n    if s[l] != s[r]: return False\n    l, r = l + 1, r - 1\nreturn True",
+        "O(n)", "O(1)"),
+
+    ("sliding_window", "max_subarray_fixed"): (
+        "window_sum = sum(a[:k])\nbest = window_sum\nfor i in range(k, len(a)):\n    window_sum += a[i] - a[i - k]\n    best = max(best, window_sum)",
+        "O(n)", "O(1)"),
+    ("sliding_window", "longest_unique_substring"): (
+        "seen = {}\nl = best = 0\nfor r, c in enumerate(s):\n    if c in seen and seen[c] >= l:\n        l = seen[c] + 1\n    seen[c] = r\n    best = max(best, r - l + 1)",
+        "O(n)", "O(k)"),
+
+    ("linked_list", "reverse"): (
+        "prev = None\ncurr = head\nwhile curr:\n    nxt = curr.next\n    curr.next = prev\n    prev = curr\n    curr = nxt\nreturn prev",
+        "O(n)", "O(1)"),
+    ("linked_list", "find_middle"): (
+        "slow = fast = head\nwhile fast and fast.next:\n    slow = slow.next\n    fast = fast.next.next\nreturn slow",
+        "O(n)", "O(1)"),
+    ("linked_list", "merge_sorted"): (
+        "dummy = ListNode()\ntail = dummy\nwhile a and b:\n    if a.val <= b.val:\n        tail.next = a; a = a.next\n    else:\n        tail.next = b; b = b.next\n    tail = tail.next\ntail.next = a or b",
+        "O(n + m)", "O(1)"),
+
+    ("tree_traversal", "bfs"): (
+        "queue = deque([root])\nwhile queue:\n    node = queue.popleft()\n    visit(node)\n    if node.left:  queue.append(node.left)\n    if node.right: queue.append(node.right)",
+        "O(n)", "O(w)"),
+    ("tree_traversal", "dfs"): (
+        "def dfs(node):\n    if not node: return\n    visit(node)\n    dfs(node.left)\n    dfs(node.right)",
+        "O(n)", "O(h)"),
+    ("tree_traversal", "inorder"): (
+        "def inorder(node):\n    if not node: return\n    inorder(node.left)\n    visit(node)\n    inorder(node.right)",
+        "O(n)", "O(h)"),
+    ("tree_traversal", "preorder"): (
+        "def preorder(node):\n    if not node: return\n    visit(node)\n    preorder(node.left)\n    preorder(node.right)",
+        "O(n)", "O(h)"),
+    ("tree_traversal", "postorder"): (
+        "def postorder(node):\n    if not node: return\n    postorder(node.left)\n    postorder(node.right)\n    visit(node)",
+        "O(n)", "O(h)"),
+    ("tree_traversal", "height"): (
+        "def height(node):\n    if not node: return 0\n    return 1 + max(height(node.left),\n                  height(node.right))",
+        "O(n)", "O(h)"),
+
+    ("graph_traversal", "bfs"): (
+        "queue = deque([start])\nvisited = {start}\nwhile queue:\n    u = queue.popleft()\n    for v in adj[u]:\n        if v not in visited:\n            visited.add(v)\n            queue.append(v)",
+        "O(V + E)", "O(V)"),
+    ("graph_traversal", "dfs"): (
+        "def dfs(u):\n    visited.add(u)\n    for v in adj[u]:\n        if v not in visited:\n            dfs(v)",
+        "O(V + E)", "O(V)"),
+    ("graph_traversal", "has_cycle"): (
+        "color = {u: 'white' for u in nodes}\ndef dfs(u):\n    color[u] = 'gray'\n    for v in adj[u]:\n        if color[v] == 'gray': return True\n        if color[v] == 'white' and dfs(v): return True\n    color[u] = 'black'; return False",
+        "O(V + E)", "O(V)"),
+
+    ("dp_array", "fibonacci"): (
+        "dp = [0] * (n + 1)\ndp[1] = 1\nfor i in range(2, n + 1):\n    dp[i] = dp[i - 1] + dp[i - 2]\nreturn dp[n]",
+        "O(n)", "O(n)"),
+    ("dp_array", "climbing_stairs"): (
+        "dp = [0] * (n + 1)\ndp[0] = dp[1] = 1\nfor i in range(2, n + 1):\n    dp[i] = dp[i - 1] + dp[i - 2]\nreturn dp[n]",
+        "O(n)", "O(n)"),
+    ("dp_array", "house_robber"): (
+        "dp = [0] * len(a)\ndp[0] = a[0]\ndp[1] = max(a[0], a[1])\nfor i in range(2, len(a)):\n    dp[i] = max(dp[i - 1], dp[i - 2] + a[i])\nreturn dp[-1]",
+        "O(n)", "O(n)"),
+    ("dp_array", "coin_change"): (
+        "dp = [amount + 1] * (amount + 1)\ndp[0] = 0\nfor x in range(1, amount + 1):\n    for c in coins:\n        if c <= x:\n            dp[x] = min(dp[x], dp[x - c] + 1)\nreturn -1 if dp[amount] > amount else dp[amount]",
+        "O(amount × |coins|)", "O(amount)"),
+
+    ("stack_queue", "stack"): (
+        "stack = []\nfor op in ops:\n    if op == 'push': stack.append(v)\n    elif op == 'pop':  stack.pop()",
+        "O(1) per op", "O(n)"),
+    ("stack_queue", "queue"): (
+        "queue = deque()\nfor op in ops:\n    if op == 'enqueue': queue.append(v)\n    elif op == 'dequeue': queue.popleft()",
+        "O(1) per op", "O(n)"),
+}
+
+
+def _legacy_polish(title, scene_key: str, algorithm: str, custom_code: str = ""):
+    """Build a CodePanel + ComplexityBadge for a legacy scene. Same idea as
+    _polish() in dsa_pattern_scene.py but local so dsa_scene.py stays
+    self-contained. Returns (code_panel, badge_vgroup, has_panel).
+    Always anchored UL with conservative font_size and max_width that fit
+    alongside the legacy scenes' wider centered strips.
+    """
+    entry = _LEGACY_CATALOG.get((scene_key, algorithm))
+    custom_code = (custom_code or "").strip()
+    if not entry and not custom_code:
+        return None, None
+    if custom_code:
+        pseudo = custom_code
+        t_complex, s_complex = (entry[1], entry[2]) if entry else ("—", "—")
+    else:
+        pseudo, t_complex, s_complex = entry
+    code_panel = CodePanel(pseudo, anchor=UL, font_size=13, max_width=3.8)
+    code_panel.is_custom = bool(custom_code)
+    badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
+    badge.vgroup.next_to(title, RIGHT, buff=0.3)
+    return code_panel, badge.vgroup
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -349,12 +460,19 @@ class ArrayPointerScene(Scene):
                   "two_pointers":  f"Two Pointers  target = {target}",
                   "palindrome":    "Palindrome Check"}
         title = Text(titles.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _legacy_polish(title, "array_pointer", algorithm,
+                                              custom_code=p.get("pseudocode", ""))
 
         if cap:
             _show_title_card(self, cap)
             self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(row), Write(idx_labels))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
         self.wait(0.3)
 
         if algorithm == "binary_search":
@@ -494,11 +612,19 @@ class SlidingWindowScene(Scene):
             title = Text("Sliding Window — Longest Unique Substring", font_size=26).to_edge(UP, buff=0.3)
             steps = _sliding_window_unique_steps(list(array))
 
+        code_panel, badge_v = _legacy_polish(title, "sliding_window", algorithm,
+                                              custom_code=p.get("pseudocode", ""))
+
         if cap:
             _show_title_card(self, cap)
             self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(row))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
         self.wait(0.3)
 
         # Highlight rectangle around the window
@@ -573,11 +699,18 @@ class LinkedListScene(Scene):
                      "find_middle": "Find Middle of Linked List",
                      "merge_sorted": "Merge Two Sorted Lists"}
         title = Text(title_map.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _legacy_polish(title, "linked_list", algorithm,
+                                              custom_code=p.get("pseudocode", ""))
 
         if cap:
             _show_title_card(self, cap)
             self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         if algorithm == "reverse":
             self._reverse(values)
@@ -735,12 +868,19 @@ class TreeTraversalScene(Scene):
                       "inorder": "In-Order", "preorder": "Pre-Order",
                       "postorder": "Post-Order", "height": "Tree Height"}
         title = Text(algo_names.get(algorithm, algorithm), font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _legacy_polish(title, "tree_traversal", algorithm,
+                                              custom_code=p.get("pseudocode", ""))
 
         if cap:
             _show_title_card(self, cap)
             self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(Create(VGroup(*edge_mobs)), FadeIn(VGroup(*node_mobs.values())))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
         self.wait(0.3)
 
         # Get traversal order
@@ -825,12 +965,19 @@ class GraphScene(Scene):
             edge_mobs.append(em)
 
         title = Text(f"Graph {algorithm.upper()} from node {start_node}", font_size=26).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _legacy_polish(title, "graph_traversal", algorithm,
+                                              custom_code=p.get("pseudocode", ""))
 
         if cap:
             _show_title_card(self, cap)
             self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(Create(VGroup(*edge_mobs)), FadeIn(VGroup(*node_mobs)))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
         self.wait(0.3)
 
         steps_fn = _graph_bfs_steps if algorithm == "bfs" else _graph_dfs_steps
@@ -915,6 +1062,8 @@ class DPArrayScene(Scene):
         ])
 
         title = Text(title_str, font_size=28).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _legacy_polish(title, "dp_array", algorithm,
+                                              custom_code=p.get("pseudocode", ""))
 
         if algorithm == "house_robber":
             house_labels = VGroup(*[
@@ -928,7 +1077,12 @@ class DPArrayScene(Scene):
             _show_title_card(self, cap)
             self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
         self.play(FadeIn(row), Write(idx_labels))
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
         self.wait(0.3)
 
         action = Text("Filling DP table...", font_size=22).to_edge(DOWN, buff=1.4)
@@ -980,10 +1134,18 @@ class StackQueueScene(Scene):
         cap        = p.get("caption",   "")
 
         title = Text(f"{structure.upper()} Operations", font_size=30).to_edge(UP, buff=0.3)
+        code_panel, badge_v = _legacy_polish(title, "stack_queue", structure,
+                                              custom_code=p.get("pseudocode", ""))
+
         if cap:
             _show_title_card(self, cap)
             self.play(FadeIn(_caption(cap)), run_time=0.3)
         self.play(Write(title))
+        if badge_v is not None:
+            self.play(FadeIn(badge_v), run_time=0.25)
+        if code_panel is not None:
+            self.play(FadeIn(code_panel.vgroup), run_time=0.3)
+            self.play(code_panel.anim_dim_all(), run_time=0.2)
 
         if structure == "stack":
             self._animate_stack(operations)
