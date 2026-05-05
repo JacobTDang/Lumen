@@ -2204,10 +2204,13 @@ class GridTraversalScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        grid = p.get("grid", [[0, 0, 1, 0], [0, 0, 0, 0], [1, 0, 1, 0], [0, 0, 0, 0]])
-        start = p.get("start", [0, 0])
-        target = p.get("target", [3, 3])
-        algorithm = p.get("algorithm", "bfs")
+        grid = p.get("grid") or [[0, 0, 1, 0], [0, 0, 0, 0], [1, 0, 1, 0], [0, 0, 0, 0]]
+        # Use `or` (not .get default): protects against the param being
+        # explicitly null in the JSON, where .get returns None and breaks
+        # `start[0]` below.
+        start = p.get("start") or [0, 0]
+        target = p.get("target") or [len(grid) - 1, len(grid[0]) - 1]
+        algorithm = p.get("algorithm") or "bfs"
         cap = p.get("caption", "")
 
         title = Text(f"Grid {algorithm.upper()} — ({start[0]},{start[1]}) -> ({target[0]},{target[1]})",
