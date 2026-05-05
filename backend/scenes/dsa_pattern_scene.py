@@ -283,6 +283,14 @@ _STEP_LINE_MAPS = {
 
     # segment_tree (only build pseudocode shown; query falls back to line 5)
     ("segment_tree", "default"): {"build": 5, "query": 5},
+
+    # binary_search_answer — kinds synthesized from step["predicate"]
+    ("binary_search_answer", "default"): {"true": 4, "false": 6},
+
+    # dp_2d — kinds synthesized from step["action"] keywords
+    ("dp_2d", "lcs"):           {"match": 3, "recur": 5},
+    ("dp_2d", "edit_distance"): {"boundary": 3, "match": 5, "recur": 7},
+    ("dp_2d", "unique_paths"):  {"boundary": 1, "recur": 4},
 }
 
 
@@ -1299,10 +1307,18 @@ class BinarySearchAnswerScene(Scene):
             M_idx = step["M"] - min_v
             pred  = step["predicate"]
 
+            # Synthesize kind from predicate result for line highlighting
+            kind = "true" if pred else "false"
+            extra = []
+            hl = _hl_line(code_panel, "binary_search_answer", "default", kind,
+                          step_lines_override=p.get("step_lines"))
+            if hl is not None:
+                extra.append(hl)
             self.play(
                 L_p.anim_move_to(strip, L_idx),
                 R_p.anim_move_to(strip, R_idx),
                 M_p.anim_move_to(strip, M_idx, extra_down=0.35),
+                *extra,
                 run_time=0.4, rate_func=smooth,
             )
             self.play(strip.anim_set_fill(M_idx, HILITE, 0.85), run_time=0.2)
@@ -2547,7 +2563,20 @@ class DP2DScene(Scene):
 
         for step in steps:
             r, c = step["r"], step["c"]
-            self.play(Transform(act, action_text(step["action"])), run_time=0.18)
+            # Synthesize kind from action text + deps shape
+            action = step.get("action", "")
+            if "match" in action or "carry" in action:
+                kind = "match"
+            elif not step.get("deps"):
+                kind = "boundary"
+            else:
+                kind = "recur"
+            extra = []
+            hl = _hl_line(code_panel, "dp_2d", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.18)
             dep_anims = []
             for dr, dc in step.get("deps", []):
                 if 0 <= dr < gp.rows and 0 <= dc < gp.cols:
