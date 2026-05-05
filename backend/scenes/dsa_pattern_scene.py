@@ -183,6 +183,66 @@ def _polish(scene, title, algorithm: str, scene_key: str):
     return code_panel, badge.vgroup
 
 
+# ---------------------------------------------------------------------------
+# Step → pseudocode line mapping per (scene_key, algorithm).
+# Drives synced line-highlighting: as the algorithm steps through, the
+# matching pseudocode line lights up yellow in the CodePanel.
+# ---------------------------------------------------------------------------
+
+_STEP_LINE_MAPS = {
+    # two_pointers_opposite
+    ("two_pointers_opposite", "palindrome"):       {"match": 2, "fail": 2},
+    ("two_pointers_opposite", "two_sum_sorted"):   {"match": 3, "advance_l": 4, "advance_r": 5, "fail": 1},
+    ("two_pointers_opposite", "container_water"):  {"compute": 3},
+    ("two_pointers_opposite", "reverse_array"):    {"swap": 2},
+
+    # hashmap_iteration
+    ("hashmap_iteration", "two_sum_hashmap"): {"match": 3, "store": 4},
+    ("hashmap_iteration", "frequency_count"): {"increment": 2},
+    ("hashmap_iteration", "anagram_check"):   {"increment": 2},
+
+    # sliding_window_variable
+    ("sliding_window_variable", "longest_no_repeat"): {
+        "expand": 5, "shrink": 4, "best": 6,
+    },
+    ("sliding_window_variable", "longest_at_most_k_distinct"): {
+        "expand": 3, "shrink": 7, "best": 8,
+    },
+
+    # binary_search_index
+    ("binary_search_index", "find_target"): {
+        "compare": 3, "match": 3, "go_right": 4, "go_left": 5, "not_found": 6,
+    },
+    ("binary_search_index", "first_occurrence"): {
+        "compare": 4, "match": 5, "go_left": 6, "go_right": 7,
+    },
+
+    # monotonic_stack
+    ("monotonic_stack", "next_greater"): {"pop": 4, "push": 5},
+    ("monotonic_stack", "daily_temperatures"): {"pop": 5, "push": 6},
+
+    # prefix_sum
+    ("prefix_sum", "build_prefix"):    {"build": 2},
+    ("prefix_sum", "range_sum_query"): {"query": 1, "build": 1},
+}
+
+
+def _hl_line(code_panel, scene_key: str, algorithm: str, step_kind: str):
+    """Returns an anim_highlight Animation for the line corresponding to
+    step_kind, or None if there's no panel or no mapping. Callers append the
+    return value to their *anims spread when it's not None.
+    """
+    if code_panel is None:
+        return None
+    table = _STEP_LINE_MAPS.get((scene_key, algorithm))
+    if not table:
+        return None
+    line = table.get(step_kind)
+    if line is None:
+        return None
+    return code_panel.anim_highlight(line)
+
+
 # ===========================================================================
 #  ALGORITHM STEP GENERATORS (pure Python, no Manim imports inside)
 # ===========================================================================
@@ -397,11 +457,16 @@ class TwoPointersOppositeScene(Scene):
             L, R = step["L"], step["R"]
             kind = step.get("kind", "compute")
 
-            # Highlight the two cells being examined
+            # Highlight the two cells being examined + sync code line
             highlight_color = HILITE
+            extra = []
+            hl = _hl_line(code_panel, "two_pointers_opposite", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
             self.play(
                 strip.anim_set_fill(L, highlight_color, 0.75),
                 strip.anim_set_fill(R, highlight_color, 0.75),
+                *extra,
                 run_time=0.3,
             )
 
@@ -538,10 +603,15 @@ class HashMapIterationScene(Scene):
             i = step["i"]
             kind = step.get("kind", "store")
 
-            # Move pointer + highlight current cell
+            # Move pointer + highlight current cell + sync code line
+            extra = []
+            hl = _hl_line(code_panel, "hashmap_iteration", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
             self.play(
                 i_ptr.anim_move_to(strip, i),
                 strip.anim_set_fill(i, HILITE, 0.75),
+                *extra,
                 run_time=0.4,
                 rate_func=smooth,
             )
@@ -877,10 +947,16 @@ class SlidingWindowVariableScene(Scene):
             L, R = step["L"], step["R"]
             kind = step["kind"]
 
+            # Sync code line to step kind
+            extra = []
+            hl = _hl_line(code_panel, "sliding_window_variable", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
             self.play(
                 zone.anim_to(L, R),
                 L_ptr.anim_move_to(strip, L),
                 R_ptr.anim_move_to(strip, R, extra_down=0.35),
+                *extra,
                 run_time=0.4, rate_func=smooth,
             )
 
@@ -1025,6 +1101,9 @@ class BinarySearchIndexScene(Scene):
             anims = [L_p.anim_move_to(strip, L), R_p.anim_move_to(strip, R)]
             if M >= 0:
                 anims.append(M_p.anim_move_to(strip, M, extra_down=0.35))
+            hl = _hl_line(code_panel, "binary_search_index", algorithm, kind)
+            if hl is not None:
+                anims.append(hl)
             self.play(*anims, run_time=0.4, rate_func=smooth)
 
             if M >= 0:
@@ -1245,7 +1324,12 @@ class MonotonicStackScene(Scene):
             i = step["i"]
             kind = step["kind"]
 
-            self.play(i_ptr.anim_move_to(strip, i), run_time=0.3, rate_func=smooth)
+            extra = []
+            hl = _hl_line(code_panel, "monotonic_stack", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(i_ptr.anim_move_to(strip, i), *extra,
+                      run_time=0.3, rate_func=smooth)
             self.play(strip.anim_set_fill(i, HILITE, 0.7), run_time=0.2)
 
             if kind == "pop":
@@ -1362,13 +1446,18 @@ class PrefixSumScene(Scene):
 
         for step in steps:
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "prefix_sum", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
 
             if kind == "build":
                 i = step["i"]   # index into prefix (1..n)
-                # Highlight prefix[i-1] (dep) and arr[i-1] (input)
+                # Highlight prefix[i-1] (dep) and arr[i-1] (input) + sync code line
                 self.play(
                     pre_strip.anim_set_fill(i - 1, HILITE, 0.7),
                     in_strip.anim_set_fill(i - 1, HILITE, 0.7),
+                    *extra,
                     run_time=0.25,
                 )
                 # Update prefix[i]
@@ -1389,10 +1478,11 @@ class PrefixSumScene(Scene):
 
             elif kind == "query":
                 l, r = step["l"], step["r"]
-                # Highlight prefix[r+1] and prefix[l] simultaneously
+                # Highlight prefix[r+1] and prefix[l] simultaneously + code line
                 self.play(
                     pre_strip.anim_set_fill(r + 1, HILITE, 0.85),
                     pre_strip.anim_set_fill(l, REJECT, 0.85),
+                    *extra,
                     run_time=0.3,
                 )
                 # Highlight the input range too
