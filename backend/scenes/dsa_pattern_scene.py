@@ -224,6 +224,48 @@ _STEP_LINE_MAPS = {
     # prefix_sum
     ("prefix_sum", "build_prefix"):    {"build": 2},
     ("prefix_sum", "range_sum_query"): {"query": 1, "build": 1},
+
+    # two_pointers_same_dir
+    ("two_pointers_same_dir", "remove_duplicates"): {
+        "compare": 2, "write": 4, "skip": 2, "advance_fast": 1,
+    },
+    ("two_pointers_same_dir", "move_zeros"): {
+        "compare": 2, "swap": 3, "skip": 2, "advance_fast": 1,
+    },
+
+    # interval_merging
+    ("interval_merging", "default"): {"sort": 0, "emit": 6, "merge": 4},
+
+    # backtracking_subsets
+    ("backtracking_subsets", "subsets"):      {"enter": 4, "exit": 3, "leaf": 2},
+    ("backtracking_subsets", "permutations"): {"enter": 6, "exit": 7, "leaf": 2},
+
+    # lru_cache
+    ("lru_cache", "default"): {"hit": 1, "miss": 2, "update": 4, "insert": 6},
+
+    # grid_traversal
+    ("grid_traversal", "bfs"): {"start": 0, "visit": 3, "enqueue": 8, "path": 4, "fail": 4},
+    ("grid_traversal", "dfs"): {"start": 0, "visit": 2, "enqueue": 5, "path": 1, "fail": 6},
+
+    # heap_ops
+    ("heap_ops", "default"): {
+        "push": 1, "pop_top": 3, "replace_root": 4, "swap": 4, "empty": 5,
+    },
+
+    # trie_ops
+    ("trie_ops", "default"): {
+        "walk": 5, "insert_char": 4, "mark_end": 6,
+        "miss": 3, "final_hit": 6, "final_miss": 6,
+    },
+
+    # union_find
+    ("union_find", "default"): {"noop": 7, "linked": 7, "find": 4},
+
+    # dijkstra
+    ("dijkstra", "default"): {"settle": 3, "relax": 7},
+
+    # segment_tree (only build pseudocode shown; query falls back to line 5)
+    ("segment_tree", "default"): {"build": 5, "query": 5},
 }
 
 
@@ -768,9 +810,14 @@ class TwoPointersSameDirScene(Scene):
             slow, fast = step["slow"], step["fast"]
             kind = step["kind"]
 
+            extra = []
+            hl = _hl_line(code_panel, "two_pointers_same_dir", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
             self.play(
                 slow_p.anim_move_to(strip, slow),
                 fast_p.anim_move_to(strip, fast, extra_down=0.35),
+                *extra,
                 run_time=0.4, rate_func=smooth,
             )
             self.play(*state.anim_set("slow", slow, color=PTR_COLORS["slow"]),
@@ -1712,7 +1759,11 @@ class IntervalMergingScene(Scene):
         for step in steps[1:]:
             kind = step["kind"]
             pos = step["src_pos"]
-            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
+            extra = []
+            hl = _hl_line(code_panel, "interval_merging", "default", kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.25)
             if kind == "emit":
                 self.play(bars.anim_set_color(pos, KEEP), run_time=0.3)
             elif kind == "merge":
@@ -1829,8 +1880,12 @@ class UnionFindScene(Scene):
         active_arrows = {}  # i -> Arrow
 
         for step in steps:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "union_find", "default", kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.25)
 
             if kind == "linked":
                 ra, rb = step["ra"], step["rb"]
@@ -1957,8 +2012,12 @@ class LRUCacheScene(Scene):
         self.play(FadeIn(act))
 
         for step in steps:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.25)
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "lru_cache", "default", kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.25)
             k = step["key"]
             if kind == "insert":
                 anims = dll.anim_add_to_head(k, step["val"])
@@ -2091,8 +2150,12 @@ class GridTraversalScene(Scene):
         self.wait(0.4)
 
         for step in steps:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.2)
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "grid_traversal", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)
             if kind == "visit":
                 r, c = step["r"], step["c"]
                 if (r, c) != (sr, sc):
@@ -2238,7 +2301,12 @@ class HeapOpsScene(Scene):
 
         prev_snapshot = []
         for step in steps:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.22)
+            kind = step.get("kind", "")
+            extra = []
+            hl = _hl_line(code_panel, "heap_ops", "default", kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.22)
             snap = step.get("snapshot", [])
 
             anims = []
@@ -2527,8 +2595,12 @@ class BacktrackingSubsetsScene(Scene):
         self.play(FadeIn(act))
 
         for step in steps:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.2)
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "backtracking_subsets", algorithm, kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)
             if kind == "enter":
                 _, anims = rt.anim_spawn_child(step["parent_id"],
                                                 str(step["path"]))
@@ -2712,8 +2784,12 @@ class TrieOpsScene(Scene):
         self.play(FadeIn(cursor))
 
         for step in steps:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.18)
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "trie_ops", "default", kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.18)
 
             if kind in ("insert_char", "walk", "miss"):
                 # Walk to next prefix (current_prefix + char)
@@ -2854,8 +2930,12 @@ class DijkstraScene(Scene):
         self.play(gp.anim_set_node_color(source, KEEP, 0.85), run_time=0.3)
 
         for step in steps[1:]:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.2)
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "dijkstra", "default", kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)
             if kind == "settle":
                 u = step["node"]
                 self.play(gp.anim_set_node_color(u, KEEP, 0.95), run_time=0.3)
@@ -2970,8 +3050,12 @@ class SegmentTreeScene(Scene):
         self.play(FadeIn(act))
 
         for step in steps:
-            self.play(Transform(act, action_text(step["action"])), run_time=0.2)
             kind = step["kind"]
+            extra = []
+            hl = _hl_line(code_panel, "segment_tree", "default", kind)
+            if hl is not None:
+                extra.append(hl)
+            self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)
             if kind == "build":
                 n_idx = step["node"] - 1   # display offset
                 if 0 <= n_idx < len(bt.nodes):
