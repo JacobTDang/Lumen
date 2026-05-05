@@ -12,7 +12,9 @@ def test_render_missing_scene_returns_400(client):
 
 
 def test_render_returns_job_id(client, mocker):
-    mocker.patch("app.submit_render", return_value="test-job-id")
+    # /render routes through submit_lesson (so single-scene renders share the
+    # content-hash cache with /prerender). See app.py:323.
+    mocker.patch("app.submit_lesson", return_value="test-job-id")
     res = client.post("/render", json={"scene": "bubble_sort", "params": {"array": [3, 1, 2]}})
     assert res.status_code == 202
     assert res.get_json()["job_id"] == "test-job-id"
