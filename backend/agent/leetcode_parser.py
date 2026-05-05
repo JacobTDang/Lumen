@@ -116,6 +116,7 @@ class ParsedLeetCode(BaseModel):
     explanation: str
     why_this_pattern: str
     pseudocode: str = ""
+    step_lines: dict = {}
 
 
 _SYSTEM_PROMPT = """You are converting a pasted LeetCode-style problem statement into a runnable
@@ -300,6 +301,77 @@ Required fields:
                       Keep it visually digestible — this renders in a small panel.
                       Use Python conventions: `for i in range(n):`, slicing,
                       list comprehensions where natural. No imports.
+  - step_lines:       a JSON object mapping each "step kind" for the chosen
+                      scene to the 0-indexed LINE NUMBER in YOUR pseudocode
+                      where that operation occurs. The renderer uses this to
+                      highlight the active line as the algorithm steps through.
+                      Use the STEP KIND REFERENCE below — only include kinds
+                      relevant to the scene you picked.
+
+STEP KIND REFERENCE (which kinds each scene emits, what they mean):
+
+  two_pointers_opposite:
+    palindrome      → match (chars equal), fail (mismatch)
+    two_sum_sorted  → match (sum=target), advance_l (sum<target), advance_r (sum>target), fail
+    container_water → compute (area = (r-l) * min(h[l], h[r]))
+    reverse_array   → swap (a[l] ↔ a[r])
+  two_pointers_same_dir:
+    remove_duplicates → compare, write (a[slow]=a[fast]), advance_fast, skip
+    move_zeros        → compare, swap, skip, advance_fast
+  sliding_window_variable:
+    longest_no_repeat | longest_at_most_k_distinct → expand (right grows), shrink (left moves), best (new best length)
+  binary_search_index:
+    find_target | first_occurrence → compare, match, go_right (l=m+1), go_left (r=m-1), not_found
+  monotonic_stack:
+    next_greater | daily_temperatures → pop (resolve top), push (current i)
+  hashmap_iteration:
+    two_sum_hashmap → match (complement found), store (seen[v]=i)
+    frequency_count | anagram_check → increment (freq[v]+=1)
+  prefix_sum:
+    build_prefix    → build (prefix[i+1] = prefix[i] + a[i])
+    range_sum_query → query (range_sum = prefix[r+1] - prefix[l])
+  kadanes:
+    no kinds — line highlight handled by catalog mapping
+  interval_merging:
+    sort, emit (new merged), merge (extend last)
+  backtracking_subsets:
+    subsets | permutations → enter (recurse), exit (return), leaf (path complete)
+  lru_cache:
+    hit, miss, update (existing key), insert (new key)
+  grid_traversal:
+    bfs | dfs → start, visit, enqueue (or recurse), path (target found), fail
+  heap_ops:
+    push, pop_top, replace_root, swap (sift), empty
+  trie_ops:
+    walk (descend existing edge), insert_char (new edge), mark_end (word complete),
+    miss (search fails), final_hit, final_miss
+  union_find:
+    noop (same root), linked (parent[ra]=rb), find (lookup root)
+  dijkstra:
+    settle (heappop), relax (dist update)
+  segment_tree:
+    build (combine children), query (range query)
+  floyd_cycle:
+    init, move (slow + fast advanced), meet (cycle found), no_cycle (fast=null)
+  trapping_rain_water:
+    init, move (running max updated), fill (water added), done
+  greedy_interval:
+    jump_game   → examine, success, fail
+    gas_station → examine, reset, done
+  bit_manipulation:
+    single_number → init, xor, done
+    count_bits    → init, clear, done
+  topological_sort:
+    init, enqueue (zero in-degree), pop, decrement, cycle, done
+  matrix_rotation:
+    rotate_90 → phase, swap, reverse_row, done
+    spiral    → visit, done
+  recursion_tree_dc:
+    split, merge, done
+
+If the chosen scene is not listed above, return an empty `step_lines` object.
+Always return ALL the kinds the scene's algorithm will actually emit — don't
+omit kinds (line highlighting will silently no-op for missing kinds).
 """
 
 
@@ -383,13 +455,34 @@ def _validate(data: dict) -> ParsedLeetCode:
     clean_params = validated.model_dump()
     clean_params.pop("scene", None)
 
+    raw_step_lines = data.get("step_lines") or {}
+    if not isinstance(raw_step_lines, dict):
+        raw_step_lines = {}
+    # Coerce values to ints; drop entries that don't parse
+    step_lines = {}
+    for k, v in raw_step_lines.items():
+        try:
+            step_lines[str(k)] = int(v)
+        except (TypeError, ValueError):
+            continue
+
+    # Pseudocode may come back as either a single string with \n, OR a
+    # list of strings (some models prefer list-of-lines). Normalize both
+    # to a single \n-joined string.
+    raw_pseudo = data.get("pseudocode", "")
+    if isinstance(raw_pseudo, list):
+        pseudo = "\n".join(str(line) for line in raw_pseudo).strip()
+    else:
+        pseudo = str(raw_pseudo).strip()
+
     return ParsedLeetCode(
         title=str(data.get("title", "")).strip() or "Untitled",
         scene=scene,
         params=clean_params,
         explanation=str(data.get("explanation", "")).strip(),
         why_this_pattern=str(data.get("why_this_pattern", "")).strip(),
-        pseudocode=str(data.get("pseudocode", "")).strip(),
+        pseudocode=pseudo,
+        step_lines=step_lines,
     )
 
 

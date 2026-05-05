@@ -87,6 +87,61 @@ def test_parse_pseudocode_defaults_to_empty(mocker):
     assert result.pseudocode == ""
 
 
+def test_parse_passes_through_step_lines(mocker):
+    """When the model returns step_lines, they round-trip through the parser
+    so scenes can sync line highlighting against the custom pseudocode."""
+    payload = json.dumps({
+        "title": "Two Sum",
+        "scene": "hashmap_iteration",
+        "params": {"array": [2, 7, 11, 15], "algorithm": "two_sum_hashmap", "target": 9},
+        "explanation": "ok",
+        "why_this_pattern": "ok",
+        "pseudocode": "seen = {}\nfor i, num in enumerate(nums):\n    need = target - num\n    if need in seen:\n        return [seen[need], i]\n    seen[num] = i",
+        "step_lines": {"match": 4, "store": 5},
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("Two sum nums=[2,7,11,15] target=9")
+    assert result.step_lines == {"match": 4, "store": 5}
+
+
+def test_parse_step_lines_defaults_to_empty(mocker):
+    """If the model omits step_lines, the field defaults to {} (no errors)."""
+    payload = json.dumps({
+        "title": "X",
+        "scene": "kadanes",
+        "params": {"array": [1, 2, 3]},
+        "explanation": "ok",
+        "why_this_pattern": "ok",
+        "pseudocode": "",
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("max subarray of [1,2,3]")
+    assert result.step_lines == {}
+
+
+def test_parse_step_lines_coerces_string_values(mocker):
+    """Some models return line indexes as strings ('3' instead of 3) — the
+    parser should coerce them to int. Non-numeric entries are dropped."""
+    payload = json.dumps({
+        "title": "X",
+        "scene": "kadanes",
+        "params": {"array": [1, 2, 3]},
+        "explanation": "ok",
+        "why_this_pattern": "ok",
+        "pseudocode": "",
+        "step_lines": {"match": "3", "broken": "abc", "good": 5},
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("anything")
+    assert result.step_lines == {"match": 3, "good": 5}
+
+
 def test_parse_palindrome_picks_two_pointers_opposite(mocker):
     payload = json.dumps({
         "title": "Valid Palindrome",

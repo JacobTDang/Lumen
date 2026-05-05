@@ -286,16 +286,39 @@ _STEP_LINE_MAPS = {
 }
 
 
-def _hl_line(code_panel, scene_key: str, algorithm: str, step_kind: str):
+def _hl_line(code_panel, scene_key: str, algorithm: str, step_kind: str,
+             step_lines_override: dict = None):
     """Returns an anim_highlight Animation for the line corresponding to
-    step_kind, or None if there's no panel, no mapping, or the panel is
-    showing custom user-specific pseudocode (line numbers won't match
-    the catalog's _STEP_LINE_MAPS).
+    step_kind, or None if there's no panel or mapping.
+
+    Lookup order:
+      1. `step_lines_override` (passed by scene from params, supplied by
+         /api/parse-leetcode for custom pseudocode) — checked FIRST so
+         bespoke code gets correct highlighting
+      2. `_STEP_LINE_MAPS` (catalog mapping for catalog code) — fallback
+
+    If the panel is `is_custom` AND no override mapping is supplied,
+    return None — the catalog mapping won't match the custom code's
+    line numbers, so it's safer to leave the panel dim than highlight
+    the wrong line.
     """
     if code_panel is None:
         return None
-    if getattr(code_panel, "is_custom", False):
+
+    is_custom = getattr(code_panel, "is_custom", False)
+
+    if step_lines_override:
+        line = step_lines_override.get(step_kind)
+        if line is not None:
+            try:
+                return code_panel.anim_highlight(int(line))
+            except (TypeError, ValueError):
+                pass  # fall through
+
+    if is_custom:
+        # Custom code with no usable override → leave it dim
         return None
+
     table = _STEP_LINE_MAPS.get((scene_key, algorithm))
     if not table:
         return None
@@ -523,7 +546,8 @@ class TwoPointersOppositeScene(Scene):
             # Highlight the two cells being examined + sync code line
             highlight_color = HILITE
             extra = []
-            hl = _hl_line(code_panel, "two_pointers_opposite", algorithm, kind)
+            hl = _hl_line(code_panel, "two_pointers_opposite", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(
@@ -669,7 +693,8 @@ class HashMapIterationScene(Scene):
 
             # Move pointer + highlight current cell + sync code line
             extra = []
-            hl = _hl_line(code_panel, "hashmap_iteration", algorithm, kind)
+            hl = _hl_line(code_panel, "hashmap_iteration", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(
@@ -834,7 +859,8 @@ class TwoPointersSameDirScene(Scene):
             kind = step["kind"]
 
             extra = []
-            hl = _hl_line(code_panel, "two_pointers_same_dir", algorithm, kind)
+            hl = _hl_line(code_panel, "two_pointers_same_dir", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(
@@ -1020,7 +1046,8 @@ class SlidingWindowVariableScene(Scene):
 
             # Sync code line to step kind
             extra = []
-            hl = _hl_line(code_panel, "sliding_window_variable", algorithm, kind)
+            hl = _hl_line(code_panel, "sliding_window_variable", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(
@@ -1173,7 +1200,8 @@ class BinarySearchIndexScene(Scene):
             anims = [L_p.anim_move_to(strip, L), R_p.anim_move_to(strip, R)]
             if M >= 0:
                 anims.append(M_p.anim_move_to(strip, M, extra_down=0.35))
-            hl = _hl_line(code_panel, "binary_search_index", algorithm, kind)
+            hl = _hl_line(code_panel, "binary_search_index", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 anims.append(hl)
             self.play(*anims, run_time=0.4, rate_func=smooth)
@@ -1399,7 +1427,8 @@ class MonotonicStackScene(Scene):
             kind = step["kind"]
 
             extra = []
-            hl = _hl_line(code_panel, "monotonic_stack", algorithm, kind)
+            hl = _hl_line(code_panel, "monotonic_stack", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(i_ptr.anim_move_to(strip, i), *extra,
@@ -1527,7 +1556,8 @@ class PrefixSumScene(Scene):
         for step in steps:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "prefix_sum", algorithm, kind)
+            hl = _hl_line(code_panel, "prefix_sum", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
 
@@ -1797,7 +1827,8 @@ class IntervalMergingScene(Scene):
             kind = step["kind"]
             pos = step["src_pos"]
             extra = []
-            hl = _hl_line(code_panel, "interval_merging", "default", kind)
+            hl = _hl_line(code_panel, "interval_merging", "default", kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.25)
@@ -1920,7 +1951,8 @@ class UnionFindScene(Scene):
         for step in steps:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "union_find", "default", kind)
+            hl = _hl_line(code_panel, "union_find", "default", kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.25)
@@ -2053,7 +2085,8 @@ class LRUCacheScene(Scene):
         for step in steps:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "lru_cache", "default", kind)
+            hl = _hl_line(code_panel, "lru_cache", "default", kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.25)
@@ -2192,7 +2225,8 @@ class GridTraversalScene(Scene):
         for step in steps:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "grid_traversal", algorithm, kind)
+            hl = _hl_line(code_panel, "grid_traversal", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)
@@ -2344,7 +2378,8 @@ class HeapOpsScene(Scene):
         for step in steps:
             kind = step.get("kind", "")
             extra = []
-            hl = _hl_line(code_panel, "heap_ops", "default", kind)
+            hl = _hl_line(code_panel, "heap_ops", "default", kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.22)
@@ -2640,7 +2675,8 @@ class BacktrackingSubsetsScene(Scene):
         for step in steps:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "backtracking_subsets", algorithm, kind)
+            hl = _hl_line(code_panel, "backtracking_subsets", algorithm, kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)
@@ -2830,7 +2866,8 @@ class TrieOpsScene(Scene):
         for step in steps:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "trie_ops", "default", kind)
+            hl = _hl_line(code_panel, "trie_ops", "default", kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.18)
@@ -2977,7 +3014,8 @@ class DijkstraScene(Scene):
         for step in steps[1:]:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "dijkstra", "default", kind)
+            hl = _hl_line(code_panel, "dijkstra", "default", kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)
@@ -3098,7 +3136,8 @@ class SegmentTreeScene(Scene):
         for step in steps:
             kind = step["kind"]
             extra = []
-            hl = _hl_line(code_panel, "segment_tree", "default", kind)
+            hl = _hl_line(code_panel, "segment_tree", "default", kind,
+                          step_lines_override=p.get("step_lines"))
             if hl is not None:
                 extra.append(hl)
             self.play(Transform(act, action_text(step["action"])), *extra, run_time=0.2)

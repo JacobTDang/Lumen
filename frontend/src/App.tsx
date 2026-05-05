@@ -882,6 +882,9 @@ async function generateAnimation(
           params: {
             ...parsed.params,
             ...(parsed.pseudocode ? { pseudocode: parsed.pseudocode } : {}),
+            ...(parsed.step_lines && Object.keys(parsed.step_lines).length
+              ? { step_lines: parsed.step_lines }
+              : {}),
           },
         };
       }
@@ -1104,6 +1107,7 @@ interface ParsedLeetcode {
   explanation: string;
   why_this_pattern: string;
   pseudocode?: string;
+  step_lines?: Record<string, number>;
 }
 
 async function parseLeetcode(rawText: string): Promise<ParsedLeetcode> {
@@ -4172,6 +4176,9 @@ const PasteLeetCodePage: React.FC = () => {
             caption: parsed.title,
             ...parsed.params,
             ...(parsed.pseudocode ? { pseudocode: parsed.pseudocode } : {}),
+            ...(parsed.step_lines && Object.keys(parsed.step_lines).length
+              ? { step_lines: parsed.step_lines }
+              : {}),
           },
         }),
       });
