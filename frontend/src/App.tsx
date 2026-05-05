@@ -42,7 +42,7 @@ import {
 // Types
 // ─────────────────────────────────────────────────────────────
 
-type Route = "home" | "notes" | "animations" | "import-notes" | "import-animations" | "paste-leetcode";
+type Route = "home" | "notes" | "animations" | "import-notes" | "import-animations" | "paste-problem";
 
 interface SideNote {
   id: string;
@@ -875,7 +875,10 @@ async function generateAnimation(
     extraContext.trim().length >= 15;
   if (!override && hasInputs) {
     try {
-      const parsed = await parseLeetcode(extraContext as string);
+      // Use the universal parser (handles both math + DSA via classify_domain
+      // on the backend). Math problems get back `steps`, DSA problems get
+      // `pseudocode + step_lines`.
+      const parsed = await parseProblemV2(extraContext as string);
       if (parsed?.scene && parsed?.params) {
         override = {
           scene: parsed.scene,
@@ -889,7 +892,7 @@ async function generateAnimation(
         };
       }
     } catch (e) {
-      console.warn("parseLeetcode failed, using TOPIC_SCENE_MAP fallback:", e);
+      console.warn("parseProblemV2 failed, using TOPIC_SCENE_MAP fallback:", e);
     }
   }
 
@@ -1110,8 +1113,38 @@ interface ParsedLeetcode {
   step_lines?: Record<string, number>;
 }
 
+interface ParsedProblem {
+  domain: "math" | "dsa";
+  title: string;
+  scene: string;
+  params: Record<string, any>;
+  explanation: string;
+  why_this_pattern: string;
+  // DSA-only:
+  pseudocode?: string;
+  step_lines?: Record<string, number>;
+  // Math-only:
+  steps?: string[];
+}
+
 async function parseLeetcode(rawText: string): Promise<ParsedLeetcode> {
   const res = await fetch(`${flaskBase()}/api/parse-leetcode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rawText }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = err.detail || err.error || `HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+// Universal parser — classifies math vs DSA on the backend and routes to the
+// matching parser. Use this from the paste page and from inline note animate.
+async function parseProblemV2(rawText: string): Promise<ParsedProblem> {
+  const res = await fetch(`${flaskBase()}/api/parse-problem-v2`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ rawText }),
@@ -1695,7 +1728,7 @@ const Sidebar: React.FC<{
     { key: "animations", label: "Animations", icon: <Play size={16} strokeWidth={1.5} /> },
     { key: "import-notes", label: "Import notes", icon: <FileImage size={16} strokeWidth={1.5} /> },
     { key: "import-animations", label: "Import problem", icon: <Upload size={16} strokeWidth={1.5} /> },
-    { key: "paste-leetcode", label: "Paste LeetCode", icon: <CodeIcon size={16} strokeWidth={1.5} /> },
+    { key: "paste-problem", label: "Paste Problem", icon: <CodeIcon size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -4096,24 +4129,26 @@ const ImportError: React.FC<{ message: string; onRetry: () => void }> = ({ messa
 );
 
 // ─────────────────────────────────────────────────────────────
-// PasteLeetCodePage — paste prose -> /api/parse-leetcode -> /render
+// PasteProblemPage — universal paste-to-render for math + DSA
 //
-// Skips OCR + planner; uses the structured /api/parse-leetcode endpoint
-// that extracts {scene, params, explanation, why_this_pattern} from the
-// raw problem text, then directly POSTs to /render with the matched
-// scene + extracted inputs.
+// Accepts text paste OR image upload (via /api/ocr). Routes through
+// /api/parse-problem-v2 which classifies math vs DSA on the backend
+// and returns a unified shape:
+//   - DSA: includes pseudocode + step_lines (CodePanel)
+//   - Math: includes steps (algebraic breakdown panel)
 // ─────────────────────────────────────────────────────────────
 
 type PasteState =
   | { kind: "idle" }
+  | { kind: "ocr" }
   | { kind: "parsing" }
-  | { kind: "rendering"; parsed: ParsedLeetcode; progress: number }
-  | { kind: "ready"; parsed: ParsedLeetcode; videoUrl: string }
+  | { kind: "rendering"; parsed: ParsedProblem; progress: number }
+  | { kind: "ready"; parsed: ParsedProblem; videoUrl: string }
   | { kind: "error"; message: string };
 
 const SAMPLE_PROBLEMS: { label: string; text: string }[] = [
   {
-    label: "Two Sum",
+    label: "Two Sum (DSA)",
     text:
       "Given an array of integers nums = [2, 7, 11, 15] and an integer " +
       "target = 9, return indices of the two numbers such that they add up " +
@@ -4121,27 +4156,51 @@ const SAMPLE_PROBLEMS: { label: string; text: string }[] = [
       "you may not use the same element twice.",
   },
   {
-    label: "Trapping Rain Water",
+    label: "Trapping Rain Water (DSA)",
     text:
       "Given n non-negative integers heights = [0,1,0,2,1,0,1,3,2,1,2,1] " +
       "representing an elevation map where the width of each bar is 1, " +
       "compute how much water it can trap after raining.",
   },
   {
-    label: "Course Schedule",
+    label: "Definite Integral (Math)",
     text:
-      "There are 4 courses you have to take, labeled from 0 to 3. Some " +
-      "courses have prerequisites, given as an array of pairs " +
-      "[[1,0],[2,1],[3,2]] meaning to take course a you must first take " +
-      "course b. Return any valid order in which you should take the courses.",
+      "Compute the definite integral of x squared from 0 to 4 using a " +
+      "Riemann sum with 8 midpoint rectangles.",
+  },
+  {
+    label: "Find Limit (Math)",
+    text: "Find the limit of sin(x) / x as x approaches 0.",
+  },
+  {
+    label: "Tangent Line (Math)",
+    text: "Find the derivative of x^3 at x = 2 and graph its tangent line.",
   },
 ];
 
-const PasteLeetCodePage: React.FC = () => {
+const PasteProblemPage: React.FC = () => {
   const [text, setText] = useState("");
   const [state, setState] = useState<PasteState>({ kind: "idle" });
 
-  const isBusy = state.kind === "parsing" || state.kind === "rendering";
+  const isBusy = state.kind === "ocr" || state.kind === "parsing" || state.kind === "rendering";
+
+  // Image upload → OCR → fill textarea
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";  // allow re-uploading the same file
+    setState({ kind: "ocr" });
+    try {
+      const { text: ocrText } = await ocrFile(file);
+      setText(ocrText);
+      setState({ kind: "idle" });
+    } catch (err) {
+      setState({
+        kind: "error",
+        message: err instanceof Error ? err.message : "OCR failed. Try pasting the text directly.",
+      });
+    }
+  }, []);
 
   const handleVisualize = useCallback(async () => {
     const trimmed = text.trim();
@@ -4149,9 +4208,9 @@ const PasteLeetCodePage: React.FC = () => {
 
     setState({ kind: "parsing" });
 
-    let parsed: ParsedLeetcode;
+    let parsed: ParsedProblem;
     try {
-      parsed = await parseLeetcode(trimmed);
+      parsed = await parseProblemV2(trimmed);
     } catch (e) {
       setState({
         kind: "error",
@@ -4221,11 +4280,13 @@ const PasteLeetCodePage: React.FC = () => {
   };
 
   const buttonLabel =
-    state.kind === "parsing"
-      ? "Detecting pattern…"
-      : state.kind === "rendering"
-        ? "Rendering…"
-        : "Visualize";
+    state.kind === "ocr"
+      ? "Reading image…"
+      : state.kind === "parsing"
+        ? "Detecting pattern…"
+        : state.kind === "rendering"
+          ? "Rendering…"
+          : "Visualize";
 
   return (
     <div
@@ -4243,17 +4304,39 @@ const PasteLeetCodePage: React.FC = () => {
               marginBottom: 8,
             }}
           >
-            Paste a LeetCode problem
+            Paste a problem
           </h1>
           <p style={{ color: C.textMuted, fontSize: 14, lineHeight: 1.6 }}>
-            We'll detect the pattern, extract your example input, and render an
-            animated walkthrough using the actual numbers from your problem.
+            Math (integrals, limits, derivatives) or DSA (LeetCode patterns) —
+            paste the text or upload an image. We'll detect the topic, extract
+            your example input, and render a walkthrough.
           </p>
         </header>
 
-        {/* Sample problems row */}
+        {/* Image upload + sample problems row */}
         <div className="mb-3 flex items-center gap-2 flex-wrap">
-          <span style={{ fontSize: 12, color: C.textFaint }}>Try a sample:</span>
+          <label
+            className="px-2.5 py-1 rounded cursor-pointer flex items-center gap-1.5"
+            style={{
+              fontSize: 12,
+              color: C.text,
+              border: `1px solid ${C.borderAlt}`,
+              background: C.surface,
+              opacity: isBusy ? 0.5 : 1,
+              cursor: isBusy ? "not-allowed" : "pointer",
+            }}
+          >
+            <Upload size={12} strokeWidth={2} />
+            Upload image
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={handleFileUpload}
+              disabled={isBusy}
+              style={{ display: "none" }}
+            />
+          </label>
+          <span style={{ fontSize: 12, color: C.textFaint, marginLeft: 4 }}>or try:</span>
           {SAMPLE_PROBLEMS.map((s) => (
             <motion.button
               key={s.label}
@@ -4425,6 +4508,46 @@ const PasteLeetCodePage: React.FC = () => {
                 )}
               </div>
 
+              {/* Math: solution steps panel (only for math problems) */}
+              {state.parsed.domain === "math" && state.parsed.steps && state.parsed.steps.length > 0 && (
+                <div
+                  className="p-4 rounded-md mb-4"
+                  style={{
+                    background: C.surface,
+                    border: `1px solid ${C.borderAlt}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.05em",
+                      color: C.textFaint,
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Solution steps
+                  </div>
+                  <ol style={{ paddingLeft: 18 }}>
+                    {state.parsed.steps.map((step, i) => (
+                      <li
+                        key={i}
+                        style={{
+                          fontSize: 14,
+                          lineHeight: 1.6,
+                          color: C.text,
+                          marginBottom: 4,
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                        }}
+                      >
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
               {/* Why this pattern wins */}
               {state.parsed.why_this_pattern && (
                 <div
@@ -4444,7 +4567,7 @@ const PasteLeetCodePage: React.FC = () => {
                       marginBottom: 6,
                     }}
                   >
-                    Why this pattern wins
+                    {state.parsed.domain === "math" ? "Why this scene" : "Why this pattern wins"}
                   </div>
                   <p style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>
                     {state.parsed.why_this_pattern}
@@ -4624,7 +4747,7 @@ export default function App() {
               />
             )}
             {route === "import-animations" && <ImportAnimationsPage topics={topics} />}
-            {route === "paste-leetcode" && <PasteLeetCodePage />}
+            {route === "paste-problem" && <PasteProblemPage />}
           </motion.div>
         </AnimatePresence>
       </main>
