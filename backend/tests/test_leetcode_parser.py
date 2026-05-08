@@ -123,6 +123,86 @@ def test_parse_step_lines_defaults_to_empty(mocker):
     assert result.step_lines == {}
 
 
+def test_parse_alternatives_round_trip(mocker):
+    """Parser returns list of Alternative entries with their own valid params."""
+    payload = json.dumps({
+        "title": "Two Sum",
+        "scene": "hashmap_iteration",
+        "params": {"array": [2, 7, 11, 15], "algorithm": "two_sum_hashmap", "target": 9},
+        "explanation": "ok", "why_this_pattern": "ok",
+        "pseudocode": "", "step_lines": {},
+        "alternatives": [
+            {
+                "scene": "two_pointers_opposite",
+                "params": {"array": [2, 7, 11, 15], "algorithm": "two_sum_sorted", "target": 9},
+                "label": "Show with two-pointer (sorted)",
+                "why": "Eliminates the hashmap O(n) space.",
+            },
+        ],
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("Two Sum nums=[2,7,11,15] target=9")
+    assert len(result.alternatives) == 1
+    alt = result.alternatives[0]
+    assert alt.scene == "two_pointers_opposite"
+    assert alt.params["target"] == 9
+    assert "two-pointer" in alt.label.lower()
+
+
+def test_parse_alternatives_drops_invalid(mocker):
+    """Alternatives with bad params are dropped, not crashing the whole parse."""
+    payload = json.dumps({
+        "title": "X", "scene": "kadanes",
+        "params": {"array": [1, 2, 3]},
+        "explanation": "ok", "why_this_pattern": "ok",
+        "pseudocode": "", "step_lines": {},
+        "alternatives": [
+            {"scene": "binary_search_index", "params": {"target": "abc"},
+             "label": "broken alt", "why": ""},  # invalid: target must be int
+            {"scene": "prefix_sum", "params": {"array": [1, 2, 3]},
+             "label": "Show as prefix sum", "why": "Visualizes cumulative sum."},
+        ],
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("max subarray of [1,2,3]")
+    # Bad alt dropped, good alt kept
+    assert len(result.alternatives) == 1
+    assert result.alternatives[0].scene == "prefix_sum"
+
+
+def test_parse_alternatives_default_empty(mocker):
+    payload = json.dumps({
+        "title": "X", "scene": "kadanes",
+        "params": {"array": [1, 2]},
+        "explanation": "ok", "why_this_pattern": "ok",
+    })
+    _patch_model(mocker, payload)
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("any")
+    assert result.alternatives == []
+
+
+def test_parse_alternatives_excludes_self(mocker):
+    """An alternative that has the same scene as the primary is dropped."""
+    payload = json.dumps({
+        "title": "X", "scene": "kadanes",
+        "params": {"array": [1, 2, 3]},
+        "explanation": "ok", "why_this_pattern": "ok",
+        "alternatives": [
+            {"scene": "kadanes", "params": {"array": [4, 5, 6]},
+             "label": "Same scene", "why": ""},
+        ],
+    })
+    _patch_model(mocker, payload)
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("any")
+    assert result.alternatives == []
+
+
 def test_parse_step_lines_coerces_string_values(mocker):
     """Some models return line indexes as strings ('3' instead of 3) — the
     parser should coerce them to int. Non-numeric entries are dropped."""

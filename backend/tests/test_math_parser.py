@@ -221,6 +221,61 @@ def test_parse_empty_input_raises():
         parse_math("   ")
 
 
+# ── alternatives ─────────────────────────────────────────────────────────────
+
+def test_parse_math_alternatives_round_trip(mocker):
+    payload = json.dumps({
+        "title": "Integration by Parts",
+        "scene": "integration_by_parts",
+        "params": {"u_expression": "x", "dv_expression": "exp(x)", "domain": [0, 2]},
+        "explanation": "ok", "why_this_pattern": "ok", "steps": [],
+        "alternatives": [
+            {
+                "scene": "riemann_sum",
+                "params": {"expression": "x*exp(x)", "domain": [0, 2], "n": 8, "method": "midpoint"},
+                "label": "Show as Riemann sum",
+                "why": "Numerical perspective on the same integral.",
+            },
+        ],
+    })
+    _patch_model(mocker, payload)
+
+    from agent.math_parser import parse_math
+    result = parse_math("Integrate x·e^x by parts from 0 to 2")
+    assert len(result.alternatives) == 1
+    assert result.alternatives[0].scene == "riemann_sum"
+    assert result.alternatives[0].params["expression"] == "x*exp(x)"
+
+
+def test_parse_math_alternatives_drops_invalid(mocker):
+    payload = json.dumps({
+        "title": "X", "scene": "limit",
+        "params": {"expression": "x", "limit_point": 0, "domain": [-1, 1]},
+        "explanation": "ok", "why_this_pattern": "ok", "steps": [],
+        "alternatives": [
+            {"scene": "riemann_sum", "params": {"expression": "x", "domain": [0, 1], "n": 999, "method": "left"},
+             "label": "broken n=999", "why": ""},  # n exceeds 50 → Pydantic rejects
+        ],
+    })
+    _patch_model(mocker, payload)
+
+    from agent.math_parser import parse_math
+    result = parse_math("any")
+    assert result.alternatives == []
+
+
+def test_parse_math_alternatives_default_empty(mocker):
+    payload = json.dumps({
+        "title": "X", "scene": "function_plot",
+        "params": {"expression": "x", "domain": [-1, 1]},
+        "explanation": "ok", "why_this_pattern": "ok", "steps": [],
+    })
+    _patch_model(mocker, payload)
+    from agent.math_parser import parse_math
+    result = parse_math("plot x")
+    assert result.alternatives == []
+
+
 # ── integration (real model) ─────────────────────────────────────────────────
 
 @pytest.mark.integration

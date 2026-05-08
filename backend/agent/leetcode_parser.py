@@ -24,7 +24,7 @@ Output shape:
 import json
 import os
 import re
-from typing import Type
+from typing import List, Type
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -109,6 +109,15 @@ _SCENE_SCHEMAS: dict[str, Type[BaseModel]] = {
 _SCENE_KEYS = sorted(_SCENE_SCHEMAS.keys())
 
 
+class Alternative(BaseModel):
+    """A different scene that could illustrate the same problem from another
+    angle. Surfaced as 1-click 'show me with X instead' buttons."""
+    scene: str
+    params: dict
+    label: str    # short button label, e.g. "Show as two-pointer"
+    why: str = ""  # 1-sentence rationale, optional
+
+
 class ParsedLeetCode(BaseModel):
     title: str
     scene: str
@@ -117,6 +126,7 @@ class ParsedLeetCode(BaseModel):
     why_this_pattern: str
     pseudocode: str = ""
     step_lines: dict = {}
+    alternatives: List[Alternative] = []
 
 
 _SYSTEM_PROMPT = """You are converting a pasted LeetCode-style problem statement into a runnable
@@ -307,6 +317,25 @@ Required fields:
                       highlight the active line as the algorithm steps through.
                       Use the STEP KIND REFERENCE below — only include kinds
                       relevant to the scene you picked.
+  - alternatives:     0-2 alternative scene/algorithm combinations that ALSO
+                      illustrate this problem from a DIFFERENT ANGLE. For each:
+                        - scene:  a different catalog key (not the primary)
+                        - params: parameters matching THAT scene's schema
+                        - label:  short verb phrase (≤ 35 chars), e.g.
+                                  "Show as two-pointer", "Compare with hashmap"
+                        - why:    1 sentence on what the alternative reveals
+                      Pick alternatives that change perspective, not minor
+                      parameter tweaks. Examples:
+                        Two Sum             → primary hashmap_iteration,
+                                              alt two_pointers_opposite
+                                              (if array can be sorted)
+                        Two pointer palindr → primary two_pointers_opposite,
+                                              alt array_pointer (legacy fallback)
+                        Subsets             → primary backtracking_subsets,
+                                              alt none (nothing illustrates this
+                                              better)
+                      Return [] if no alternatives genuinely add value — do NOT
+                      pad with weak alternatives.
 
 STEP KIND REFERENCE (which kinds each scene emits, what they mean):
 
@@ -475,6 +504,36 @@ def _validate(data: dict) -> ParsedLeetCode:
     else:
         pseudo = str(raw_pseudo).strip()
 
+    # Validate each alternative independently — drop any with bad params
+    # rather than rejecting the whole response (graceful degradation).
+    raw_alts = data.get("alternatives") or []
+    if not isinstance(raw_alts, list):
+        raw_alts = []
+    alternatives: List[Alternative] = []
+    for raw in raw_alts:
+        if not isinstance(raw, dict):
+            continue
+        alt_scene = raw.get("scene")
+        if alt_scene == scene or alt_scene not in _SCENE_SCHEMAS:
+            continue
+        alt_schema = _SCENE_SCHEMAS[alt_scene]
+        alt_params = raw.get("params", {}) or {}
+        alt_params.pop("scene", None)
+        try:
+            alt_validated = alt_schema(**alt_params)
+        except ValidationError:
+            continue
+        alt_clean = alt_validated.model_dump()
+        alt_clean.pop("scene", None)
+        alternatives.append(Alternative(
+            scene=alt_scene,
+            params=alt_clean,
+            label=str(raw.get("label", ""))[:60].strip() or f"Show as {alt_scene}",
+            why=str(raw.get("why", "")).strip(),
+        ))
+        if len(alternatives) == 2:
+            break  # cap at 2 to keep UI tidy
+
     return ParsedLeetCode(
         title=str(data.get("title", "")).strip() or "Untitled",
         scene=scene,
@@ -483,6 +542,7 @@ def _validate(data: dict) -> ParsedLeetCode:
         why_this_pattern=str(data.get("why_this_pattern", "")).strip(),
         pseudocode=pseudo,
         step_lines=step_lines,
+        alternatives=alternatives,
     )
 
 

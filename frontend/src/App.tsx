@@ -1113,6 +1113,13 @@ interface ParsedLeetcode {
   step_lines?: Record<string, number>;
 }
 
+interface ParsedAlternative {
+  scene: string;
+  params: Record<string, any>;
+  label: string;
+  why?: string;
+}
+
 interface ParsedProblem {
   domain: "math" | "dsa";
   title: string;
@@ -1125,6 +1132,8 @@ interface ParsedProblem {
   step_lines?: Record<string, number>;
   // Math-only:
   steps?: string[];
+  // Both:
+  alternatives?: ParsedAlternative[];
 }
 
 async function parseLeetcode(rawText: string): Promise<ParsedLeetcode> {
@@ -4184,6 +4193,53 @@ const PasteProblemPage: React.FC = () => {
 
   const isBusy = state.kind === "ocr" || state.kind === "parsing" || state.kind === "rendering";
 
+  // Click an alternative button → re-render with the alternative scene/params
+  // Uses the SAME parsed object as a base so domain-specific panels stay
+  // (steps for math, pseudocode for DSA). Only the scene + params + active
+  // video changes.
+  const handleAlternative = useCallback(async (alt: ParsedAlternative) => {
+    if (state.kind !== "ready" && state.kind !== "rendering") return;
+    const basePrior = state.parsed;
+    const merged: ParsedProblem = {
+      ...basePrior,
+      scene: alt.scene,
+      params: alt.params,
+      title: `${basePrior.title} — ${alt.label}`,
+    };
+    setState({ kind: "rendering", parsed: merged, progress: 0 });
+    const flaskUrl = flaskBase();
+    try {
+      const renderRes = await fetch(`${flaskUrl}/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scene: alt.scene,
+          params: { caption: alt.label, ...alt.params },
+        }),
+      });
+      if (!renderRes.ok) {
+        const detail = await renderRes.text().catch(() => "");
+        setState({ kind: "error",
+                   message: `Render failed (${renderRes.status}): ${detail.slice(0, 160)}` });
+        return;
+      }
+      const { job_id: jobId } = await renderRes.json();
+      if (!jobId) {
+        setState({ kind: "error", message: "Render returned no job_id" });
+        return;
+      }
+      const result = await pollJob(flaskUrl, jobId, `paste-alt-${jobId}`);
+      if (result.status === "ready") {
+        setState({ kind: "ready", parsed: merged, videoUrl: result.videoUrl });
+      } else {
+        setState({ kind: "error", message: result.error || "render failed" });
+      }
+    } catch (e) {
+      setState({ kind: "error",
+                 message: e instanceof Error ? e.message : "Render failed" });
+    }
+  }, [state]);
+
   // Image upload → OCR → fill textarea
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -4507,6 +4563,63 @@ const PasteProblemPage: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Alternative scenes — 1-click swap to a different visualization */}
+              {state.parsed.alternatives && state.parsed.alternatives.length > 0 && (
+                <div className="mb-4">
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.05em",
+                      color: C.textFaint,
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Alternative views
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {state.parsed.alternatives.map((alt, i) => {
+                      const busy = state.kind === "rendering";
+                      return (
+                        <motion.button
+                          key={i}
+                          onClick={() => handleAlternative(alt)}
+                          disabled={busy}
+                          whileHover={busy ? {} : { scale: 1.02, background: C.surface }}
+                          whileTap={busy ? {} : { scale: 0.97 }}
+                          transition={{ duration: 0.15 }}
+                          className="px-3 py-1.5 rounded-md flex flex-col items-start"
+                          style={{
+                            fontSize: 12,
+                            color: C.text,
+                            border: `1px solid ${C.borderAlt}`,
+                            background: "transparent",
+                            opacity: busy ? 0.5 : 1,
+                            cursor: busy ? "not-allowed" : "pointer",
+                            textAlign: "left",
+                            maxWidth: 280,
+                          }}
+                          title={alt.why || ""}
+                        >
+                          <span style={{ fontWeight: 500 }}>→ {alt.label}</span>
+                          {alt.why && (
+                            <span style={{
+                              fontSize: 10,
+                              color: C.textFaint,
+                              marginTop: 2,
+                              lineHeight: 1.3,
+                            }}>
+                              {alt.why}
+                            </span>
+                          )}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Math: solution steps panel (only for math problems) */}
               {state.parsed.domain === "math" && state.parsed.steps && state.parsed.steps.length > 0 && (

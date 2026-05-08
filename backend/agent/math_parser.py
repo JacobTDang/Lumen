@@ -115,6 +115,15 @@ _SCENE_SCHEMAS: dict[str, Type[BaseModel]] = {
 _SCENE_KEYS = sorted(_SCENE_SCHEMAS.keys())
 
 
+class Alternative(BaseModel):
+    """A different scene that could illustrate the same math problem from
+    another angle. Surfaced as 1-click 'show me with X instead' buttons."""
+    scene: str
+    params: dict
+    label: str
+    why: str = ""
+
+
 class ParsedMath(BaseModel):
     title: str
     scene: str
@@ -122,6 +131,7 @@ class ParsedMath(BaseModel):
     explanation: str
     why_this_pattern: str
     steps: List[str] = []
+    alternatives: List[Alternative] = []
 
 
 _SYSTEM_PROMPT = """You are converting a pasted math problem (calculus, algebra,
@@ -308,6 +318,26 @@ Required fields:
                       power rule: x³/3"). Use plain text — Unicode math symbols
                       (∫, π, ∞, ²) are fine but avoid raw LaTeX backslash
                       sequences. Keep each step under 80 chars.
+  - alternatives:     0-2 alternative scene/algorithm combinations that ALSO
+                      illustrate this problem from a DIFFERENT ANGLE. For each:
+                        - scene:  a different catalog key (not the primary)
+                        - params: parameters matching THAT scene's schema
+                        - label:  short verb phrase (≤ 35 chars), e.g.
+                                  "Show with FTC", "Compare via Riemann"
+                        - why:    1 sentence on what the alternative reveals
+                      Pick alternatives that change perspective, not minor
+                      parameter tweaks. Examples:
+                        ∫x·eˣ dx by-parts → primary integration_by_parts,
+                                            alt riemann_sum (numerical)
+                        Riemann sum       → primary riemann_sum,
+                                            alt ftc (antiderivative connection)
+                        Derivative at pt  → primary tangent_line,
+                                            alt critical_points (broader view)
+                        Volume revolution → primary volume_revolution,
+                                            alt washer_method (if 2 curves)
+                        Linear function   → alt none (not enough variety)
+                      Return [] if no alternatives genuinely add value — do NOT
+                      pad with weak alternatives.
 """
 
 
@@ -399,6 +429,35 @@ def _validate(data: dict) -> ParsedMath:
     else:
         steps = []
 
+    # Validate alternatives — drop any with bad params (graceful)
+    raw_alts = data.get("alternatives") or []
+    if not isinstance(raw_alts, list):
+        raw_alts = []
+    alternatives: List[Alternative] = []
+    for raw in raw_alts:
+        if not isinstance(raw, dict):
+            continue
+        alt_scene = raw.get("scene")
+        if alt_scene == scene or alt_scene not in _SCENE_SCHEMAS:
+            continue
+        alt_schema = _SCENE_SCHEMAS[alt_scene]
+        alt_params = raw.get("params", {}) or {}
+        alt_params.pop("scene", None)
+        try:
+            alt_validated = alt_schema(**alt_params)
+        except ValidationError:
+            continue
+        alt_clean = alt_validated.model_dump()
+        alt_clean.pop("scene", None)
+        alternatives.append(Alternative(
+            scene=alt_scene,
+            params=alt_clean,
+            label=str(raw.get("label", ""))[:60].strip() or f"Show as {alt_scene}",
+            why=str(raw.get("why", "")).strip(),
+        ))
+        if len(alternatives) == 2:
+            break
+
     return ParsedMath(
         title=str(data.get("title", "")).strip() or "Untitled",
         scene=scene,
@@ -406,6 +465,7 @@ def _validate(data: dict) -> ParsedMath:
         explanation=str(data.get("explanation", "")).strip(),
         why_this_pattern=str(data.get("why_this_pattern", "")).strip(),
         steps=steps,
+        alternatives=alternatives,
     )
 
 
