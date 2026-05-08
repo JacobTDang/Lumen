@@ -529,6 +529,78 @@ def create_app(testing: bool = False) -> Flask:
         payload["domain"] = domain
         return jsonify(payload)
 
+    @app.post("/api/parse-followup")
+    def api_parse_followup():
+        """Conversational follow-up parsing. Frontend sends:
+            { prior: ParsedProblem, followUp: str }
+        Backend stitches `prior` into a context-rich preamble + the
+        follow-up, classifies the combined text, routes to the matching
+        parser. Stateless — frontend keeps the conversation array.
+        """
+        body = request.get_json(silent=True) or {}
+        prior = body.get("prior") or {}
+        follow_up = (body.get("followUp") or "").strip()
+        if not follow_up:
+            return jsonify({"error": "followUp is required"}), 400
+
+        # Build a rich raw_text that the existing parsers can consume.
+        # We expose: prior title, scene, params (json), and any pseudocode/
+        # steps so the model can re-derive a focused follow-up.
+        prior_lines = []
+        if prior.get("title"):
+            prior_lines.append(f"Previous title: {prior['title']}")
+        if prior.get("scene"):
+            prior_lines.append(f"Previous scene: {prior['scene']}")
+        if prior.get("params"):
+            try:
+                prior_lines.append(f"Previous params: {json.dumps(prior['params'])}")
+            except (TypeError, ValueError):
+                pass
+        if prior.get("pseudocode"):
+            prior_lines.append(f"Previous pseudocode:\n{prior['pseudocode']}")
+        if prior.get("steps"):
+            steps_str = "; ".join(str(s) for s in prior["steps"][:5])
+            prior_lines.append(f"Previous steps: {steps_str}")
+
+        preamble = ""
+        if prior_lines:
+            preamble = (
+                "The user already saw this problem visualized:\n"
+                + "\n".join(f"  - {ln}" for ln in prior_lines)
+                + "\n\nThey now ask:\n"
+            )
+        rich_text = preamble + follow_up + (
+            "\n\nCommon follow-up patterns:\n"
+            "- 'Now with [array]' / 'Try [values]' → same scene, replace inputs\n"
+            "- 'Show me with X' / 'Compare with X' → switch scene/algorithm\n"
+            "- 'Slower' / 'Step by step' → emit lesson_steps for finer breakdown\n"
+            "- 'Explain step N' → keep scene, focus that segment\n"
+            "- 'What if target was Y' → replace target, re-derive\n"
+            "Re-parse with the follow-up applied. Return the same JSON shape."
+        )
+
+        try:
+            domain = classify_domain(rich_text)
+        except Exception:
+            app.logger.exception("classifier failed; defaulting to dsa")
+            domain = "dsa"
+
+        try:
+            if domain == "math":
+                parsed = parse_math(rich_text)
+            else:
+                parsed = parse_leetcode_problem(rich_text)
+        except ValueError as exc:
+            app.logger.warning("parse-followup rejected (%s): %s", domain, exc)
+            return jsonify({"error": "could not parse follow-up", "detail": str(exc)}), 422
+        except Exception as exc:
+            app.logger.exception("parse-followup failed (%s)", domain)
+            return jsonify({"error": "parse-followup failed", "detail": str(exc)}), 500
+
+        payload = parsed.model_dump()
+        payload["domain"] = domain
+        return jsonify(payload)
+
     @app.post("/api/parse-leetcode")
     def api_parse_leetcode():
         """Parse a pasted LeetCode problem into a renderable {scene, params}.

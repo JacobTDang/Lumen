@@ -1173,6 +1173,23 @@ async function parseProblemV2(rawText: string): Promise<ParsedProblem> {
   return res.json();
 }
 
+// Conversational follow-up parser — sends the prior parsed result so the
+// model can apply the user's tweak ("now with [3,1,4]" / "show me with X
+// instead" / "explain step 3 slower") without re-pasting the whole problem.
+async function parseFollowUp(prior: ParsedProblem, followUp: string): Promise<ParsedProblem> {
+  const res = await fetch(`${flaskBase()}/api/parse-followup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prior, followUp }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const detail = err.detail || err.error || `HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 // ─────────────────────────────────────────────────────────────
 // localStorage persistence
 // ─────────────────────────────────────────────────────────────
@@ -4162,6 +4179,22 @@ type PasteState =
   | { kind: "ready"; parsed: ParsedProblem; videoUrl: string }
   | { kind: "error"; message: string };
 
+// Conversational follow-up turn. After the initial render, the user can ask
+// "now with [3,1,4]" / "show me with X instead" — each follow-up lives as a
+// FollowUpTurn rendered below the original result panel.
+type FollowUpTurn =
+  | { kind: "parsing"; text: string }
+  | { kind: "rendering"; text: string; parsed: ParsedProblem }
+  | { kind: "ready"; text: string; parsed: ParsedProblem; videoUrl: string }
+  | { kind: "error"; text: string; message: string };
+
+const FOLLOWUP_CHIPS: { label: string; text: string }[] = [
+  { label: "Try different inputs", text: "Show me with a different example input" },
+  { label: "Slower step-by-step", text: "Walk me through this step by step, slower" },
+  { label: "Different approach", text: "Show me with a different algorithm or approach" },
+  { label: "Compare brute force", text: "Visualize the brute force version too" },
+];
+
 const SAMPLE_PROBLEMS: { label: string; text: string }[] = [
   {
     label: "Two Sum (DSA)",
@@ -4197,8 +4230,113 @@ const SAMPLE_PROBLEMS: { label: string; text: string }[] = [
 const PasteProblemPage: React.FC = () => {
   const [text, setText] = useState("");
   const [state, setState] = useState<PasteState>({ kind: "idle" });
+  const [followUps, setFollowUps] = useState<FollowUpTurn[]>([]);
+  const [followUpInput, setFollowUpInput] = useState("");
 
   const isBusy = state.kind === "ocr" || state.kind === "parsing" || state.kind === "rendering";
+  const isFollowingUp = followUps.some(
+    (t) => t.kind === "parsing" || t.kind === "rendering"
+  );
+
+  // Submit a conversational follow-up. The "prior" we send is whatever's
+  // currently visible — the latest ready turn, or the initial state.parsed.
+  const handleFollowUp = useCallback(async (followUpText: string) => {
+    const trimmed = followUpText.trim();
+    if (!trimmed) return;
+
+    // Use the latest ready turn's parsed result as the prior, falling back
+    // to the initial state.parsed.
+    const lastReady = [...followUps].reverse().find((t) => t.kind === "ready");
+    const prior =
+      lastReady && lastReady.kind === "ready"
+        ? lastReady.parsed
+        : state.kind === "ready" || state.kind === "rendering"
+          ? state.parsed
+          : null;
+    if (!prior) return;  // nothing to follow up on
+
+    setFollowUpInput("");
+    const turnIdx = followUps.length;
+    setFollowUps((prev) => [...prev, { kind: "parsing", text: trimmed }]);
+
+    let parsed: ParsedProblem;
+    try {
+      parsed = await parseFollowUp(prior, trimmed);
+    } catch (e) {
+      setFollowUps((prev) => prev.map((t, i) =>
+        i === turnIdx
+          ? { kind: "error", text: trimmed, message: e instanceof Error ? e.message : "Couldn't parse follow-up" }
+          : t,
+      ));
+      return;
+    }
+
+    setFollowUps((prev) => prev.map((t, i) =>
+      i === turnIdx ? { kind: "rendering", text: trimmed, parsed } : t,
+    ));
+
+    const flaskUrl = flaskBase();
+    try {
+      let renderRes: Response;
+      if (parsed.lesson_steps && parsed.lesson_steps.length >= 2) {
+        renderRes = await fetch(`${flaskUrl}/api/render-lesson`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            steps: parsed.lesson_steps.map((s, i) => ({
+              scene: s.scene,
+              params: { ...s.params, caption: s.caption || `${parsed.title} (${i + 1}/${parsed.lesson_steps!.length})` },
+              caption: s.caption,
+            })),
+          }),
+        });
+      } else {
+        renderRes = await fetch(`${flaskUrl}/render`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scene: parsed.scene,
+            params: {
+              caption: parsed.title,
+              ...parsed.params,
+              ...(parsed.pseudocode ? { pseudocode: parsed.pseudocode } : {}),
+              ...(parsed.step_lines && Object.keys(parsed.step_lines).length
+                ? { step_lines: parsed.step_lines }
+                : {}),
+            },
+          }),
+        });
+      }
+      if (!renderRes.ok) {
+        const detail = await renderRes.text().catch(() => "");
+        setFollowUps((prev) => prev.map((t, i) =>
+          i === turnIdx
+            ? { kind: "error", text: trimmed, message: `Render failed (${renderRes.status}): ${detail.slice(0, 160)}` }
+            : t,
+        ));
+        return;
+      }
+      const { job_id: jobId } = await renderRes.json();
+      const result = await pollJob(flaskUrl, jobId, `paste-fu-${jobId}`);
+      if (result.status === "ready") {
+        setFollowUps((prev) => prev.map((t, i) =>
+          i === turnIdx ? { kind: "ready", text: trimmed, parsed, videoUrl: result.videoUrl } : t,
+        ));
+      } else {
+        setFollowUps((prev) => prev.map((t, i) =>
+          i === turnIdx
+            ? { kind: "error", text: trimmed, message: result.error || "render failed" }
+            : t,
+        ));
+      }
+    } catch (e) {
+      setFollowUps((prev) => prev.map((t, i) =>
+        i === turnIdx
+          ? { kind: "error", text: trimmed, message: e instanceof Error ? e.message : "Render failed" }
+          : t,
+      ));
+    }
+  }, [state, followUps]);
 
   // Click an alternative button → re-render with the alternative scene/params
   // Uses the SAME parsed object as a base so domain-specific panels stay
@@ -4270,6 +4408,7 @@ const PasteProblemPage: React.FC = () => {
     if (!trimmed) return;
 
     setState({ kind: "parsing" });
+    setFollowUps([]);  // fresh paste clears any prior follow-up thread
 
     let parsed: ParsedProblem;
     try {
@@ -4784,6 +4923,184 @@ const PasteProblemPage: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Conversational follow-up: input bar + suggested chips, only
+            visible after the initial render is ready or rendering. */}
+        {(state.kind === "ready" || state.kind === "rendering") && (
+          <div className="mt-8">
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: "0.05em",
+                color: C.textFaint,
+                textTransform: "uppercase",
+                marginBottom: 8,
+              }}
+            >
+              Ask a follow-up
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={followUpInput}
+                onChange={(e) => setFollowUpInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isFollowingUp) {
+                    e.preventDefault();
+                    handleFollowUp(followUpInput);
+                  }
+                }}
+                disabled={isFollowingUp}
+                placeholder="e.g. now with [3, 1, 4, 1, 5]"
+                className="flex-1 px-3 py-2 rounded-md outline-none"
+                style={{
+                  background: C.surface,
+                  color: C.text,
+                  border: `1px solid ${C.borderAlt}`,
+                  fontFamily: BODY,
+                  fontSize: 13,
+                }}
+              />
+              <motion.button
+                onClick={() => handleFollowUp(followUpInput)}
+                disabled={isFollowingUp || !followUpInput.trim()}
+                whileHover={isFollowingUp ? {} : { scale: 1.02 }}
+                whileTap={isFollowingUp ? {} : { scale: 0.97 }}
+                transition={{ duration: 0.15 }}
+                className="px-4 py-2 rounded-md flex items-center gap-2"
+                style={{
+                  background: !isFollowingUp && followUpInput.trim()
+                    ? C.accent
+                    : C.borderAlt,
+                  color: "#ffffff",
+                  fontFamily: BODY,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: isFollowingUp || !followUpInput.trim()
+                    ? "not-allowed" : "pointer",
+                  opacity: isFollowingUp || !followUpInput.trim() ? 0.7 : 1,
+                }}
+              >
+                {isFollowingUp && <Loader2 size={14} className="animate-spin" strokeWidth={2} />}
+                Ask
+              </motion.button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {FOLLOWUP_CHIPS.map((chip) => (
+                <motion.button
+                  key={chip.label}
+                  onClick={() => handleFollowUp(chip.text)}
+                  disabled={isFollowingUp}
+                  whileHover={isFollowingUp ? {} : { background: C.surface }}
+                  whileTap={isFollowingUp ? {} : { scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                  className="px-2.5 py-1 rounded"
+                  style={{
+                    fontSize: 12,
+                    color: C.textMuted,
+                    border: `1px solid ${C.borderAlt}`,
+                    background: "transparent",
+                    opacity: isFollowingUp ? 0.5 : 1,
+                    cursor: isFollowingUp ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {chip.label}
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Conversational thread: each follow-up turn renders below */}
+        {followUps.map((turn, i) => (
+          <div key={i} className="mt-8 pt-6"
+               style={{ borderTop: `1px solid ${C.borderAlt}` }}>
+            <div
+              className="px-3 py-2 rounded-md mb-4 inline-block"
+              style={{
+                background: C.surface,
+                border: `1px solid ${C.borderAlt}`,
+                fontSize: 13,
+                color: C.text,
+              }}
+            >
+              <span style={{ color: C.textFaint, marginRight: 6, fontWeight: 600 }}>
+                You:
+              </span>
+              {turn.text}
+            </div>
+            {turn.kind === "parsing" && (
+              <div className="flex items-center gap-2"
+                   style={{ color: C.textMuted, fontSize: 13 }}>
+                <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+                Detecting pattern…
+              </div>
+            )}
+            {turn.kind === "error" && (
+              <div className="p-3 rounded-md"
+                   style={{
+                     background: "rgba(239, 68, 68, 0.10)",
+                     border: "1px solid rgba(239, 68, 68, 0.35)",
+                     color: "#fca5a5",
+                     fontSize: 13,
+                   }}>
+                <strong style={{ color: "#fecaca" }}>Couldn't visualize.</strong> {turn.message}
+              </div>
+            )}
+            {(turn.kind === "rendering" || turn.kind === "ready") && (
+              <div>
+                <h3 style={{
+                  fontFamily: SANS,
+                  fontSize: 18,
+                  fontWeight: 600,
+                  marginBottom: 8,
+                }}>
+                  {turn.parsed.title}
+                </h3>
+                <div
+                  className="rounded-md overflow-hidden"
+                  style={{
+                    background: "#0d1117",
+                    border: `1px solid ${C.borderAlt}`,
+                    aspectRatio: "16 / 9",
+                  }}
+                >
+                  {turn.kind === "ready" ? (
+                    <motion.video
+                      autoPlay controls loop
+                      src={turn.videoUrl}
+                      className="w-full h-full object-contain"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 size={20} className="animate-spin"
+                                 strokeWidth={1.5} color={C.textMuted} />
+                        <span style={{ color: C.textMuted, fontSize: 12 }}>
+                          Rendering…
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* Math: show steps for follow-up turn */}
+                {turn.parsed.domain === "math" && turn.parsed.steps && turn.parsed.steps.length > 0 && (
+                  <ol className="mt-3 pl-5"
+                      style={{ fontSize: 13, color: C.text, lineHeight: 1.5,
+                               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                    {turn.parsed.steps.map((s, j) => (
+                      <li key={j} style={{ marginBottom: 2 }}>{s}</li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -148,6 +148,70 @@ def test_parse_v2_value_error_returns_422(client, mocker):
     assert res.status_code == 422
 
 
+# ── POST /api/parse-followup ──────────────────────────────────────────────────
+
+def test_parse_followup_missing_followup_returns_400(client):
+    res = client.post("/api/parse-followup", json={"prior": {}})
+    assert res.status_code == 400
+
+
+def test_parse_followup_blank_followup_returns_400(client):
+    res = client.post("/api/parse-followup", json={"prior": {}, "followUp": "   "})
+    assert res.status_code == 400
+
+
+def test_parse_followup_routes_to_math_with_prior_context(client, mocker):
+    """A math follow-up routes through parse_math with prior context baked in."""
+    from agent.math_parser import ParsedMath
+    mocker.patch("app.classify_domain", return_value="math")
+    mock_result = ParsedMath(
+        title="Updated Riemann",
+        scene="riemann_sum",
+        params={"expression": "x**3", "domain": [0.0, 4.0], "n": 8, "method": "midpoint", "caption": ""},
+        explanation="x", why_this_pattern="x", steps=["new step"],
+    )
+    parse_mock = mocker.patch("app.parse_math", return_value=mock_result)
+
+    body = {
+        "prior": {
+            "title": "Riemann sum for x²",
+            "scene": "riemann_sum",
+            "params": {"expression": "x**2", "domain": [0, 4], "n": 8},
+        },
+        "followUp": "Now do it with x cubed instead",
+    }
+    res = client.post("/api/parse-followup", json=body)
+    assert res.status_code == 200
+    assert res.get_json()["scene"] == "riemann_sum"
+    # The rich_text passed to parse_math should include the prior context
+    rich_text = parse_mock.call_args[0][0]
+    assert "Previous scene: riemann_sum" in rich_text
+    assert "x cubed" in rich_text
+
+
+def test_parse_followup_value_error_returns_422(client, mocker):
+    mocker.patch("app.classify_domain", return_value="dsa")
+    mocker.patch("app.parse_leetcode_problem",
+                 side_effect=ValueError("unknown scene"))
+    res = client.post("/api/parse-followup", json={"prior": {}, "followUp": "any"})
+    assert res.status_code == 422
+
+
+def test_parse_followup_works_without_prior(client, mocker):
+    """If prior is empty/absent, the follow-up is parsed standalone."""
+    from agent.leetcode_parser import ParsedLeetCode
+    mocker.patch("app.classify_domain", return_value="dsa")
+    mocker.patch("app.parse_leetcode_problem", return_value=ParsedLeetCode(
+        title="Two Sum", scene="hashmap_iteration",
+        params={"array": [2, 7], "algorithm": "two_sum_hashmap", "target": 9, "caption": ""},
+        explanation="x", why_this_pattern="x",
+    ))
+    res = client.post("/api/parse-followup",
+                      json={"followUp": "two sum [2,7] target 9"})
+    assert res.status_code == 200
+    assert res.get_json()["scene"] == "hashmap_iteration"
+
+
 # ── POST /api/render-lesson ───────────────────────────────────────────────────
 
 def test_render_lesson_happy_path(client, mocker):
