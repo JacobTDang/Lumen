@@ -326,6 +326,39 @@ def create_app(testing: bool = False) -> Flask:
         job_id = submit_lesson([step])
         return jsonify({"job_id": job_id}), 202
 
+    @app.post("/api/render-lesson")
+    def api_render_lesson():
+        """Submit a multi-scene lesson. Each step gets rendered (in parallel)
+        and the outputs are stitched into one video by submit_lesson(). The
+        frontend gets back one job_id, polls /status, and receives one
+        stitched video URL — the multi-scene-ness is opaque to playback.
+        """
+        body = request.get_json(silent=True) or {}
+        steps_data = body.get("steps", [])
+        if not isinstance(steps_data, list) or not steps_data:
+            return jsonify({"error": "steps (non-empty list) required"}), 400
+        if len(steps_data) > 6:
+            return jsonify({"error": "max 6 steps per lesson"}), 400
+
+        try:
+            steps = []
+            for s in steps_data:
+                scene_key = s.get("scene")
+                params = s.get("params", {}) or {}
+                if not scene_key:
+                    return jsonify({"error": "each step requires a scene"}), 400
+                steps.append(StepPlan(
+                    tool=scene_key,
+                    params=params,
+                    caption=s.get("caption", "") or params.get("caption", ""),
+                ))
+        except Exception as exc:
+            app.logger.warning("render-lesson bad shape: %s", exc)
+            return jsonify({"error": "invalid step shape", "detail": str(exc)}), 400
+
+        job_id = submit_lesson(steps)
+        return jsonify({"job_id": job_id}), 202
+
     @app.get("/status/<job_id>")
     def status(job_id):
         job = get_job(job_id)

@@ -264,6 +264,44 @@ def test_parse_math_alternatives_drops_invalid(mocker):
     assert result.alternatives == []
 
 
+def test_parse_math_lesson_steps_round_trip(mocker):
+    payload = json.dumps({
+        "title": "Riemann sums walkthrough",
+        "scene": "riemann_sum",
+        "params": {"expression": "x**2", "domain": [0, 4], "n": 8, "method": "midpoint"},
+        "explanation": "ok", "why_this_pattern": "ok", "steps": [],
+        "lesson_steps": [
+            {"scene": "function_plot",
+             "params": {"expression": "x**2", "domain": [0, 4]},
+             "caption": "First, see the curve"},
+            {"scene": "riemann_sum",
+             "params": {"expression": "x**2", "domain": [0, 4], "n": 4, "method": "midpoint"},
+             "caption": "Coarse approximation"},
+            {"scene": "riemann_sum",
+             "params": {"expression": "x**2", "domain": [0, 4], "n": 20, "method": "midpoint"},
+             "caption": "Watch it converge"},
+        ],
+    })
+    _patch_model(mocker, payload)
+
+    from agent.math_parser import parse_math
+    result = parse_math("Explain Riemann sums for ∫x² from 0 to 4")
+    assert len(result.lesson_steps) == 3
+    assert result.lesson_steps[0].scene == "function_plot"
+    assert result.lesson_steps[2].params["n"] == 20
+
+
+def test_parse_math_lesson_steps_default_empty(mocker):
+    payload = json.dumps({
+        "title": "X", "scene": "tangent_line",
+        "params": {"expression": "x**2", "x_point": 2, "domain": [-3, 3]},
+        "explanation": "ok", "why_this_pattern": "ok", "steps": [],
+    })
+    _patch_model(mocker, payload)
+    from agent.math_parser import parse_math
+    assert parse_math("derivative of x^2 at x=2").lesson_steps == []
+
+
 def test_parse_math_alternatives_default_empty(mocker):
     payload = json.dumps({
         "title": "X", "scene": "function_plot",

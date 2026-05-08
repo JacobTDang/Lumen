@@ -148,6 +148,47 @@ def test_parse_v2_value_error_returns_422(client, mocker):
     assert res.status_code == 422
 
 
+# ── POST /api/render-lesson ───────────────────────────────────────────────────
+
+def test_render_lesson_happy_path(client, mocker):
+    mocker.patch("app.submit_lesson", return_value="lesson-job-id")
+    body = {
+        "steps": [
+            {"scene": "function_plot",
+             "params": {"expression": "x**2", "domain": [0, 4]},
+             "caption": "the curve"},
+            {"scene": "riemann_sum",
+             "params": {"expression": "x**2", "domain": [0, 4], "n": 4, "method": "midpoint"},
+             "caption": "rectangles"},
+        ],
+    }
+    res = client.post("/api/render-lesson", json=body)
+    assert res.status_code == 202
+    assert res.get_json()["job_id"] == "lesson-job-id"
+
+
+def test_render_lesson_missing_steps_returns_400(client):
+    res = client.post("/api/render-lesson", json={})
+    assert res.status_code == 400
+
+
+def test_render_lesson_empty_list_returns_400(client):
+    res = client.post("/api/render-lesson", json={"steps": []})
+    assert res.status_code == 400
+
+
+def test_render_lesson_too_many_steps_returns_400(client):
+    body = {"steps": [{"scene": "function_plot", "params": {}}] * 7}
+    res = client.post("/api/render-lesson", json=body)
+    assert res.status_code == 400
+
+
+def test_render_lesson_step_missing_scene_returns_400(client):
+    body = {"steps": [{"params": {"x": 1}}]}
+    res = client.post("/api/render-lesson", json=body)
+    assert res.status_code == 400
+
+
 def test_parse_v2_falls_back_to_dsa_when_classifier_errors(client, mocker):
     """If the classifier raises, the endpoint defaults to DSA routing rather
     than 500'ing — graceful degradation."""

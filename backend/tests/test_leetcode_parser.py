@@ -186,6 +186,82 @@ def test_parse_alternatives_default_empty(mocker):
     assert result.alternatives == []
 
 
+def test_parse_lesson_steps_round_trip(mocker):
+    """Multi-scene lessons round-trip when each step has valid params."""
+    payload = json.dumps({
+        "title": "Merge Sort Walkthrough",
+        "scene": "recursion_tree_dc",
+        "params": {"array": [5, 2, 4, 7, 1, 3, 2, 6], "algorithm": "merge_sort"},
+        "explanation": "ok", "why_this_pattern": "ok",
+        "lesson_steps": [
+            {"scene": "array_pointer",
+             "params": {"array": [5, 2, 4, 7], "algorithm": "binary_search", "target": 4},
+             "caption": "Show the input array"},
+            {"scene": "recursion_tree_dc",
+             "params": {"array": [5, 2, 4, 7], "algorithm": "merge_sort"},
+             "caption": "Recursively split"},
+        ],
+    })
+    _patch_model(mocker, payload)
+
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("Walk me through merge sort step by step")
+    assert len(result.lesson_steps) == 2
+    assert result.lesson_steps[0].scene == "array_pointer"
+    assert result.lesson_steps[1].scene == "recursion_tree_dc"
+    assert "split" in result.lesson_steps[1].caption.lower()
+
+
+def test_parse_lesson_steps_drops_whole_list_on_bad_step(mocker):
+    """If any single step has bad params, the whole lesson is dropped (a
+    half-complete lesson would be confusing)."""
+    payload = json.dumps({
+        "title": "X", "scene": "kadanes",
+        "params": {"array": [1, 2, 3]},
+        "explanation": "ok", "why_this_pattern": "ok",
+        "lesson_steps": [
+            {"scene": "array_pointer",
+             "params": {"array": [1, 2], "algorithm": "binary_search", "target": 1},
+             "caption": "ok"},
+            {"scene": "binary_search_index",
+             "params": {"array": ["bad"], "target": "not-int"},  # invalid
+             "caption": "broken step"},
+        ],
+    })
+    _patch_model(mocker, payload)
+    from agent.leetcode_parser import parse_problem
+    result = parse_problem("any")
+    assert result.lesson_steps == []
+
+
+def test_parse_lesson_steps_default_empty(mocker):
+    payload = json.dumps({
+        "title": "X", "scene": "kadanes",
+        "params": {"array": [1, 2]},
+        "explanation": "ok", "why_this_pattern": "ok",
+    })
+    _patch_model(mocker, payload)
+    from agent.leetcode_parser import parse_problem
+    assert parse_problem("any").lesson_steps == []
+
+
+def test_parse_lesson_steps_rejects_too_few(mocker):
+    """A 1-step 'lesson' is just a single render — drop it."""
+    payload = json.dumps({
+        "title": "X", "scene": "kadanes",
+        "params": {"array": [1, 2]},
+        "explanation": "ok", "why_this_pattern": "ok",
+        "lesson_steps": [
+            {"scene": "array_pointer",
+             "params": {"array": [1], "algorithm": "binary_search", "target": 1},
+             "caption": "lonely"},
+        ],
+    })
+    _patch_model(mocker, payload)
+    from agent.leetcode_parser import parse_problem
+    assert parse_problem("any").lesson_steps == []
+
+
 def test_parse_alternatives_excludes_self(mocker):
     """An alternative that has the same scene as the primary is dropped."""
     payload = json.dumps({

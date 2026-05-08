@@ -1120,6 +1120,12 @@ interface ParsedAlternative {
   why?: string;
 }
 
+interface ParsedLessonStep {
+  scene: string;
+  params: Record<string, any>;
+  caption?: string;
+}
+
 interface ParsedProblem {
   domain: "math" | "dsa";
   title: string;
@@ -1134,6 +1140,7 @@ interface ParsedProblem {
   steps?: string[];
   // Both:
   alternatives?: ParsedAlternative[];
+  lesson_steps?: ParsedLessonStep[];   // when populated → multi-scene render
 }
 
 async function parseLeetcode(rawText: string): Promise<ParsedLeetcode> {
@@ -4282,21 +4289,43 @@ const PasteProblemPage: React.FC = () => {
 
     const flaskUrl = flaskBase();
     try {
-      const renderRes = await fetch(`${flaskUrl}/render`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scene: parsed.scene,
-          params: {
-            caption: parsed.title,
-            ...parsed.params,
-            ...(parsed.pseudocode ? { pseudocode: parsed.pseudocode } : {}),
-            ...(parsed.step_lines && Object.keys(parsed.step_lines).length
-              ? { step_lines: parsed.step_lines }
-              : {}),
-          },
-        }),
-      });
+      let renderRes: Response;
+
+      // If parser produced a multi-scene lesson, hit /api/render-lesson
+      // (which calls submit_lesson under the hood — parallel render + ffmpeg
+      // stitch into one stitched video). Otherwise single-scene /render.
+      if (parsed.lesson_steps && parsed.lesson_steps.length >= 2) {
+        renderRes = await fetch(`${flaskUrl}/api/render-lesson`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            steps: parsed.lesson_steps.map((s, i) => ({
+              scene: s.scene,
+              params: {
+                ...s.params,
+                caption: s.caption || `${parsed.title} (${i + 1}/${parsed.lesson_steps!.length})`,
+              },
+              caption: s.caption,
+            })),
+          }),
+        });
+      } else {
+        renderRes = await fetch(`${flaskUrl}/render`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scene: parsed.scene,
+            params: {
+              caption: parsed.title,
+              ...parsed.params,
+              ...(parsed.pseudocode ? { pseudocode: parsed.pseudocode } : {}),
+              ...(parsed.step_lines && Object.keys(parsed.step_lines).length
+                ? { step_lines: parsed.step_lines }
+                : {}),
+            },
+          }),
+        });
+      }
       if (!renderRes.ok) {
         const detail = await renderRes.text().catch(() => "");
         setState({
@@ -4563,6 +4592,44 @@ const PasteProblemPage: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Lesson chapters — visible only for multi-scene lessons */}
+              {state.parsed.lesson_steps && state.parsed.lesson_steps.length > 0 && (
+                <div className="mb-4">
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.05em",
+                      color: C.textFaint,
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Lesson chapters
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {state.parsed.lesson_steps.map((s, i) => (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 rounded text-left"
+                        style={{
+                          fontSize: 12,
+                          color: C.text,
+                          background: C.surface,
+                          border: `1px solid ${C.borderAlt}`,
+                          maxWidth: 280,
+                        }}
+                      >
+                        <span style={{ color: C.textFaint, marginRight: 6, fontWeight: 600 }}>
+                          {i + 1}
+                        </span>
+                        {s.caption || s.scene}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Alternative scenes — 1-click swap to a different visualization */}
               {state.parsed.alternatives && state.parsed.alternatives.length > 0 && (

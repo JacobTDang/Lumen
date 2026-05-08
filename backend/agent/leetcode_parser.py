@@ -35,6 +35,7 @@ from schemas.types import (
     BinarySearchAnswerSchema,
     BinarySearchIndexSchema,
     BacktrackingSubsetsSchema,
+    ArrayPointerSchema,
     BitManipulationSchema,
     DijkstraSchema,
     DP2DSchema,
@@ -54,6 +55,7 @@ from schemas.types import (
     PrefixSumSchema,
     RecursionTreeDCSchema,
     SegmentTreeSchema,
+    SlidingWindowSchema,
     SlidingWindowVariableSchema,
     StackQueueSchema,
     TopologicalSortSchema,
@@ -90,7 +92,9 @@ _SCENE_SCHEMAS: dict[str, Type[BaseModel]] = {
     "union_find":              UnionFindSchema,
     "dijkstra":                DijkstraSchema,
     "segment_tree":            SegmentTreeSchema,
-    # linked-list / tree / graph / DP / stack-queue
+    # legacy / generic
+    "array_pointer":           ArrayPointerSchema,
+    "sliding_window":          SlidingWindowSchema,
     "linked_list":             LinkedListSchema,
     "tree_traversal":          TreeTraversalSchema,
     "graph_traversal":         GraphSchema,
@@ -118,6 +122,14 @@ class Alternative(BaseModel):
     why: str = ""  # 1-sentence rationale, optional
 
 
+class LessonStep(BaseModel):
+    """One scene in a multi-scene lesson. Each step adds a distinct insight,
+    not a parameter tweak of the same scene."""
+    scene: str
+    params: dict
+    caption: str = ""  # one-sentence focus for this step
+
+
 class ParsedLeetCode(BaseModel):
     title: str
     scene: str
@@ -127,6 +139,7 @@ class ParsedLeetCode(BaseModel):
     pseudocode: str = ""
     step_lines: dict = {}
     alternatives: List[Alternative] = []
+    lesson_steps: List[LessonStep] = []   # empty = single-scene render
 
 
 _SYSTEM_PROMPT = """You are converting a pasted LeetCode-style problem statement into a runnable
@@ -336,6 +349,33 @@ Required fields:
                                               better)
                       Return [] if no alternatives genuinely add value — do NOT
                       pad with weak alternatives.
+  - lesson_steps:     0 OR 2-4 ordered steps for a multi-scene MINI-LESSON.
+                      Use this only when the problem genuinely benefits from
+                      multiple connected visualizations that each add a
+                      distinct insight — not minor parameter variations of
+                      the same scene. Each step is:
+                        - scene:   a catalog key
+                        - params:  parameters matching that scene's schema
+                        - caption: one short sentence the student should
+                                   focus on in this step
+                      Order: broad context → core concept → application/result.
+                      Examples (DSA):
+                        "Walk me through merge sort"
+                          → 1. ArrayPointerScene showing the input
+                            2. RecursionTreeDCScene showing the recursion
+                            3. KadanesScene? (no — wrong)
+                            ...prefer recursion_tree_dc + array_pointer +
+                               result_array
+                        "Explain hashmap two-sum step by step"
+                          → leave empty; single hashmap_iteration scene is
+                            already step-by-step
+                      For STRAIGHTFORWARD problems (a single Two Sum, a single
+                      derivative, a one-line palindrome), leave lesson_steps
+                      EMPTY. Don't pad — the primary scene + params is the
+                      whole render. lesson_steps is reserved for problems
+                      where the user explicitly asks for a walkthrough/
+                      breakdown/multi-step lesson, or where the concept
+                      genuinely needs multiple linked viewpoints.
 
 STEP KIND REFERENCE (which kinds each scene emits, what they mean):
 
@@ -534,6 +574,36 @@ def _validate(data: dict) -> ParsedLeetCode:
         if len(alternatives) == 2:
             break  # cap at 2 to keep UI tidy
 
+    # Validate lesson_steps — drop the WHOLE list if any step has bad params,
+    # since a partial lesson with missing middle steps would be confusing.
+    raw_lesson = data.get("lesson_steps") or []
+    lesson_steps: List[LessonStep] = []
+    if isinstance(raw_lesson, list) and 2 <= len(raw_lesson) <= 4:
+        candidate: List[LessonStep] = []
+        ok = True
+        for raw_step in raw_lesson:
+            if not isinstance(raw_step, dict):
+                ok = False; break
+            step_scene = raw_step.get("scene")
+            if step_scene not in _SCENE_SCHEMAS:
+                ok = False; break
+            step_schema = _SCENE_SCHEMAS[step_scene]
+            step_params = raw_step.get("params", {}) or {}
+            step_params.pop("scene", None)
+            try:
+                step_validated = step_schema(**step_params)
+            except ValidationError:
+                ok = False; break
+            step_clean = step_validated.model_dump()
+            step_clean.pop("scene", None)
+            candidate.append(LessonStep(
+                scene=step_scene,
+                params=step_clean,
+                caption=str(raw_step.get("caption", "")).strip(),
+            ))
+        if ok and len(candidate) >= 2:
+            lesson_steps = candidate
+
     return ParsedLeetCode(
         title=str(data.get("title", "")).strip() or "Untitled",
         scene=scene,
@@ -543,6 +613,7 @@ def _validate(data: dict) -> ParsedLeetCode:
         pseudocode=pseudo,
         step_lines=step_lines,
         alternatives=alternatives,
+        lesson_steps=lesson_steps,
     )
 
 
