@@ -107,7 +107,7 @@ class LinearFunctionScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression        = p.get("expression",        "2*x + 1")
-        domain            = p.get("domain",            [-5, 5])
+        domain            = p.get("domain") or [-5, 5]
         second_expression = p.get("second_expression")
         cap               = p.get("caption", "")
 
@@ -210,7 +210,7 @@ class QuadraticScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2 - 4")
-        domain     = p.get("domain",     [-5, 5])
+        domain     = p.get("domain") or [-5, 5]
         cap        = p.get("caption", "")
 
         expr, f, x_sym = _parse(expression)
@@ -291,7 +291,7 @@ class InequalityScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x + 2 > 5")
-        domain     = p.get("domain",     [-10, 10])
+        domain     = p.get("domain") or [-10, 10]
         cap        = p.get("caption", "")
 
         import re
@@ -366,7 +366,7 @@ class ExponentialScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression      = p.get("expression",      "2**x")
-        domain          = p.get("domain",           [-3, 5])
+        domain          = p.get("domain") or [-3, 5]
         show_key_points = p.get("show_key_points",  True)
         cap             = p.get("caption", "")
 
@@ -430,7 +430,7 @@ class TransformationScene(Scene):
         p = _load_params()
         base_str  = p.get("base_expression",       "x**2")
         trans_str = p.get("transformed_expression", "(x-2)**2 + 3")
-        domain    = p.get("domain",                 [-5, 5])
+        domain    = p.get("domain") or [-5, 5]
         cap       = p.get("caption", "")
 
         base_expr,  f_base,  _ = _parse(base_str)

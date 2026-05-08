@@ -47,8 +47,8 @@ class SurfacePlotScene(ThreeDScene):
         self.camera.background_color = "#0d1117"
         p          = _load_params()
         expression = p.get("expression", "x**2 + y**2")
-        x_domain   = p.get("x_domain",  [-3, 3])
-        y_domain   = p.get("y_domain",  [-3, 3])
+        x_domain   = p.get("x_domain") or [-3, 3]
+        y_domain   = p.get("y_domain") or [-3, 3]
         cap        = p.get("caption",   "")
 
         x_sym, y_sym = sp.symbols("x y")
@@ -123,8 +123,8 @@ class ContourScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2 + y**2")
-        x_domain   = p.get("x_domain",  [-3, 3])
-        y_domain   = p.get("y_domain",  [-3, 3])
+        x_domain   = p.get("x_domain") or [-3, 3]
+        y_domain   = p.get("y_domain") or [-3, 3]
         num_levels = int(p.get("num_levels", 8))
         cap        = p.get("caption", "")
 
@@ -190,7 +190,7 @@ class VectorFieldScene(Scene):
         p = _load_params()
         x_expression    = p.get("x_expression",    "-y")
         y_expression    = p.get("y_expression",    "x")
-        domain          = p.get("domain",           [-3, 3])
+        domain          = p.get("domain") or [-3, 3]
         show_streamlines = bool(p.get("show_streamlines", False))
         cap             = p.get("caption", "")
 
@@ -252,8 +252,8 @@ class PartialDerivativeScene(ThreeDScene):
         expression  = p.get("expression",   "x**2 + y**2")
         variable    = p.get("variable",     "x")
         fixed_value = float(p.get("fixed_value", 0.0))
-        x_domain    = p.get("x_domain",     [-3, 3])
-        y_domain    = p.get("y_domain",     [-3, 3])
+        x_domain    = p.get("x_domain") or [-3, 3]
+        y_domain    = p.get("y_domain") or [-3, 3]
         cap         = p.get("caption", "")
 
         x_sym, y_sym = sp.symbols("x y")

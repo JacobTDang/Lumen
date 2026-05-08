@@ -164,7 +164,7 @@ class FunctionPlotScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2")
-        domain     = p.get("domain",     [-4, 4])
+        domain     = p.get("domain") or [-4, 4]
         x_point    = p.get("x_point")
         cap        = p.get("caption", "")
 
@@ -209,7 +209,7 @@ class LimitScene(Scene):
         p = _load_params()
         expression = p.get("expression", "sin(x)/x")
         limit_pt   = float(p.get("limit_point", 0))
-        domain     = p.get("domain",     [-5, 5])
+        domain     = p.get("domain") or [-5, 5]
         cap        = p.get("caption", "")
 
         expr, f, x_sym = _parse(expression)
@@ -294,7 +294,7 @@ class TangentLineScene(Scene):
         p = _load_params()
         expression = p.get("expression", "x**2")
         x_pt       = float(p.get("x_point", 1.0))
-        domain     = p.get("domain",     [-4, 4])
+        domain     = p.get("domain") or [-4, 4]
         cap        = p.get("caption", "")
 
         expr, f, x_sym = _parse(expression)
@@ -368,7 +368,7 @@ class SecantLineScene(Scene):
         # Pick a domain that comfortably brackets [a, b] for context
         span    = b - a
         margin  = max(1.0, span * 0.4)
-        domain  = p.get("domain", [a - margin, b + margin])
+        domain  = p.get("domain") or [a - margin, b + margin]
 
         expr, f, _x_sym = _parse(expression)
         ya = _safe_eval(f, a)
@@ -444,7 +444,7 @@ class RiemannSumScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2")
-        domain     = p.get("domain",     [0, 3])
+        domain     = p.get("domain") or [0, 3]
         n_start    = int(p.get("n",      5))
         method     = p.get("method",     "left")
         cap        = p.get("caption", "")
@@ -516,7 +516,7 @@ class CriticalPointsScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**3 - 3*x")
-        domain     = p.get("domain",     [-3, 3])
+        domain     = p.get("domain") or [-3, 3]
         cap        = p.get("caption", "")
 
         expr, f, x_sym = _parse(expression)
@@ -603,7 +603,7 @@ class VolumeRevolutionScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sqrt(x)")
-        domain     = p.get("domain",     [0, 4])
+        domain     = p.get("domain") or [0, 4]
         n_disks    = int(p.get("n_disks", 8))
         cap        = p.get("caption", "")
 
@@ -672,7 +672,7 @@ class TaylorSeriesScene(Scene):
         expression = p.get("expression", "sin(x)")
         center     = float(p.get("center",    0.0))
         max_terms  = int(p.get("max_terms",   5))
-        domain     = p.get("domain",          [-5, 5])
+        domain     = p.get("domain") or [-5, 5]
         cap        = p.get("caption", "")
 
         x_sym = sp.Symbol("x")
@@ -732,7 +732,7 @@ class FTCScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "x**2 - 2*x + 2")
-        domain     = p.get("domain",     [-0.5, 4])
+        domain     = p.get("domain") or [-0.5, 4]
         start      = float(p.get("start", 0.0))
         cap        = p.get("caption", "")
 
@@ -907,7 +907,7 @@ class CobwebScene(Scene):
         formula  = p.get("formula",  "sqrt(x + 2)")
         a0       = float(p.get("a0",      0.0))
         n_steps  = int(p.get("n_steps",   8))
-        domain   = p.get("domain",   [0, 4])
+        domain   = p.get("domain") or [0, 4]
         cap      = p.get("caption",  "")
 
         x_sym = sp.Symbol("x")
@@ -1003,7 +1003,7 @@ class AreaBetweenCurvesScene(Scene):
         p = _load_params()
         f_expr_str = p.get("f_expression", "x")
         g_expr_str = p.get("g_expression", "x**2")
-        domain     = p.get("domain", [0, 1])
+        domain     = p.get("domain") or [0, 1]
         cap        = p.get("caption", "")
 
         expr_f, f, x_sym = _parse(f_expr_str)
@@ -1080,7 +1080,7 @@ class WasherMethodScene(Scene):
         p = _load_params()
         f_str    = p.get("f_expression", "sqrt(x)")
         g_str    = p.get("g_expression", "x**2")
-        domain   = p.get("domain", [0, 1])
+        domain   = p.get("domain") or [0, 1]
         n_washers = int(p.get("n_washers", 8))
         cap      = p.get("caption", "")
 
@@ -1151,7 +1151,7 @@ class ShellMethodScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sqrt(x)")
-        domain     = p.get("domain",     [0, 4])
+        domain     = p.get("domain") or [0, 4]
         n_shells   = int(p.get("n_shells", 8))
         cap        = p.get("caption", "")
 
@@ -1231,7 +1231,7 @@ class ArcLengthScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sin(x)")
-        domain     = p.get("domain",     [0, 3.14])
+        domain     = p.get("domain") or [0, 3.14]
         n_segments = int(p.get("n_segments", 8))
         cap        = p.get("caption", "")
 
@@ -1295,7 +1295,7 @@ class AverageValueScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sin(x)")
-        domain     = p.get("domain",     [0, 3.14])
+        domain     = p.get("domain") or [0, 3.14]
         cap        = p.get("caption", "")
 
         expr, f, x_sym = _parse(expression)
@@ -1356,7 +1356,7 @@ class ImproperIntegralScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression     = p.get("expression",     "1/x**2")
-        domain         = p.get("domain",         [1, 10])
+        domain         = p.get("domain") or [1, 10]
         improper_bound = p.get("improper_bound", "right")
         cap            = p.get("caption", "")
 
@@ -1432,7 +1432,7 @@ class USubstitutionScene(Scene):
         p = _load_params()
         expression = p.get("expression",   "cos(2*x)")
         u_expr_str = p.get("u_expression", "2*x")
-        domain     = p.get("domain",       [0, 1.57])
+        domain     = p.get("domain") or [0, 1.57]
         cap        = p.get("caption", "")
 
         x_sym = sp.Symbol("x")
@@ -1534,7 +1534,7 @@ class IntegrationByPartsScene(Scene):
         p = _load_params()
         u_str  = p.get("u_expression",  "x")
         dv_str = p.get("dv_expression", "exp(x)")
-        domain = p.get("domain",        [0, 2])
+        domain = p.get("domain") or [0, 2]
         cap    = p.get("caption", "")
 
         x_sym  = sp.Symbol("x")
@@ -1591,7 +1591,7 @@ class CrossSectionScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         expression = p.get("expression", "sin(x)")
-        domain     = p.get("domain",     [0, 3.14])
+        domain     = p.get("domain") or [0, 3.14]
         shape      = p.get("shape",      "square")
         cap        = p.get("caption", "")
 

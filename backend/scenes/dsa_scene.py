@@ -447,7 +447,7 @@ class ArrayPointerScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = _load_params()
-        array     = p.get("array",     [1, 3, 5, 7, 9, 11, 13])
+        array     = p.get("array") or [1, 3, 5, 7, 9, 11, 13]
         algorithm = p.get("algorithm", "binary_search")
         target    = p.get("target",    7)
         cap       = p.get("caption",   "")
@@ -601,7 +601,7 @@ class SlidingWindowScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = _load_params()
-        array     = p.get("array",     [2, 1, 5, 1, 3, 2])
+        array     = p.get("array") or [2, 1, 5, 1, 3, 2]
         algorithm = p.get("algorithm", "max_subarray_fixed")
         k         = int(p.get("k",    3))
         cap       = p.get("caption",  "")
@@ -694,7 +694,7 @@ class LinkedListScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = _load_params()
-        values    = p.get("values",    [1, 2, 3, 4, 5])
+        values    = p.get("values") or [1, 2, 3, 4, 5]
         algorithm = p.get("algorithm", "reverse")
         values2   = p.get("values2")
         cap       = p.get("caption",  "")
@@ -839,7 +839,7 @@ class TreeTraversalScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = _load_params()
-        values    = p.get("values",    [1, 2, 3, 4, 5, 6, 7])
+        values    = p.get("values") or [1, 2, 3, 4, 5, 6, 7]
         algorithm = p.get("algorithm", "bfs")
         cap       = p.get("caption",  "")
 
@@ -1037,7 +1037,7 @@ class DPArrayScene(Scene):
         p = _load_params()
         algorithm = p.get("algorithm", "fibonacci")
         n         = int(p.get("n",     8))
-        coins     = p.get("coins",    [1, 3, 4])
+        coins     = p.get("coins") or [1, 3, 4]
         amount    = int(p.get("amount", 6))
         cap       = p.get("caption",  "")
 
@@ -1133,7 +1133,7 @@ class StackQueueScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = _load_params()
-        operations = p.get("operations", ["push 3", "push 1", "push 4", "pop", "push 1", "push 5"])
+        operations = p.get("operations") or ["push 3", "push 1", "push 4", "pop", "push 1", "push 5"]
         structure  = p.get("structure",  "stack")
         cap        = p.get("caption",   "")
 

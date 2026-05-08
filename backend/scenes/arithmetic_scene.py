@@ -93,8 +93,8 @@ class NumberLineScene(Scene):
         self.camera.background_color = "#0d1117"
         p = _load_params()
         mode       = p.get("mode",             "addition")
-        values     = p.get("values",            [3, 4])
-        domain     = p.get("domain",            [-2, 12])
+        values     = p.get("values") or [3, 4]
+        domain     = p.get("domain") or [-2, 12]
         ineq_sign  = p.get("inequality_sign",   ">")
         cap        = p.get("caption", "")
 

@@ -509,7 +509,7 @@ class TwoPointersOppositeScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr       = p.get("array", ["r", "a", "c", "e", "c", "a", "r"])
+        arr       = p.get("array") or ["r", "a", "c", "e", "c", "a", "r"]
         algorithm = p.get("algorithm", "palindrome")
         target    = p.get("target")
         cap       = p.get("caption", "")
@@ -658,7 +658,7 @@ class HashMapIterationScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr       = p.get("array", [2, 7, 11, 15])
+        arr       = p.get("array") or [2, 7, 11, 15]
         algorithm = p.get("algorithm", "frequency_count")
         target    = p.get("target")
         cap       = p.get("caption", "")
@@ -829,7 +829,7 @@ class TwoPointersSameDirScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr       = p.get("array", [1, 1, 2, 2, 3, 4, 4, 5])
+        arr       = p.get("array") or [1, 1, 2, 2, 3, 4, 4, 5]
         algorithm = p.get("algorithm", "remove_duplicates")
         cap       = p.get("caption", "")
 
@@ -1015,7 +1015,7 @@ class SlidingWindowVariableScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr       = p.get("array", ["a", "b", "c", "a", "b", "c", "b", "b"])
+        arr       = p.get("array") or ["a", "b", "c", "a", "b", "c", "b", "b"]
         algorithm = p.get("algorithm", "longest_no_repeat")
         k         = p.get("k")
         cap       = p.get("caption", "")
@@ -1171,7 +1171,7 @@ class BinarySearchIndexScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr       = p.get("array", [1, 3, 5, 7, 9, 11, 13, 15])
+        arr       = p.get("array") or [1, 3, 5, 7, 9, 11, 13, 15]
         algorithm = p.get("algorithm", "find_target")
         target    = int(p.get("target", 7))
         cap       = p.get("caption", "")
@@ -1397,7 +1397,7 @@ class MonotonicStackScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr       = p.get("array", [2, 1, 5, 6, 2, 3])
+        arr       = p.get("array") or [2, 1, 5, 6, 2, 3]
         algorithm = p.get("algorithm", "next_greater")
         monotone  = p.get("monotone", "decreasing")
         cap       = p.get("caption", "")
@@ -1522,7 +1522,7 @@ class PrefixSumScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr       = p.get("array", [3, 1, 4, 1, 5, 9, 2])
+        arr       = p.get("array") or [3, 1, 4, 1, 5, 9, 2]
         algorithm = p.get("algorithm", "build_prefix")
         query_range = p.get("query_range")
         cap       = p.get("caption", "")
@@ -1546,7 +1546,10 @@ class PrefixSumScene(Scene):
             code_panel = CodePanel(pseudo, anchor=UR, font_size=14, max_width=4.0)
             code_panel.is_custom = bool(custom_code)
             _badge = ComplexityBadge(time=t_complex, space=s_complex, font_size=14)
-            _badge.vgroup.next_to(title, RIGHT, buff=0.3)
+            if title.width > 6.0:
+                _badge.vgroup.next_to(title, DOWN, buff=0.15)
+            else:
+                _badge.vgroup.next_to(title, RIGHT, buff=0.3)
             badge_v = _badge.vgroup
 
         # Input array on top
@@ -1687,7 +1690,7 @@ class KadanesScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr = p.get("array", [-2, 1, -3, 4, -1, 2, 1, -5, 4])
+        arr = p.get("array") or [-2, 1, -3, 4, -1, 2, 1, -5, 4]
         cap = p.get("caption", "")
 
         title = Text("Kadane's — Maximum Subarray Sum", font_size=28).to_edge(UP, buff=0.3)
@@ -1934,8 +1937,7 @@ class UnionFindScene(Scene):
         self.camera.background_color = "#0d1117"
         p = load_params()
         n = int(p.get("n", 6))
-        operations = p.get("operations",
-                            ["union 0 1", "union 2 3", "union 4 5", "union 1 3", "find 4"])
+        operations = p.get("operations") or ["union 0 1", "union 2 3", "union 4 5", "union 1 3", "find 4"]
         cap = p.get("caption", "")
 
         title = Text("Union-Find — Disjoint Set Forest", font_size=26).to_edge(UP, buff=0.3)
@@ -2674,7 +2676,7 @@ class BacktrackingSubsetsScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr = p.get("array", [1, 2, 3])
+        arr = p.get("array") or [1, 2, 3]
         algorithm = p.get("algorithm", "subsets")
         cap = p.get("caption", "")
 
@@ -2804,8 +2806,8 @@ class TrieOpsScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        words = p.get("words", ["cat", "car", "card", "care"])
-        queries = p.get("queries", ["car", "care", "cab"])
+        words = p.get("words") or ["cat", "car", "card", "care"]
+        queries = p.get("queries") or ["car", "care", "cab"]
         cap = p.get("caption", "")
 
         title = Text("Trie — Insert + Search", font_size=28).to_edge(UP, buff=0.3)
@@ -3124,7 +3126,7 @@ class SegmentTreeScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        arr = p.get("array", [1, 3, 5, 7, 9, 11])
+        arr = p.get("array") or [1, 3, 5, 7, 9, 11]
         queries = p.get("queries", [[1, 3], [0, 5], [2, 4]])
         cap = p.get("caption", "")
 
@@ -3294,13 +3296,16 @@ class FloydCycleScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        values    = p.get("values",   [1, 2, 3, 4, 5])
+        values    = p.get("values") or [1, 2, 3, 4, 5]
         cycle_at  = p.get("cycle_at", 1)   # default: cycle back to index 1
         cap       = p.get("caption",  "")
 
         title = Text("Floyd's Cycle Detection", font_size=28).to_edge(UP, buff=0.3)
         badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
-        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+        if title.width > 6.0:
+            badge.vgroup.next_to(title, DOWN, buff=0.15)
+        else:
+            badge.vgroup.next_to(title, RIGHT, buff=0.3)
 
         if cap:
             show_title_card(self, cap)
@@ -3554,13 +3559,16 @@ class RecursionTreeDCScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        array = p.get("array", [3, 1, 4, 1, 5])
+        array = p.get("array") or [3, 1, 4, 1, 5]
         cap   = p.get("caption", "")
 
         title = Text("Merge Sort — Recursion Tree",
                      font_size=28).to_edge(UP, buff=0.3)
         badge = ComplexityBadge(time="O(n log n)", space="O(n)", font_size=14)
-        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+        if title.width > 6.0:
+            badge.vgroup.next_to(title, DOWN, buff=0.15)
+        else:
+            badge.vgroup.next_to(title, RIGHT, buff=0.3)
 
         if cap:
             show_title_card(self, cap)
@@ -3780,7 +3788,10 @@ class MatrixRotationScene(Scene):
         title = Text(title_map.get(operation, operation),
                      font_size=28).to_edge(UP, buff=0.3)
         badge = ComplexityBadge(time="O(n²)", space="O(1)", font_size=14)
-        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+        if title.width > 6.0:
+            badge.vgroup.next_to(title, DOWN, buff=0.15)
+        else:
+            badge.vgroup.next_to(title, RIGHT, buff=0.3)
 
         if cap:
             show_title_card(self, cap)
@@ -4027,7 +4038,10 @@ class TopologicalSortScene(Scene):
         title = Text("Topological Sort — Kahn's Algorithm",
                      font_size=26).to_edge(UP, buff=0.3)
         badge = ComplexityBadge(time="O(V+E)", space="O(V+E)", font_size=14)
-        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+        if title.width > 6.0:
+            badge.vgroup.next_to(title, DOWN, buff=0.15)
+        else:
+            badge.vgroup.next_to(title, RIGHT, buff=0.3)
 
         if cap:
             show_title_card(self, cap)
@@ -4224,7 +4238,7 @@ class BitManipulationScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        values    = p.get("values",    [4, 1, 2, 1, 2])
+        values    = p.get("values") or [4, 1, 2, 1, 2]
         operation = p.get("operation", "single_number")
         cap       = p.get("caption",   "")
 
@@ -4233,7 +4247,10 @@ class BitManipulationScene(Scene):
         title = Text(title_map.get(operation, operation),
                      font_size=28).to_edge(UP, buff=0.3)
         badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
-        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+        if title.width > 6.0:
+            badge.vgroup.next_to(title, DOWN, buff=0.15)
+        else:
+            badge.vgroup.next_to(title, RIGHT, buff=0.3)
 
         if cap:
             show_title_card(self, cap)
@@ -4490,7 +4507,7 @@ class GreedyIntervalScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        values    = p.get("values",    [2, 3, 1, 1, 4])
+        values    = p.get("values") or [2, 3, 1, 1, 4]
         algorithm = p.get("algorithm", "jump_game")
         cap       = p.get("caption",   "")
 
@@ -4499,7 +4516,10 @@ class GreedyIntervalScene(Scene):
         title = Text(title_map.get(algorithm, algorithm),
                      font_size=28).to_edge(UP, buff=0.3)
         badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
-        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+        if title.width > 6.0:
+            badge.vgroup.next_to(title, DOWN, buff=0.15)
+        else:
+            badge.vgroup.next_to(title, RIGHT, buff=0.3)
 
         if cap:
             show_title_card(self, cap)
@@ -4759,12 +4779,15 @@ class TrappingRainWaterScene(Scene):
     def construct(self):
         self.camera.background_color = "#0d1117"
         p = load_params()
-        heights = p.get("heights", [0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1])
+        heights = p.get("heights") or [0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]
         cap     = p.get("caption", "")
 
         title = Text("Trapping Rain Water", font_size=28).to_edge(UP, buff=0.3)
         badge = ComplexityBadge(time="O(n)", space="O(1)", font_size=14)
-        badge.vgroup.next_to(title, RIGHT, buff=0.3)
+        if title.width > 6.0:
+            badge.vgroup.next_to(title, DOWN, buff=0.15)
+        else:
+            badge.vgroup.next_to(title, RIGHT, buff=0.3)
 
         if cap:
             show_title_card(self, cap)
