@@ -1458,16 +1458,18 @@ class MonotonicStackScene(Scene):
             self.play(strip.anim_set_fill(i, HILITE, 0.7), run_time=0.2)
 
             if kind == "pop":
-                p = step["popped_idx"]
+                # NOTE: don't reuse `p` here — it shadows the params dict
+                # used by the outer step_lines_override=p.get(...) call.
+                pop_idx = step["popped_idx"]
                 v = step["value"]
                 # Update result strip cell
-                self.play(strip.flash(p, color=REJECT, scale=1.2), run_time=0.25)
+                self.play(strip.flash(pop_idx, color=REJECT, scale=1.2), run_time=0.25)
                 val, anims = stack_w.anim_pop()
                 if anims:
                     self.play(*anims, run_time=0.4)
                 self.play(
-                    result_strip.anim_set_value(p, v),
-                    result_strip.anim_set_fill(p, KEEP, 0.7),
+                    result_strip.anim_set_value(pop_idx, v),
+                    result_strip.anim_set_fill(pop_idx, KEEP, 0.7),
                     run_time=0.3,
                 )
             elif kind == "push":
