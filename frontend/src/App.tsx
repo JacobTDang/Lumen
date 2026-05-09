@@ -40,6 +40,7 @@ import {
 import { usePyodide } from "./usePyodide";
 import { CodeEditorPanel } from "./CodeEditorPanel";
 import { MathContent } from "./MathContent";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "katex/dist/katex.min.css";
 
 // ─────────────────────────────────────────────────────────────
@@ -6129,6 +6130,7 @@ export default function App() {
       <Sidebar route={route} onRoute={setRoute} onNewNote={() => createNote()} />
 
       <main className="flex-1 overflow-hidden">
+        <ErrorBoundary>
         <AnimatePresence mode="wait">
           <motion.div
             key={route}
@@ -6172,6 +6174,7 @@ export default function App() {
             {route === "paste-problem" && <PasteProblemPage initialShare={initialShare} />}
           </motion.div>
         </AnimatePresence>
+        </ErrorBoundary>
       </main>
     </div>
   );
