@@ -16,6 +16,7 @@ from agent.dsa_planner import plan_dsa
 from agent.explainer import explain_problem
 from agent.gemini_client import call_gemini
 from agent.leetcode_parser import parse_problem as parse_leetcode_problem
+from agent.lesson_director import direct_lesson
 from agent.math_parser import parse_math
 from agent.planner import plan as plan_math
 from renderer.worker import get_job, submit_lesson, submit_render
@@ -865,6 +866,37 @@ def create_app(testing: bool = False) -> Flask:
         if parsed is None:
             return jsonify({"error": "share not found"}), 404
         return jsonify({"parsed": parsed})
+
+    @app.post("/api/direct-lesson")
+    def api_direct_lesson():
+        """Lesson Director agent: two-phase LLM → tool calls → DynamicScene render.
+
+        Uses the visual tool system instead of hardcoded scene classes.
+        Returns the same job_id shape as /ask so the frontend polls /status/<id>.
+
+        Request:  { "question": "Explain the sliding window technique" }
+        Response: { "job_id": "...", "concept": "...", "scene_count": N }
+        """
+        body = request.get_json(silent=True) or {}
+        question = (body.get("question") or "").strip()
+        if not question:
+            return jsonify({"error": "question is required"}), 400
+
+        try:
+            lesson = direct_lesson(question)
+        except ValueError as exc:
+            app.logger.warning("direct-lesson rejected: %s", exc)
+            return jsonify({"error": "could not plan lesson", "detail": str(exc)}), 422
+        except Exception as exc:
+            app.logger.exception("direct-lesson failed")
+            return jsonify({"error": "lesson planning failed", "detail": str(exc)}), 500
+
+        job_id = submit_lesson(lesson.steps)
+        return jsonify({
+            "job_id": job_id,
+            "concept": lesson.concept,
+            "scene_count": len(lesson.steps),
+        }), 202
 
     return app
 

@@ -115,6 +115,8 @@ SCENE_REGISTRY = {
     "contour":            ("scenes/threed_scene.py",      "ContourScene"),
     "vector_field":       ("scenes/threed_scene.py",      "VectorFieldScene"),
     "partial_derivative": ("scenes/threed_scene.py",      "PartialDerivativeScene"),
+    # Dynamic tool-composed scenes (Lesson Director agent)
+    "dynamic_lesson_step": ("scenes/tool_executor.py",    "DynamicScene"),
 }
 
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
