@@ -54,7 +54,7 @@ import {
 // Types
 // ─────────────────────────────────────────────────────────────
 
-type Route = "home" | "notes" | "animations" | "import-notes" | "import-animations" | "paste-problem";
+type Route = "home" | "notes" | "animations" | "import-notes" | "import-animations";
 
 interface SideNote {
   id: string;
@@ -1577,7 +1577,6 @@ const Sidebar: React.FC<{
     { key: "animations", label: "Animations", icon: <Play size={16} strokeWidth={1.5} /> },
     { key: "import-notes", label: "Import notes", icon: <FileImage size={16} strokeWidth={1.5} /> },
     { key: "import-animations", label: "Import problem", icon: <Upload size={16} strokeWidth={1.5} /> },
-    { key: "paste-problem", label: "Paste Problem", icon: <CodeIcon size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -1928,9 +1927,29 @@ const NotesPage: React.FC<{
   onNew: () => void;
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
-}> = ({ notes, topics, onUpdate, onDelete, onNew, selectedId, setSelectedId }) => {
+  initialShare?: ParsedProblem | null;
+  onShareConsumed?: () => void;
+}> = ({ notes, topics, onUpdate, onDelete, onNew, selectedId, setSelectedId, initialShare, onShareConsumed }) => {
   const selected = notes.find((n) => n.id === selectedId) || null;
   const [search, setSearch] = useState("");
+  // Analysis panel: keyed so each new selection gets a fresh component instance.
+  const [analysisText, setAnalysisText] = useState<string | null>(null);
+  const [analysisKey, setAnalysisKey] = useState(0);
+  const [analysisShare, setAnalysisShare] = useState<ParsedProblem | null>(null);
+
+  // Open share link in the analysis panel when arriving from a /r/<code> URL.
+  useEffect(() => {
+    if (!initialShare) return;
+    setAnalysisShare(initialShare);
+    setAnalysisKey((k) => k + 1);
+    onShareConsumed?.();
+  }, [initialShare, onShareConsumed]);
+
+  const handleAnalyze = useCallback((text: string) => {
+    setAnalysisText(text);
+    setAnalysisShare(null);
+    setAnalysisKey((k) => k + 1);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -2066,7 +2085,14 @@ const NotesPage: React.FC<{
       </div>
 
       {/* Editor */}
-      <div className="flex-1 overflow-auto">
+      <div
+        className="overflow-auto"
+        style={{
+          flex: (analysisText || analysisShare) ? "0 0 45%" : "1 1 0",
+          transition: "flex-basis 0.3s ease",
+          borderRight: (analysisText || analysisShare) ? `1px solid ${C.border}` : "none",
+        }}
+      >
         {selected ? (
           <NoteEditor
             key={selected.id}
@@ -2077,6 +2103,7 @@ const NotesPage: React.FC<{
               onDelete(selected.id);
               setSelectedId(null);
             }}
+            onAnalyze={handleAnalyze}
           />
         ) : (
           <motion.div
@@ -2094,12 +2121,41 @@ const NotesPage: React.FC<{
                 Select a note, or begin a new one.
               </p>
               <p style={{ fontFamily: BODY, fontSize: 14, color: C.textFaint }}>
-                Highlight any concept while you write to bring it to life.
+                Highlight any text to analyze and visualize it instantly.
               </p>
             </div>
           </motion.div>
         )}
       </div>
+
+      {/* Analysis panel — slides in from the right when text is highlighted or a share link is opened */}
+      <AnimatePresence>
+        {(analysisText || analysisShare) && (
+          <motion.div
+            key="analysis-panel"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: "55%", opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-auto h-full"
+            style={{ background: C.bg, flexShrink: 0 }}
+          >
+            <Suspense fallback={
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: C.bg }}>
+                <Loader2 size={24} className="animate-spin" color="#A0A0A0" strokeWidth={1.5} />
+              </div>
+            }>
+              <PasteProblemPage
+                key={analysisKey}
+                embedded
+                initialText={analysisText ?? undefined}
+                initialShare={analysisShare}
+                onClose={() => { setAnalysisText(null); setAnalysisShare(null); }}
+              />
+            </Suspense>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -2113,7 +2169,8 @@ const NoteEditor: React.FC<{
   topics: AnimatableTopic[];
   onUpdate: (note: Note) => void;
   onDelete: () => void;
-}> = ({ note, topics, onUpdate, onDelete }) => {
+  onAnalyze?: (text: string) => void;
+}> = ({ note, topics, onUpdate, onDelete, onAnalyze }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [title, setTitle] = useState(note.title);
   const [toolbar, setToolbar] = useState<{
@@ -2455,14 +2512,22 @@ const NoteEditor: React.FC<{
                   <ToolbarBtn icon={<Highlighter size={14} strokeWidth={1.8} />} onClick={applyHighlight} label="Highlight" />
                   <div style={{ width: 1, height: 16, background: C.borderAlt, margin: "0 2px" }} />
                   <ToolbarBtn icon={<StickyNote size={14} strokeWidth={1.8} />} onClick={startSideNote} label="Side note" />
-                  {toolbar.matchedTopic && (
+                  {toolbar.selectedText && (
                     <motion.button
                       whileHover={{ scale: 1.04 }}
                       whileTap={{ scale: 0.96 }}
                       onClick={() => {
-                        const topic = toolbar.matchedTopic!;
-                        const override = arrayOverrideFor(topic, toolbar.selectedText);
-                        animate(topic, toolbar.selectedText, override ? { sceneOverride: override } : undefined);
+                        if (onAnalyze) {
+                          onAnalyze(toolbar.selectedText);
+                          setToolbar((t) => ({ ...t, visible: false }));
+                        } else {
+                          // Fallback: use old topic-based flow when no panel available
+                          const topic = toolbar.matchedTopic;
+                          if (topic) {
+                            const override = arrayOverrideFor(topic, toolbar.selectedText);
+                            animate(topic, toolbar.selectedText, override ? { sceneOverride: override } : undefined);
+                          }
+                        }
                       }}
                       className="ml-1 px-3 py-1 rounded-full flex items-center gap-1.5"
                       style={{
@@ -2474,69 +2539,7 @@ const NoteEditor: React.FC<{
                       }}
                     >
                       <Sparkles size={12} strokeWidth={2} />
-                      Animate "{toolbar.matchedTopic.name}"
-                    </motion.button>
-                  )}
-                  {!toolbar.matchedTopic && toolbar.matchedExpression && (
-                    <motion.button
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.96 }}
-                      onClick={() => {
-                        const e = toolbar.matchedExpression!;
-                        const synthetic: AnimatableTopic = {
-                          id: `expr::${exprKey(e)}`,
-                          name: e.displayName,
-                          category: "arithmetic",
-                          keywords: [],
-                          description: `Auto-detected expression: ${e.matchedText}`,
-                        };
-                        animate(synthetic, e.matchedText, {
-                          sceneOverride: { scene: e.scene, params: e.params },
-                        });
-                      }}
-                      className="ml-1 px-3 py-1 rounded-full flex items-center gap-1.5"
-                      style={{
-                        background: C.accent,
-                        color: C.accentText,
-                        fontFamily: BODY,
-                        fontSize: 12,
-                        fontWeight: 500,
-                      }}
-                    >
-                      <Sparkles size={12} strokeWidth={2} />
-                      Visualize {toolbar.matchedExpression.displayName}
-                    </motion.button>
-                  )}
-                  {!toolbar.matchedTopic && !toolbar.matchedExpression && isLikelyMath(toolbar.selectedText) && (
-                    <motion.button
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.96 }}
-                      onClick={() => {
-                        const text = toolbar.selectedText;
-                        const snippet = text.length > 40 ? text.slice(0, 40) + "…" : text;
-                        const synthetic: AnimatableTopic = {
-                          id: `llm::${text.slice(0, 120)}`,
-                          name: snippet,
-                          category: "calculus",
-                          keywords: [],
-                          description: text,
-                        };
-                        // No sceneOverride → falls through to /ask (LLM planner).
-                        animate(synthetic, text);
-                      }}
-                      className="ml-1 px-3 py-1 rounded-full flex items-center gap-1.5"
-                      style={{
-                        background: "transparent",
-                        border: `1px solid ${C.accent}`,
-                        color: C.accent,
-                        fontFamily: BODY,
-                        fontSize: 12,
-                        fontWeight: 500,
-                      }}
-                      title="Send to the LLM planner — slower, may not always succeed"
-                    >
-                      <Sparkles size={12} strokeWidth={2} />
-                      Visualize this
+                      Analyze
                     </motion.button>
                   )}
                 </motion.div>
@@ -4065,7 +4068,7 @@ export default function App() {
         const { parsed } = await res.json();
         if (parsed && parsed.scene) {
           setInitialShare(parsed as ParsedProblem);
-          setRoute("paste-problem");
+          setRoute("notes");
           // Clean the URL so a refresh doesn't re-fire the share fetch
           window.history.replaceState({}, "", "/");
         }
@@ -4134,6 +4137,8 @@ export default function App() {
                 onNew={() => createNote()}
                 selectedId={selectedNoteId}
                 setSelectedId={setSelectedNoteId}
+                initialShare={initialShare}
+                onShareConsumed={() => setInitialShare(null)}
               />
             )}
             {route === "animations" && <AnimationsPage topics={topics} />}
@@ -4144,15 +4149,6 @@ export default function App() {
               />
             )}
             {route === "import-animations" && <ImportAnimationsPage topics={topics} />}
-            {route === "paste-problem" && (
-              <Suspense fallback={
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "#1A1A1A" }}>
-                  <Loader2 size={24} className="animate-spin" color="#A0A0A0" strokeWidth={1.5} />
-                </div>
-              }>
-                <PasteProblemPage initialShare={initialShare} />
-              </Suspense>
-            )}
           </motion.div>
         </AnimatePresence>
         </ErrorBoundary>

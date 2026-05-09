@@ -180,10 +180,18 @@ const SAMPLE_PROBLEMS: { label: string; text: string }[] = [
 
 interface PasteProblemPageProps {
   initialShare?: ParsedProblem | null;
+  initialText?: string;   // pre-fill + auto-analyze (used by notes panel)
+  embedded?: boolean;     // hide textarea/header, show results panel only
+  onClose?: () => void;   // X button in embedded mode
 }
 
-const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => {
-  const [text, setText] = useState("");
+const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
+  initialShare,
+  initialText,
+  embedded,
+  onClose,
+}) => {
+  const [text, setText] = useState(initialText || "");
   const [state, setState] = useState<PasteState>({ kind: "idle" });
   const [followUps, setFollowUps] = useState<FollowUpTurn[]>([]);
   const [followUpInput, setFollowUpInput] = useState("");
@@ -709,15 +717,17 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
     }
   }, []);
 
-  const handleVisualize = useCallback(async () => {
-    const trimmed = text.trim();
+  // Core render logic extracted so it can be called both from the button
+  // (handleVisualize) and from the auto-run effect (initialText prop).
+  const runVisualize = useCallback(async (rawText: string) => {
+    const trimmed = rawText.trim();
     if (!trimmed) return;
 
     setState({ kind: "parsing" });
-    setFollowUps([]);  // fresh paste clears any prior follow-up thread
-    setComparison(null);  // and any prior side-by-side comparison
-    setQuiz(null);  // and any prior quiz
-    setShareCode(null);  // and any stale share link
+    setFollowUps([]);
+    setComparison(null);
+    setQuiz(null);
+    setShareCode(null);
     setShareError(null);
 
     let parsed: ParsedProblem;
@@ -804,7 +814,21 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
         message: e instanceof Error ? e.message : "Render failed",
       });
     }
-  }, [text]);
+  }, []); // stable — no closure over component state
+
+  // Auto-run when mounted with initialText (from notes highlight panel).
+  // The component is re-keyed by the parent when selection changes, so this
+  // fires exactly once per highlighted selection.
+  useEffect(() => {
+    if (initialText?.trim()) {
+      runVisualize(initialText);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleVisualize = useCallback(async () => {
+    await runVisualize(text);
+  }, [text, runVisualize]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -827,28 +851,46 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
       className="h-full overflow-y-auto"
       style={{ background: C.bg, color: C.text, fontFamily: BODY }}
     >
-      <div className="max-w-3xl mx-auto px-8 py-10">
-        <header className="mb-8">
-          <h1
-            style={{
-              fontFamily: SANS,
-              fontSize: 32,
-              fontWeight: 600,
-              letterSpacing: "-0.02em",
-              marginBottom: 8,
-            }}
-          >
-            Paste a problem
-          </h1>
-          <p style={{ color: C.textMuted, fontSize: 14, lineHeight: 1.6 }}>
-            Math (integrals, limits, derivatives) or DSA (LeetCode patterns) —
-            paste the text or upload an image. We'll detect the topic, extract
-            your example input, and render a walkthrough.
-          </p>
-        </header>
+      <div className={embedded ? "px-6 py-6" : "max-w-3xl mx-auto px-8 py-10"}>
+        {/* Embedded mode: compact header with close button */}
+        {embedded ? (
+          <div className="flex items-center justify-between mb-6">
+            <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.05em", color: C.textFaint, textTransform: "uppercase" }}>
+              Analysis
+            </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                style={{ color: C.textFaint, background: "transparent", border: "none", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
+                aria-label="Close analysis panel"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ) : (
+          <header className="mb-8">
+            <h1
+              style={{
+                fontFamily: SANS,
+                fontSize: 32,
+                fontWeight: 600,
+                letterSpacing: "-0.02em",
+                marginBottom: 8,
+              }}
+            >
+              Paste a problem
+            </h1>
+            <p style={{ color: C.textMuted, fontSize: 14, lineHeight: 1.6 }}>
+              Math (integrals, limits, derivatives) or DSA (LeetCode patterns) —
+              paste the text or upload an image. We'll detect the topic, extract
+              your example input, and render a walkthrough.
+            </p>
+          </header>
+        )}
 
-        {/* Image upload + sample problems row */}
-        <div className="mb-3 flex items-center gap-2 flex-wrap">
+        {/* Textarea + controls — hidden in embedded mode (auto-runs with initialText) */}
+        {!embedded && <><div className="mb-3 flex items-center gap-2 flex-wrap">
           <label
             className="px-2.5 py-1 rounded cursor-pointer flex items-center gap-1.5"
             style={{
@@ -970,7 +1012,7 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
               {buttonLabel}
             </motion.button>
           </div>
-        </div>
+        </div></>}
 
         {/* Error banner */}
         <AnimatePresence>
