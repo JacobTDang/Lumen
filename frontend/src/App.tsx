@@ -4202,6 +4202,17 @@ type PasteState =
 // Conversational follow-up turn. After the initial render, the user can ask
 // "now with [3,1,4]" / "show me with X instead" — each follow-up lives as a
 // FollowUpTurn rendered below the original result panel.
+// Side-by-side comparison: a single comparison kicks off two concurrent
+// renders (primary + first alternative) and shows them in a 2-column grid.
+// Synced playback: pressing play on either video plays both; pause on one
+// pauses the other. Independent scrub allowed via the native controls.
+type ComparisonState =
+  | { kind: "rendering"; left: { parsed: ParsedProblem }; right: { parsed: ParsedProblem; alt: ParsedAlternative } }
+  | { kind: "ready"; leftUrl: string; rightUrl: string;
+      leftParsed: ParsedProblem; rightParsed: ParsedProblem;
+      rightLabel: string }
+  | { kind: "error"; message: string };
+
 type FollowUpTurn =
   | { kind: "parsing"; text: string }
   | { kind: "rendering"; text: string; parsed: ParsedProblem }
@@ -4332,6 +4343,90 @@ const PasteProblemPage: React.FC = () => {
   // Video playback control: speed + replay + scrub-by-chapter for lessons
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
+
+  // Side-by-side comparison state and refs (left/right videos with
+  // synchronized play/pause).
+  const [comparison, setComparison] = useState<ComparisonState | null>(null);
+  const leftVideoRef = useRef<HTMLVideoElement | null>(null);
+  const rightVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Sync video pair: when one video plays/pauses, mirror to the other.
+  // Best-effort — drift accumulates if scrub differs but for educational
+  // viewing it's fine.
+  useEffect(() => {
+    if (comparison?.kind !== "ready") return;
+    const left = leftVideoRef.current;
+    const right = rightVideoRef.current;
+    if (!left || !right) return;
+
+    const onLeftPlay = () => { right.play().catch(() => {}); };
+    const onLeftPause = () => { right.pause(); };
+    const onRightPlay = () => { left.play().catch(() => {}); };
+    const onRightPause = () => { left.pause(); };
+
+    left.addEventListener("play", onLeftPlay);
+    left.addEventListener("pause", onLeftPause);
+    right.addEventListener("play", onRightPlay);
+    right.addEventListener("pause", onRightPause);
+    return () => {
+      left.removeEventListener("play", onLeftPlay);
+      left.removeEventListener("pause", onLeftPause);
+      right.removeEventListener("play", onRightPlay);
+      right.removeEventListener("pause", onRightPause);
+    };
+  }, [comparison]);
+
+  const handleCompare = useCallback(async (alt: ParsedAlternative) => {
+    if (state.kind !== "ready") return;
+    setComparison({
+      kind: "rendering",
+      left: { parsed: state.parsed },
+      right: { parsed: state.parsed, alt },
+    });
+
+    const flaskUrl = flaskBase();
+    const renderOne = async (scene: string, params: any, label: string) => {
+      const res = await fetch(`${flaskUrl}/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scene,
+          params: { ...params, caption: label },
+        }),
+      });
+      if (!res.ok) throw new Error(`Render failed (${res.status})`);
+      const { job_id } = await res.json();
+      const result = await pollJob(flaskUrl, job_id, `paste-cmp-${job_id}`);
+      if (result.status !== "ready") {
+        throw new Error(result.error || "render failed");
+      }
+      return result.videoUrl;
+    };
+
+    try {
+      const [leftUrl, rightUrl] = await Promise.all([
+        renderOne(state.parsed.scene,
+                  { ...state.parsed.params,
+                    ...(state.parsed.pseudocode ? { pseudocode: state.parsed.pseudocode } : {}),
+                    ...(state.parsed.step_lines && Object.keys(state.parsed.step_lines).length
+                      ? { step_lines: state.parsed.step_lines } : {}) },
+                  state.parsed.title),
+        renderOne(alt.scene, alt.params, alt.label),
+      ]);
+      setComparison({
+        kind: "ready",
+        leftUrl, rightUrl,
+        leftParsed: state.parsed,
+        rightParsed: { ...state.parsed, scene: alt.scene, params: alt.params, title: alt.label },
+        rightLabel: alt.label,
+      });
+    } catch (e) {
+      setComparison({
+        kind: "error",
+        message: e instanceof Error ? e.message : "Comparison failed",
+      });
+    }
+  }, [state]);
 
   const setSpeed = useCallback((rate: number) => {
     setPlaybackRate(rate);
@@ -4554,6 +4649,7 @@ const PasteProblemPage: React.FC = () => {
 
     setState({ kind: "parsing" });
     setFollowUps([]);  // fresh paste clears any prior follow-up thread
+    setComparison(null);  // and any prior side-by-side comparison
 
     let parsed: ParsedProblem;
     try {
@@ -4997,7 +5093,7 @@ const PasteProblemPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Alternative scenes — 1-click swap to a different visualization */}
+              {/* Alternative scenes — 1-click swap OR side-by-side compare */}
               {state.parsed.alternatives && state.parsed.alternatives.length > 0 && (
                 <div className="mb-4">
                   <div
@@ -5014,43 +5110,139 @@ const PasteProblemPage: React.FC = () => {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {state.parsed.alternatives.map((alt, i) => {
-                      const busy = state.kind === "rendering";
+                      const busy = state.kind === "rendering" || comparison?.kind === "rendering";
                       return (
-                        <motion.button
-                          key={i}
-                          onClick={() => handleAlternative(alt)}
-                          disabled={busy}
-                          whileHover={busy ? {} : { scale: 1.02, background: C.surface }}
-                          whileTap={busy ? {} : { scale: 0.97 }}
-                          transition={{ duration: 0.15 }}
-                          className="px-3 py-1.5 rounded-md flex flex-col items-start"
-                          style={{
-                            fontSize: 12,
-                            color: C.text,
-                            border: `1px solid ${C.borderAlt}`,
-                            background: "transparent",
-                            opacity: busy ? 0.5 : 1,
-                            cursor: busy ? "not-allowed" : "pointer",
-                            textAlign: "left",
-                            maxWidth: 280,
-                          }}
-                          title={alt.why || ""}
-                        >
-                          <span style={{ fontWeight: 500 }}>→ {alt.label}</span>
-                          {alt.why && (
-                            <span style={{
-                              fontSize: 10,
-                              color: C.textFaint,
-                              marginTop: 2,
-                              lineHeight: 1.3,
-                            }}>
-                              {alt.why}
-                            </span>
-                          )}
-                        </motion.button>
+                        <div key={i} className="flex flex-col gap-1">
+                          <motion.button
+                            onClick={() => handleAlternative(alt)}
+                            disabled={busy}
+                            whileHover={busy ? {} : { scale: 1.02, background: C.surface }}
+                            whileTap={busy ? {} : { scale: 0.97 }}
+                            transition={{ duration: 0.15 }}
+                            className="px-3 py-1.5 rounded-md flex flex-col items-start"
+                            style={{
+                              fontSize: 12,
+                              color: C.text,
+                              border: `1px solid ${C.borderAlt}`,
+                              background: "transparent",
+                              opacity: busy ? 0.5 : 1,
+                              cursor: busy ? "not-allowed" : "pointer",
+                              textAlign: "left",
+                              maxWidth: 280,
+                            }}
+                            title={alt.why || ""}
+                          >
+                            <span style={{ fontWeight: 500 }}>→ {alt.label}</span>
+                            {alt.why && (
+                              <span style={{
+                                fontSize: 10,
+                                color: C.textFaint,
+                                marginTop: 2,
+                                lineHeight: 1.3,
+                              }}>
+                                {alt.why}
+                              </span>
+                            )}
+                          </motion.button>
+                          <button
+                            onClick={() => handleCompare(alt)}
+                            disabled={busy}
+                            className="px-2.5 py-1 rounded text-xs"
+                            style={{
+                              fontSize: 11,
+                              color: busy ? C.textFaint : C.accent,
+                              background: "transparent",
+                              border: `1px solid ${busy ? C.borderAlt : C.accent}`,
+                              cursor: busy ? "not-allowed" : "pointer",
+                              opacity: busy ? 0.5 : 1,
+                            }}
+                          >
+                            ⇆ Compare side-by-side
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Side-by-side comparison panel */}
+              {comparison && (
+                <div className="mb-4">
+                  <div
+                    className="flex items-center justify-between mb-2"
+                  >
+                    <div style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.05em",
+                      color: C.textFaint,
+                      textTransform: "uppercase",
+                    }}>
+                      Side-by-side comparison
+                    </div>
+                    <button
+                      onClick={() => setComparison(null)}
+                      style={{
+                        fontSize: 11,
+                        color: C.textFaint,
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✕ Close
+                    </button>
+                  </div>
+                  {comparison.kind === "rendering" && (
+                    <div className="flex items-center gap-2"
+                         style={{ color: C.textMuted, fontSize: 13 }}>
+                      <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+                      Rendering both scenes in parallel… ~25-40s
+                    </div>
+                  )}
+                  {comparison.kind === "error" && (
+                    <div className="p-3 rounded-md" style={{
+                      background: "rgba(239, 68, 68, 0.10)",
+                      border: "1px solid rgba(239, 68, 68, 0.35)",
+                      color: "#fca5a5",
+                      fontSize: 13,
+                    }}>
+                      {comparison.message}
+                    </div>
+                  )}
+                  {comparison.kind === "ready" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>
+                          {comparison.leftParsed.scene}
+                        </div>
+                        <div className="rounded-md overflow-hidden"
+                             style={{ background: "#0d1117", border: `1px solid ${C.borderAlt}`, aspectRatio: "16/9" }}>
+                          <video
+                            ref={leftVideoRef}
+                            autoPlay controls loop
+                            src={comparison.leftUrl}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 4 }}>
+                          {comparison.rightLabel}
+                        </div>
+                        <div className="rounded-md overflow-hidden"
+                             style={{ background: "#0d1117", border: `1px solid ${C.borderAlt}`, aspectRatio: "16/9" }}>
+                          <video
+                            ref={rightVideoRef}
+                            autoPlay controls loop
+                            src={comparison.rightUrl}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
