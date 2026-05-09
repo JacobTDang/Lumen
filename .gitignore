@@ -26,3 +26,4 @@ dist/
 new_mainfile.tsx
 backend/integration_audit.log
 backend/scripts/warmup.log
+backend/shares.json

@@ -4346,11 +4346,17 @@ const SAMPLE_PROBLEMS: { label: string; text: string }[] = [
   },
 ];
 
-const PasteProblemPage: React.FC = () => {
+interface PasteProblemPageProps {
+  initialShare?: ParsedProblem | null;
+}
+
+const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => {
   const [text, setText] = useState("");
   const [state, setState] = useState<PasteState>({ kind: "idle" });
   const [followUps, setFollowUps] = useState<FollowUpTurn[]>([]);
   const [followUpInput, setFollowUpInput] = useState("");
+  const [shareCode, setShareCode] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
   const pyodide = usePyodide();   // lazy-loads on first Run click
 
   // Video playback control: speed + replay + scrub-by-chapter for lessons
@@ -4389,6 +4395,87 @@ const PasteProblemPage: React.FC = () => {
       right.removeEventListener("pause", onRightPause);
     };
   }, [comparison]);
+
+  // Generate a shareable short code for the current parsed problem and
+  // copy a https://.../r/<code> link to the user's clipboard.
+  const handleShare = useCallback(async () => {
+    if (state.kind !== "ready" || sharing) return;
+    setSharing(true);
+    try {
+      const res = await fetch(`${flaskBase()}/api/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parsed: state.parsed }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || `share failed (${res.status})`);
+      }
+      const { shareCode: code } = await res.json();
+      setShareCode(code);
+      const url = `${window.location.origin}/r/${code}`;
+      try { await navigator.clipboard.writeText(url); } catch {}
+    } catch (e) {
+      setShareCode(null);
+      console.warn("share failed:", e);
+    } finally {
+      setSharing(false);
+    }
+  }, [state, sharing]);
+
+  // Replay a share: take the parsed payload, re-render its scene, and skip
+  // the parse step entirely. Triggered when App routes us here with
+  // initialShare set (i.e. the URL was /r/<code>).
+  useEffect(() => {
+    if (!initialShare) return;
+    let cancelled = false;
+    (async () => {
+      setState({ kind: "rendering", parsed: initialShare, progress: 0 });
+      const flaskUrl = flaskBase();
+      try {
+        const renderRes = await fetch(`${flaskUrl}/render`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scene: initialShare.scene,
+            params: {
+              caption: initialShare.title,
+              ...initialShare.params,
+              ...(initialShare.pseudocode ? { pseudocode: initialShare.pseudocode } : {}),
+              ...(initialShare.step_lines && Object.keys(initialShare.step_lines).length
+                ? { step_lines: initialShare.step_lines } : {}),
+            },
+          }),
+        });
+        if (!renderRes.ok) {
+          const detail = await renderRes.text().catch(() => "");
+          if (!cancelled) {
+            setState({ kind: "error", message: `Render failed (${renderRes.status}): ${detail.slice(0, 160)}` });
+          }
+          return;
+        }
+        const { job_id: jobId } = await renderRes.json();
+        if (!jobId) {
+          if (!cancelled) setState({ kind: "error", message: "Render returned no job_id" });
+          return;
+        }
+        const result = await pollJob(flaskUrl, jobId, `share-${jobId}`);
+        if (cancelled) return;
+        if (result.status === "ready") {
+          setState({ kind: "ready", parsed: initialShare, videoUrl: result.videoUrl });
+        } else {
+          setState({ kind: "error", message: result.error || "render failed" });
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setState({ kind: "error",
+                     message: e instanceof Error ? e.message : "Render failed" });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialShare]);
 
   const handleStartQuiz = useCallback(async () => {
     if (state.kind !== "ready") return;
@@ -5293,9 +5380,9 @@ const PasteProblemPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Quiz mode — test understanding with 1-2 multiple choice questions */}
+              {/* Quiz + Share buttons */}
               {!quiz && (
-                <div className="mb-4">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleStartQuiz}
                     className="px-3 py-1.5 rounded text-xs"
@@ -5309,6 +5396,32 @@ const PasteProblemPage: React.FC = () => {
                   >
                     🧠 Test your understanding
                   </button>
+                  <button
+                    onClick={handleShare}
+                    disabled={sharing}
+                    className="px-3 py-1.5 rounded text-xs"
+                    style={{
+                      fontSize: 12,
+                      color: C.text,
+                      background: "transparent",
+                      border: `1px solid ${C.borderAlt}`,
+                      cursor: sharing ? "not-allowed" : "pointer",
+                      opacity: sharing ? 0.5 : 1,
+                    }}
+                  >
+                    {sharing ? "Generating link…" : "🔗 Share"}
+                  </button>
+                  {shareCode && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: C.textMuted,
+                        fontFamily: "ui-monospace, SFMono-Regular, monospace",
+                      }}
+                    >
+                      Link copied: /r/{shareCode}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -5838,6 +5951,30 @@ export default function App() {
     saveNotes(notes);
   }, [notes]);
 
+  // Shareable URL: detect /r/<code> on first load, fetch the parsed payload,
+  // and route to PasteProblemPage with the shared problem pre-loaded.
+  const [initialShare, setInitialShare] = useState<ParsedProblem | null>(null);
+  useEffect(() => {
+    const m = window.location.pathname.match(/^\/r\/([A-Za-z0-9]{8})$/);
+    if (!m) return;
+    const code = m[1];
+    (async () => {
+      try {
+        const res = await fetch(`${flaskBase()}/api/share/${code}`);
+        if (!res.ok) return;
+        const { parsed } = await res.json();
+        if (parsed && parsed.scene) {
+          setInitialShare(parsed as ParsedProblem);
+          setRoute("paste-problem");
+          // Clean the URL so a refresh doesn't re-fire the share fetch
+          window.history.replaceState({}, "", "/");
+        }
+      } catch {
+        /* ignore — share fetch is best-effort */
+      }
+    })();
+  }, []);
+
   const createNote = (title = "", contentHtml = "") => {
     const n: Note = {
       id: uid(),
@@ -5906,7 +6043,7 @@ export default function App() {
               />
             )}
             {route === "import-animations" && <ImportAnimationsPage topics={topics} />}
-            {route === "paste-problem" && <PasteProblemPage />}
+            {route === "paste-problem" && <PasteProblemPage initialShare={initialShare} />}
           </motion.div>
         </AnimatePresence>
       </main>

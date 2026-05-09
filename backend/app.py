@@ -1,5 +1,8 @@
 import json
 import os
+import secrets
+import string
+import threading
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
@@ -262,6 +265,34 @@ _MIME_FROM_EXT = {
     "pdf": "application/pdf",
 }
 _ALLOWED_MIMES = frozenset(_MIME_FROM_EXT.values())
+
+# ── Share storage (file-backed dict keyed by 8-char base62 short codes) ──
+_SHARES_PATH = os.path.join(os.path.dirname(__file__), "shares.json")
+_SHARES_LOCK = threading.Lock()
+_SHARE_ALPHABET = string.ascii_letters + string.digits  # base62
+_SHARE_CODE_LEN = 8
+
+
+def _load_shares() -> dict:
+    if not os.path.exists(_SHARES_PATH):
+        return {}
+    try:
+        with open(_SHARES_PATH, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_shares(shares: dict) -> None:
+    with open(_SHARES_PATH, "w", encoding="utf-8") as fh:
+        json.dump(shares, fh)
+
+
+def _new_share_code(existing: dict) -> str:
+    while True:
+        code = "".join(secrets.choice(_SHARE_ALPHABET) for _ in range(_SHARE_CODE_LEN))
+        if code not in existing:
+            return code
 
 
 def create_app(testing: bool = False) -> Flask:
@@ -801,6 +832,39 @@ def create_app(testing: bool = False) -> Flask:
         except Exception as exc:
             app.logger.exception("api/quiz failed")
             return jsonify({"error": "quiz failed", "detail": str(exc)}), 500
+
+    @app.post("/api/share")
+    def api_share():
+        """Persist a parsed problem under a short code so it can be re-opened
+        via a shareable URL. Returns: {shareCode}."""
+        body = request.get_json(silent=True) or {}
+        parsed = body.get("parsed")
+        if not isinstance(parsed, dict) or not parsed.get("scene"):
+            return jsonify({"error": "parsed.scene is required"}), 400
+
+        with _SHARES_LOCK:
+            shares = _load_shares()
+            code = _new_share_code(shares)
+            shares[code] = parsed
+            try:
+                _save_shares(shares)
+            except OSError as exc:
+                app.logger.exception("share write failed")
+                return jsonify({"error": "share storage unavailable",
+                                "detail": str(exc)}), 500
+        return jsonify({"shareCode": code})
+
+    @app.get("/api/share/<code>")
+    def api_share_get(code: str):
+        """Look up a previously-shared parsed problem by short code."""
+        if not code or len(code) != _SHARE_CODE_LEN:
+            return jsonify({"error": "invalid share code"}), 400
+        with _SHARES_LOCK:
+            shares = _load_shares()
+            parsed = shares.get(code)
+        if parsed is None:
+            return jsonify({"error": "share not found"}), 404
+        return jsonify({"parsed": parsed})
 
     return app
 

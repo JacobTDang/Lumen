@@ -367,3 +367,50 @@ def test_quiz_gemini_failure_returns_500(client, mocker):
     mocker.patch("app.call_gemini", side_effect=RuntimeError("LLM down"))
     res = client.post("/api/quiz", json={"prior": {"title": "x", "scene": "y"}})
     assert res.status_code == 500
+
+
+# ── POST/GET /api/share ───────────────────────────────────────────────────────
+
+def test_share_missing_parsed_returns_400(client):
+    res = client.post("/api/share", json={})
+    assert res.status_code == 400
+
+
+def test_share_parsed_without_scene_returns_400(client):
+    res = client.post("/api/share", json={"parsed": {"title": "x"}})
+    assert res.status_code == 400
+
+
+def test_share_round_trip(client, mocker):
+    """Posting a parsed problem returns a code; GET with that code returns
+    the same payload. Use an in-memory dict to avoid touching the real file."""
+    fake_store: dict = {}
+    mocker.patch("app._load_shares", side_effect=lambda: dict(fake_store))
+    mocker.patch("app._save_shares", side_effect=lambda d: fake_store.update(d))
+
+    parsed = {
+        "title": "Two Sum",
+        "scene": "hashmap_iteration",
+        "params": {"array": [2, 7, 11, 15], "target": 9},
+        "domain": "dsa",
+    }
+    res = client.post("/api/share", json={"parsed": parsed})
+    assert res.status_code == 200
+    code = res.get_json()["shareCode"]
+    assert len(code) == 8
+
+    # Now fetch it back
+    res2 = client.get(f"/api/share/{code}")
+    assert res2.status_code == 200
+    assert res2.get_json()["parsed"]["title"] == "Two Sum"
+
+
+def test_share_get_invalid_code_returns_400(client):
+    res = client.get("/api/share/abc")
+    assert res.status_code == 400
+
+
+def test_share_get_unknown_code_returns_404(client, mocker):
+    mocker.patch("app._load_shares", return_value={})
+    res = client.get("/api/share/aaaabbbb")
+    assert res.status_code == 404
