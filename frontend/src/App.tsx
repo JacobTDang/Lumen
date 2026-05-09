@@ -4219,6 +4219,19 @@ type FollowUpTurn =
   | { kind: "ready"; text: string; parsed: ParsedProblem; videoUrl: string }
   | { kind: "error"; text: string; message: string };
 
+// Quiz mode: after a render, the user can test their understanding with
+// 1-2 multiple choice questions generated from the prior parsed problem.
+interface QuizQuestion {
+  q: string;
+  options: string[];
+  correct: number;
+  why: string;
+}
+type QuizState =
+  | { kind: "loading" }
+  | { kind: "ready"; questions: QuizQuestion[]; answers: (number | null)[]; submitted: boolean }
+  | { kind: "error"; message: string };
+
 // Build runnable Python starter code from a parsed problem. The user edits
 // this in the Monaco editor, hits Run, and Pyodide executes it in-browser.
 //
@@ -4347,6 +4360,7 @@ const PasteProblemPage: React.FC = () => {
   // Side-by-side comparison state and refs (left/right videos with
   // synchronized play/pause).
   const [comparison, setComparison] = useState<ComparisonState | null>(null);
+  const [quiz, setQuiz] = useState<QuizState | null>(null);
   const leftVideoRef = useRef<HTMLVideoElement | null>(null);
   const rightVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -4375,6 +4389,38 @@ const PasteProblemPage: React.FC = () => {
       right.removeEventListener("pause", onRightPause);
     };
   }, [comparison]);
+
+  const handleStartQuiz = useCallback(async () => {
+    if (state.kind !== "ready") return;
+    setQuiz({ kind: "loading" });
+    try {
+      const res = await fetch(`${flaskBase()}/api/quiz`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prior: state.parsed }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || `quiz failed (${res.status})`);
+      }
+      const data = await res.json();
+      const questions: QuizQuestion[] = data.questions || [];
+      if (questions.length === 0) {
+        throw new Error("no questions returned");
+      }
+      setQuiz({
+        kind: "ready",
+        questions,
+        answers: questions.map(() => null),
+        submitted: false,
+      });
+    } catch (e) {
+      setQuiz({
+        kind: "error",
+        message: e instanceof Error ? e.message : "quiz failed",
+      });
+    }
+  }, [state]);
 
   const handleCompare = useCallback(async (alt: ParsedAlternative) => {
     if (state.kind !== "ready") return;
@@ -4650,6 +4696,7 @@ const PasteProblemPage: React.FC = () => {
     setState({ kind: "parsing" });
     setFollowUps([]);  // fresh paste clears any prior follow-up thread
     setComparison(null);  // and any prior side-by-side comparison
+    setQuiz(null);  // and any prior quiz
 
     let parsed: ParsedProblem;
     try {
@@ -5241,6 +5288,189 @@ const PasteProblemPage: React.FC = () => {
                           />
                         </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Quiz mode — test understanding with 1-2 multiple choice questions */}
+              {!quiz && (
+                <div className="mb-4">
+                  <button
+                    onClick={handleStartQuiz}
+                    className="px-3 py-1.5 rounded text-xs"
+                    style={{
+                      fontSize: 12,
+                      color: C.accent,
+                      background: "transparent",
+                      border: `1px solid ${C.accent}`,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🧠 Test your understanding
+                  </button>
+                </div>
+              )}
+
+              {quiz && (
+                <div
+                  className="p-4 rounded-md mb-4"
+                  style={{
+                    background: C.surface,
+                    border: `1px solid ${C.borderAlt}`,
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.05em",
+                      color: C.textFaint,
+                      textTransform: "uppercase",
+                    }}>
+                      Comprehension check
+                    </div>
+                    <button
+                      onClick={() => setQuiz(null)}
+                      style={{
+                        fontSize: 11,
+                        color: C.textFaint,
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✕ Close
+                    </button>
+                  </div>
+                  {quiz.kind === "loading" && (
+                    <div className="flex items-center gap-2"
+                         style={{ color: C.textMuted, fontSize: 13 }}>
+                      <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+                      Generating questions…
+                    </div>
+                  )}
+                  {quiz.kind === "error" && (
+                    <div className="p-3 rounded-md" style={{
+                      background: "rgba(239, 68, 68, 0.10)",
+                      border: "1px solid rgba(239, 68, 68, 0.35)",
+                      color: "#fca5a5",
+                      fontSize: 13,
+                    }}>
+                      {quiz.message}
+                    </div>
+                  )}
+                  {quiz.kind === "ready" && (
+                    <div className="space-y-4">
+                      {quiz.questions.map((question, qi) => (
+                        <div key={qi}>
+                          <div style={{ fontSize: 13, color: C.text, fontWeight: 500, marginBottom: 8 }}>
+                            {qi + 1}. {question.q}
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            {question.options.map((opt, oi) => {
+                              const picked = quiz.answers[qi] === oi;
+                              const isCorrect = oi === question.correct;
+                              const showResult = quiz.submitted;
+                              let bg = "transparent";
+                              let bd = C.borderAlt;
+                              let cl = C.text;
+                              if (showResult && isCorrect) {
+                                bg = "rgba(34, 197, 94, 0.12)";
+                                bd = "rgba(34, 197, 94, 0.45)";
+                                cl = "#86efac";
+                              } else if (showResult && picked && !isCorrect) {
+                                bg = "rgba(239, 68, 68, 0.12)";
+                                bd = "rgba(239, 68, 68, 0.45)";
+                                cl = "#fca5a5";
+                              } else if (picked) {
+                                bg = C.surface;
+                                bd = C.accent;
+                              }
+                              return (
+                                <button
+                                  key={oi}
+                                  disabled={quiz.submitted}
+                                  onClick={() => {
+                                    const next = [...quiz.answers];
+                                    next[qi] = oi;
+                                    setQuiz({ ...quiz, answers: next });
+                                  }}
+                                  className="px-3 py-2 rounded text-left"
+                                  style={{
+                                    fontSize: 12,
+                                    color: cl,
+                                    background: bg,
+                                    border: `1px solid ${bd}`,
+                                    cursor: quiz.submitted ? "default" : "pointer",
+                                  }}
+                                >
+                                  <span style={{ marginRight: 8, opacity: 0.6 }}>
+                                    {String.fromCharCode(65 + oi)}.
+                                  </span>
+                                  {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {quiz.submitted && (
+                            <div
+                              className="mt-2 p-2 rounded"
+                              style={{
+                                fontSize: 11,
+                                color: C.textMuted,
+                                background: "rgba(255,255,255,0.03)",
+                                border: `1px solid ${C.borderAlt}`,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <span style={{ color: C.textFaint, fontWeight: 500 }}>Why:</span>{" "}
+                              {question.why}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {!quiz.submitted ? (
+                        <button
+                          onClick={() => setQuiz({ ...quiz, submitted: true })}
+                          disabled={quiz.answers.some(a => a === null)}
+                          className="px-4 py-1.5 rounded text-sm"
+                          style={{
+                            fontSize: 12,
+                            color: quiz.answers.some(a => a === null) ? C.textFaint : "#0d1117",
+                            background: quiz.answers.some(a => a === null) ? "transparent" : C.accent,
+                            border: `1px solid ${quiz.answers.some(a => a === null) ? C.borderAlt : C.accent}`,
+                            cursor: quiz.answers.some(a => a === null) ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          Submit answers
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>
+                            Score: {quiz.answers.filter((a, i) => a === quiz.questions[i].correct).length}
+                            {" "}/ {quiz.questions.length}
+                          </div>
+                          <button
+                            onClick={() => setQuiz({
+                              ...quiz,
+                              answers: quiz.questions.map(() => null),
+                              submitted: false,
+                            })}
+                            style={{
+                              fontSize: 11,
+                              color: C.accent,
+                              background: "transparent",
+                              border: `1px solid ${C.accent}`,
+                              padding: "4px 10px",
+                              borderRadius: 4,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Try again
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

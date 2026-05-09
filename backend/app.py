@@ -727,6 +727,81 @@ def create_app(testing: bool = False) -> Flask:
             app.logger.exception("api/breakdown failed")
             return jsonify({"error": "breakdown failed", "detail": str(exc)}), 500
 
+    @app.post("/api/quiz")
+    def api_quiz():
+        """Generate 1-2 multiple-choice questions testing comprehension of a
+        problem the user just watched visualized. Frontend posts the prior
+        ParsedProblem; we return:
+            { questions: [{q, options: [4 strings], correct: int, why: str}] }
+        """
+        body = request.get_json(silent=True) or {}
+        prior = body.get("prior") or {}
+        title = (prior.get("title") or "").strip()
+        scene = (prior.get("scene") or "").strip()
+        if not title and not scene:
+            return jsonify({"error": "prior.title or prior.scene is required"}), 400
+
+        # Build a description of what the student just saw
+        context_lines = []
+        if title:
+            context_lines.append(f"Title: {title}")
+        if scene:
+            context_lines.append(f"Scene type: {scene}")
+        if prior.get("params"):
+            try:
+                context_lines.append(f"Inputs: {json.dumps(prior['params'])[:400]}")
+            except (TypeError, ValueError):
+                pass
+        if prior.get("pseudocode"):
+            context_lines.append(f"Pseudocode:\n{prior['pseudocode']}")
+        if prior.get("steps"):
+            steps_str = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(prior["steps"][:6]))
+            context_lines.append(f"Solution steps:\n{steps_str}")
+        if prior.get("explanation"):
+            context_lines.append(f"Explanation: {prior['explanation'][:400]}")
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "q": {"type": "string"},
+                            "options": {"type": "array", "items": {"type": "string"}},
+                            "correct": {"type": "integer"},
+                            "why": {"type": "string"},
+                        },
+                        "required": ["q", "options", "correct", "why"],
+                    },
+                },
+            },
+            "required": ["questions"],
+        }
+
+        prompt = (
+            "You are writing a brief comprehension quiz for a student who just\n"
+            "watched a visualization of the following problem:\n\n"
+            + "\n".join(context_lines)
+            + "\n\nGenerate exactly 2 multiple-choice questions that test whether\n"
+            "the student understood the *key insight* of this algorithm or concept.\n"
+            "Each question must have:\n"
+            "- q: a clear question (one sentence)\n"
+            "- options: exactly 4 plausible answer choices\n"
+            "- correct: the 0-indexed position of the correct option\n"
+            "- why: a 1-2 sentence explanation of why that answer is correct\n\n"
+            "Make the questions test conceptual understanding (why does this work?\n"
+            "what would change if X?), NOT trivia about specific values."
+        )
+
+        try:
+            response = call_gemini(prompt, response_schema=schema)
+            return jsonify(json.loads(response.text))
+        except Exception as exc:
+            app.logger.exception("api/quiz failed")
+            return jsonify({"error": "quiz failed", "detail": str(exc)}), 500
+
     return app
 
 

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 def test_health(client):
@@ -316,3 +318,52 @@ def test_parse_v2_falls_back_to_dsa_when_classifier_errors(client, mocker):
     res = client.post("/api/parse-problem-v2", json={"rawText": "anything"})
     assert res.status_code == 200
     assert res.get_json()["domain"] == "dsa"
+
+
+# ── POST /api/quiz ────────────────────────────────────────────────────────────
+
+def test_quiz_missing_prior_returns_400(client):
+    res = client.post("/api/quiz", json={})
+    assert res.status_code == 400
+
+
+def test_quiz_blank_prior_returns_400(client):
+    res = client.post("/api/quiz", json={"prior": {"title": "", "scene": ""}})
+    assert res.status_code == 400
+
+
+def test_quiz_happy_path_returns_questions(client, mocker):
+    """A valid prior produces questions through call_gemini."""
+    fake_payload = {
+        "questions": [
+            {
+                "q": "What invariant does this algorithm maintain?",
+                "options": ["A", "B", "C", "D"],
+                "correct": 1,
+                "why": "Because B.",
+            }
+        ]
+    }
+    fake_response = type("R", (), {"text": json.dumps(fake_payload)})()
+    mocker.patch("app.call_gemini", return_value=fake_response)
+
+    body = {
+        "prior": {
+            "title": "Two Sum",
+            "scene": "hashmap_iteration",
+            "params": {"array": [2, 7, 11, 15], "target": 9},
+            "pseudocode": "seen = {}\nfor i, v in enumerate(nums):\n    ...",
+            "explanation": "Walk array, complement lookup in hashmap.",
+        }
+    }
+    res = client.post("/api/quiz", json=body)
+    assert res.status_code == 200
+    data = res.get_json()
+    assert len(data["questions"]) == 1
+    assert data["questions"][0]["correct"] == 1
+
+
+def test_quiz_gemini_failure_returns_500(client, mocker):
+    mocker.patch("app.call_gemini", side_effect=RuntimeError("LLM down"))
+    res = client.post("/api/quiz", json={"prior": {"title": "x", "scene": "y"}})
+    assert res.status_code == 500
