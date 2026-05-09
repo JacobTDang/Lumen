@@ -889,8 +889,10 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
           </header>
         )}
 
-        {/* Textarea + controls — hidden in embedded mode (auto-runs with initialText) */}
-        {!embedded && <><div className="mb-3 flex items-center gap-2 flex-wrap">
+        {/* Textarea + controls — hidden in embedded mode (initialText auto-runs).
+            Fragment needed because && requires a single JSX child. */}
+        {!embedded && (
+        <><div className="mb-3 flex items-center gap-2 flex-wrap">
           <label
             className="px-2.5 py-1 rounded cursor-pointer flex items-center gap-1.5"
             style={{
@@ -1012,7 +1014,8 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
               {buttonLabel}
             </motion.button>
           </div>
-        </div></>}
+        </div></>
+        )}
 
         {/* Error banner */}
         <AnimatePresence>

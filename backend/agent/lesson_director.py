@@ -159,6 +159,9 @@ def narrative_plan(question: str, max_retries: int = 2) -> NarrativePlan:
             plan = NarrativePlan(**data)
             if not 2 <= len(plan.scenes) <= 4:
                 raise ValueError(f"expected 2-4 scenes, got {len(plan.scenes)}")
+            titles = [s.title for s in plan.scenes]
+            if len(set(titles)) != len(titles):
+                raise ValueError(f"duplicate scene titles: {titles}")
             return plan
         except (json.JSONDecodeError, ValueError, ValidationError) as exc:
             last_error = exc

@@ -10,7 +10,7 @@ Write-Host ""
 $backCmd = @(
     '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
     "Write-Host '[Backend]' -ForegroundColor Cyan; " +
-    "Set-Location '$root'; " +
+    "Set-Location `"$root`"; " +
     ".\venv\Scripts\Activate.ps1; " +
     "Set-Location backend; " +
     "python app.py"
@@ -21,7 +21,7 @@ $back = Start-Process powershell -ArgumentList $backCmd -PassThru
 $frontCmd = @(
     '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
     "Write-Host '[Frontend]' -ForegroundColor Green; " +
-    "Set-Location '$root\frontend'; " +
+    "Set-Location `"$root\frontend`"; " +
     "npm run dev"
 )
 $front = Start-Process powershell -ArgumentList $frontCmd -PassThru

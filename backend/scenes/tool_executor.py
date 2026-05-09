@@ -138,18 +138,21 @@ class ToolExecutor:
 
     def _tool_show_hashmap(self, title: str = "HashMap", anchor: str = "UR",
                            element_id: str = "map_0"):
+        # HashMapPanel positions itself via .to_corner() in __init__; vgroup
+        # contains the background rectangle + title — both must be shown.
         panel = HashMapPanel(anchor=_anchor(anchor), title=title)
-        # Panel positions itself; expose the placeholder title
-        self.scene.play(FadeIn(panel._title), run_time=0.4)
+        self.scene.play(FadeIn(panel.vgroup), run_time=0.4)
         self.state[element_id] = panel
-        self.vgroups[element_id] = panel._title  # title always visible; rows added dynamically
+        self.vgroups[element_id] = panel.vgroup
 
     def _tool_show_stack(self, title: str = "stack", anchor: str = "DR",
                          element_id: str = "stack_0"):
-        widget = StackWidget(anchor=_anchor(anchor), title=title)
-        self.scene.play(FadeIn(widget._title_mob), run_time=0.4)
+        # StackWidget takes position=, not anchor=. Create at ORIGIN then move.
+        widget = StackWidget(title=title)
+        widget.vgroup.to_corner(_anchor(anchor), buff=0.3)
+        self.scene.play(FadeIn(widget.vgroup), run_time=0.4)
         self.state[element_id] = widget
-        self.vgroups[element_id] = widget._title_mob
+        self.vgroups[element_id] = widget.vgroup
 
     def _tool_show_grid(self, rows: int, cols: int, values: list,
                         label: str = "", element_id: str = "grid_0"):
@@ -428,6 +431,13 @@ class DynamicScene(Scene):
         params = load_params()
         title = params.get("title", "")
         tool_calls = params.get("tool_calls", [])
+
+        # Cap tool calls to keep render time inside the 180s worker budget.
+        # Each call averages ~0.4-0.8s, so 20 calls ≈ 8-16s of animation.
+        MAX_CALLS = 20
+        if len(tool_calls) > MAX_CALLS:
+            print(f"[DynamicScene] capping {len(tool_calls)} → {MAX_CALLS} tool calls")
+            tool_calls = tool_calls[:MAX_CALLS]
 
         if title:
             show_title_card(self, title)

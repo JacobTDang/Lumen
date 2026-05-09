@@ -843,6 +843,13 @@ def create_app(testing: bool = False) -> Flask:
         if not isinstance(parsed, dict) or not parsed.get("scene"):
             return jsonify({"error": "parsed.scene is required"}), 400
 
+        try:
+            payload_size = len(json.dumps(parsed))
+        except (TypeError, ValueError):
+            return jsonify({"error": "parsed is not JSON-serializable"}), 400
+        if payload_size > 50_000:
+            return jsonify({"error": "payload too large (max 50 kB)"}), 413
+
         with _SHARES_LOCK:
             shares = _load_shares()
             code = _new_share_code(shares)
