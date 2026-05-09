@@ -5,7 +5,7 @@
 // build artifact even when unused. CDN load happens only when the user
 // opens a code editor and clicks Run for the first time.
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 const PYODIDE_VERSION = "0.27.0";
 const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
@@ -22,9 +22,13 @@ export function usePyodide() {
     loading: false,
     error: null,
   });
+  // Mirror state in a ref so `load` can read current values without being
+  // re-created on every state change (which would cascade into dependents).
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const load = useCallback(async () => {
-    if (state.pyodide || state.loading) return;
+    if (stateRef.current.pyodide || stateRef.current.loading) return;
     setState({ pyodide: null, loading: true, error: null });
 
     try {
@@ -51,7 +55,7 @@ export function usePyodide() {
         error: e instanceof Error ? e.message : "Pyodide load failed",
       });
     }
-  }, [state.pyodide, state.loading]);
+  }, []); // stable — reads state through stateRef, not closure
 
   return { ...state, load };
 }

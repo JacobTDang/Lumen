@@ -5,26 +5,15 @@
 // clicks Run, code executes via Pyodide in the browser tab. Output panel
 // shows stdout / stderr / any exception traceback.
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { motion } from "framer-motion";
 import { Loader2, Play, RotateCcw, Trash2 } from "lucide-react";
 import { runPython, RunResult } from "./lib/runPython";
+import { C, BODY } from "./theme";
 
-// Local copies of color/font constants from App.tsx — keeps this file
-// self-contained without import gymnastics.
-const C = {
-  bg: "#1a1a1a",
-  surface: "#252525",
-  text: "#e8e8e8",
-  textMuted: "#9ba3af",
-  textFaint: "#6b7280",
-  accent: "#2563eb",
-  borderAlt: "#2d2d2d",
-  success: "#10b981",
-  error: "#ef4444",
-};
-const BODY = "Inter, sans-serif";
+const SUCCESS = "#10b981";
+const ERROR_COL = "#ef4444";
 
 interface Props {
   starterCode: string;
@@ -44,6 +33,12 @@ export const CodeEditorPanel: React.FC<Props> = ({
   const [code, setCode] = useState(starterCode);
   const [result, setResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
+
+  // Sync editor when a new problem is rendered (starterCode prop changes).
+  useEffect(() => {
+    setCode(starterCode);
+    setResult(null);
+  }, [starterCode]);
 
   const handleRun = useCallback(async () => {
     if (!pyodide) {
@@ -208,9 +203,9 @@ export const CodeEditorPanel: React.FC<Props> = ({
           >
             <span>
               {result.error ? (
-                <span style={{ color: C.error }}>✗ Error</span>
+                <span style={{ color: ERROR_COL }}>✗ Error</span>
               ) : (
-                <span style={{ color: C.success }}>✓ Ran successfully</span>
+                <span style={{ color: SUCCESS }}>✓ Ran successfully</span>
               )}
             </span>
             <span>{result.durationMs}ms</span>
@@ -243,6 +238,7 @@ export const CodeEditorPanel: React.FC<Props> = ({
                 {result.error}
               </div>
             )}
+
             {!result.stdout && !result.stderr && !result.error && (
               <span style={{ color: C.textFaint }}>
                 (no output — your code ran but didn't print anything)

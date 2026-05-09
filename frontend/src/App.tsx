@@ -37,12 +37,9 @@ import {
   Code as CodeIcon,
   Loader2,
 } from "lucide-react";
-import { usePyodide } from "./usePyodide";
-import { CodeEditorPanel } from "./CodeEditorPanel";
-import { MathContent } from "./MathContent";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { C, SANS, BODY, EASE } from "./theme";
-import type { ParsedAlternative, ParsedLessonStep, ParsedProblem, AnimResult } from "./types";
+import type { ParsedProblem, AnimResult } from "./types";
 import {
   flaskBase,
   pollJob,
@@ -50,8 +47,6 @@ import {
   useLiveProgress,
   ocrFile,
   parseProblemV2,
-  parseFollowUp,
-  fetchLeetCodeProblem,
 } from "./lib/api";
 // katex CSS now imported inside MathContent.tsx so it loads on demand.
 
@@ -806,8 +801,6 @@ async function fetchTopics(): Promise<AnimatableTopic[]> {
   }
 }
 
-// pollJob, flaskBase, useLiveProgress, setLiveProgress, AnimResult — moved to lib/api.ts and types.ts.
-
 async function generateAnimation(
   topic: AnimatableTopic,
   extraContext?: string,
@@ -967,8 +960,6 @@ async function explainProblem(
 // if the call fails — typically because GEMINI_API_KEY isn't configured).
 // ─────────────────────────────────────────────────────────────
 
-// ocrFile moved to lib/api.ts.
-
 async function formatNoteFromText(rawText: string): Promise<{ title: string; html: string }> {
   const flaskUrl = flaskBase();
   try {
@@ -1036,9 +1027,6 @@ async function parseProblem(
 // Returns scene + params extracted from the problem prose, ready
 // to POST directly to /render (skipping the planner / topic match).
 // ─────────────────────────────────────────────────────────────
-
-// ParsedAlternative, ParsedLessonStep, ParsedProblem moved to types.ts.
-// parseProblemV2, parseFollowUp, fetchLeetCodeProblem moved to lib/api.ts.
 
 // ─────────────────────────────────────────────────────────────
 // localStorage persistence
@@ -1573,8 +1561,6 @@ const Sparkle: React.FC<{ className?: string; style?: React.CSSProperties }> = (
 // ─────────────────────────────────────────────────────────────
 // Design tokens — keep magic numbers in one place
 // ─────────────────────────────────────────────────────────────
-
-// C, SANS, BODY, EASE moved to theme.ts.
 
 // ─────────────────────────────────────────────────────────────
 // Sidebar — LayoutGroup gives the active row a sliding pill

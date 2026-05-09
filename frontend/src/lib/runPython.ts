@@ -17,11 +17,13 @@ export async function runPython(pyodide: any, code: string): Promise<RunResult> 
 
   // Pyodide stdout/stderr APIs accept a `batched` callback that fires per
   // line. Re-bind on every run to clear state from prior executions.
+  // `batched` already includes the newline from Python's print —
+  // don't add another or every line gets double-spaced.
   pyodide.setStdout({
-    batched: (s: string) => { stdout += s + "\n"; },
+    batched: (s: string) => { stdout += s; },
   });
   pyodide.setStderr({
-    batched: (s: string) => { stderr += s + "\n"; },
+    batched: (s: string) => { stderr += s; },
   });
 
   let error: string | null = null;
