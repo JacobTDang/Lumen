@@ -1175,6 +1175,22 @@ async function parseProblemV2(rawText: string): Promise<ParsedProblem> {
   return res.json();
 }
 
+// Fetch a LeetCode problem statement by URL via the backend's GraphQL proxy.
+// Lets the user paste a leetcode.com/problems/<slug>/ URL instead of copy-
+// pasting the prose.
+async function fetchLeetCodeProblem(url: string): Promise<{ title: string; rawText: string; sampleInput: string; difficulty: string }> {
+  const res = await fetch(`${flaskBase()}/api/fetch-leetcode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 // Conversational follow-up parser — sends the prior parsed result so the
 // model can apply the user's tweak ("now with [3,1,4]" / "show me with X
 // instead" / "explain step 3 slower") without re-pasting the whole problem.
@@ -4463,6 +4479,29 @@ const PasteProblemPage: React.FC = () => {
     }
   }, [state]);
 
+  // Detect a LeetCode problem URL pasted into the textarea so we can offer
+  // a 1-click "Fetch problem" button instead of forcing copy-paste of prose.
+  const leetcodeUrlMatch = text.trim().match(
+    /https?:\/\/(?:www\.)?leetcode\.com\/problems\/[a-z0-9-]+\/?/i,
+  );
+
+  const handleFetchUrl = useCallback(async () => {
+    if (!leetcodeUrlMatch) return;
+    setState({ kind: "ocr" });   // reuse the "fetching" spinner state
+    try {
+      const fetched = await fetchLeetCodeProblem(leetcodeUrlMatch[0]);
+      setText(fetched.rawText + (fetched.sampleInput ? `\n\nExample: ${fetched.sampleInput}` : ""));
+      setState({ kind: "idle" });
+    } catch (err) {
+      setState({
+        kind: "error",
+        message: err instanceof Error
+          ? `Couldn't fetch from LeetCode: ${err.message}`
+          : "Fetch failed",
+      });
+    }
+  }, [leetcodeUrlMatch]);
+
   // Image upload → OCR → fill textarea
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -4690,28 +4729,54 @@ const PasteProblemPage: React.FC = () => {
           <span style={{ fontSize: 11, color: C.textFaint }}>
             {text.length} / 4000 — Cmd/Ctrl+Enter to visualize
           </span>
-          <motion.button
-            onClick={handleVisualize}
-            disabled={isBusy || !text.trim()}
-            whileHover={isBusy || !text.trim() ? {} : { scale: 1.02 }}
-            whileTap={isBusy || !text.trim() ? {} : { scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="px-4 py-2 rounded-md flex items-center gap-2"
-            style={{
-              background: text.trim() && !isBusy ? C.accent : C.borderAlt,
-              color: "#ffffff",
-              fontFamily: BODY,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: isBusy || !text.trim() ? "not-allowed" : "pointer",
-              opacity: isBusy || !text.trim() ? 0.7 : 1,
-            }}
-          >
-            {isBusy && (
-              <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+          <div className="flex items-center gap-2">
+            {leetcodeUrlMatch && (
+              <motion.button
+                onClick={handleFetchUrl}
+                disabled={isBusy}
+                whileHover={isBusy ? {} : { scale: 1.02 }}
+                whileTap={isBusy ? {} : { scale: 0.97 }}
+                transition={{ duration: 0.15 }}
+                className="px-3 py-2 rounded-md flex items-center gap-1.5"
+                style={{
+                  background: "transparent",
+                  color: C.text,
+                  border: `1px solid ${C.borderAlt}`,
+                  fontFamily: BODY,
+                  fontSize: 12,
+                  cursor: isBusy ? "not-allowed" : "pointer",
+                  opacity: isBusy ? 0.5 : 1,
+                }}
+              >
+                {state.kind === "ocr"
+                  ? <Loader2 size={12} className="animate-spin" strokeWidth={2} />
+                  : <Search size={12} strokeWidth={2} />}
+                Fetch from LeetCode
+              </motion.button>
             )}
-            {buttonLabel}
-          </motion.button>
+            <motion.button
+              onClick={handleVisualize}
+              disabled={isBusy || !text.trim()}
+              whileHover={isBusy || !text.trim() ? {} : { scale: 1.02 }}
+              whileTap={isBusy || !text.trim() ? {} : { scale: 0.97 }}
+              transition={{ duration: 0.15 }}
+              className="px-4 py-2 rounded-md flex items-center gap-2"
+              style={{
+                background: text.trim() && !isBusy ? C.accent : C.borderAlt,
+                color: "#ffffff",
+                fontFamily: BODY,
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: isBusy || !text.trim() ? "not-allowed" : "pointer",
+                opacity: isBusy || !text.trim() ? 0.7 : 1,
+              }}
+            >
+              {isBusy && (
+                <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+              )}
+              {buttonLabel}
+            </motion.button>
+          </div>
         </div>
 
         {/* Error banner */}

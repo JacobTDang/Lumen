@@ -148,6 +148,53 @@ def test_parse_v2_value_error_returns_422(client, mocker):
     assert res.status_code == 422
 
 
+# ── POST /api/fetch-leetcode ──────────────────────────────────────────────────
+
+def test_fetch_leetcode_invalid_url_returns_400(client):
+    res = client.post("/api/fetch-leetcode", json={"url": "https://google.com"})
+    assert res.status_code == 400
+
+
+def test_fetch_leetcode_missing_url_returns_400(client):
+    res = client.post("/api/fetch-leetcode", json={})
+    assert res.status_code == 400
+
+
+def test_fetch_leetcode_success(client, mocker):
+    """Mock the requests.post call to LeetCode's GraphQL — verify the
+    endpoint extracts title + plain-text content from their HTML."""
+    mock_resp = mocker.Mock()
+    mock_resp.json.return_value = {
+        "data": {
+            "question": {
+                "title": "Two Sum",
+                "content": "<p>Given an array of integers <code>nums</code>, return indices of the two numbers such that they add up to <code>target</code>.</p>",
+                "sampleTestCase": "[2,7,11,15]\n9",
+                "difficulty": "Easy",
+            }
+        }
+    }
+    mocker.patch("requests.post", return_value=mock_resp)
+
+    res = client.post("/api/fetch-leetcode",
+                      json={"url": "https://leetcode.com/problems/two-sum/"})
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["title"] == "Two Sum"
+    assert "indices" in data["rawText"]
+    assert data["sampleInput"] == "[2,7,11,15]\n9"
+    assert data["difficulty"] == "Easy"
+
+
+def test_fetch_leetcode_unknown_slug_returns_404(client, mocker):
+    mock_resp = mocker.Mock()
+    mock_resp.json.return_value = {"data": {"question": None}}
+    mocker.patch("requests.post", return_value=mock_resp)
+    res = client.post("/api/fetch-leetcode",
+                      json={"url": "https://leetcode.com/problems/nonexistent-foo/"})
+    assert res.status_code == 404
+
+
 # ── POST /api/parse-followup ──────────────────────────────────────────────────
 
 def test_parse_followup_missing_followup_returns_400(client):

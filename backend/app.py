@@ -529,6 +529,67 @@ def create_app(testing: bool = False) -> Flask:
         payload["domain"] = domain
         return jsonify(payload)
 
+    @app.post("/api/fetch-leetcode")
+    def api_fetch_leetcode():
+        """Fetch a LeetCode problem statement by URL via their public GraphQL.
+        Frontend can paste a leetcode.com/problems/<slug>/ URL and skip the
+        copy-paste-the-prose dance.
+        """
+        import re as _re
+        import requests as _requests
+        from bs4 import BeautifulSoup as _BS
+
+        body = request.get_json(silent=True) or {}
+        url = (body.get("url") or "").strip()
+        m = _re.match(r"https?://(?:www\.)?leetcode\.com/problems/([a-z0-9-]+)/?",
+                      url, _re.IGNORECASE)
+        if not m:
+            return jsonify({"error": "not a LeetCode problem URL"}), 400
+        slug = m.group(1).lower()
+
+        gql = {
+            "query": """query questionData($titleSlug: String!) {
+                question(titleSlug: $titleSlug) {
+                    title
+                    content
+                    sampleTestCase
+                    difficulty
+                }
+            }""",
+            "variables": {"titleSlug": slug},
+            "operationName": "questionData",
+        }
+        try:
+            resp = _requests.post(
+                "https://leetcode.com/graphql",
+                json=gql,
+                headers={
+                    "Content-Type": "application/json",
+                    # LeetCode rejects requests with default Python user-agent
+                    "User-Agent": "Mozilla/5.0 (compatible; Lumen/1.0)",
+                    "Referer": f"https://leetcode.com/problems/{slug}/",
+                },
+                timeout=10,
+            )
+            data = resp.json().get("data", {}).get("question")
+            if not data:
+                return jsonify({"error": f"problem '{slug}' not found"}), 404
+            # `content` is HTML; strip tags to plain text the parser can chew
+            text = _BS(data["content"] or "", "html.parser").get_text("\n")
+            # Collapse runs of blank lines for readability
+            text = _re.sub(r"\n\n\n+", "\n\n", text).strip()
+            return jsonify({
+                "title":       data.get("title", slug),
+                "rawText":     text,
+                "sampleInput": data.get("sampleTestCase", ""),
+                "difficulty":  data.get("difficulty", ""),
+            })
+        except _requests.Timeout:
+            return jsonify({"error": "LeetCode timed out"}), 504
+        except Exception as exc:
+            app.logger.exception("fetch-leetcode failed")
+            return jsonify({"error": "fetch failed", "detail": str(exc)}), 502
+
     @app.post("/api/parse-followup")
     def api_parse_followup():
         """Conversational follow-up parsing. Frontend sends:
