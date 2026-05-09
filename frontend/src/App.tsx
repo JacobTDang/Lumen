@@ -39,6 +39,8 @@ import {
 } from "lucide-react";
 import { usePyodide } from "./usePyodide";
 import { CodeEditorPanel } from "./CodeEditorPanel";
+import { MathContent } from "./MathContent";
+import "katex/dist/katex.min.css";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -5079,13 +5081,12 @@ const PasteProblemPage: React.FC = () => {
                         key={i}
                         style={{
                           fontSize: 14,
-                          lineHeight: 1.6,
+                          lineHeight: 1.7,
                           color: C.text,
-                          marginBottom: 4,
-                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                          marginBottom: 6,
                         }}
                       >
-                        {step}
+                        <MathContent text={step} />
                       </li>
                     ))}
                   </ol>
@@ -5328,10 +5329,11 @@ const PasteProblemPage: React.FC = () => {
                 {/* Math: show steps for follow-up turn */}
                 {turn.parsed.domain === "math" && turn.parsed.steps && turn.parsed.steps.length > 0 && (
                   <ol className="mt-3 pl-5"
-                      style={{ fontSize: 13, color: C.text, lineHeight: 1.5,
-                               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                      style={{ fontSize: 13, color: C.text, lineHeight: 1.7 }}>
                     {turn.parsed.steps.map((s, j) => (
-                      <li key={j} style={{ marginBottom: 2 }}>{s}</li>
+                      <li key={j} style={{ marginBottom: 4 }}>
+                        <MathContent text={s} />
+                      </li>
                     ))}
                   </ol>
                 )}

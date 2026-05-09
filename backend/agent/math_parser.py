@@ -322,11 +322,17 @@ Required fields:
   - params:           object matching that scene's schema
   - explanation:      2-3 sentences explaining what the visualization shows
   - why_this_pattern: 1 sentence on why this scene best illustrates the problem
-  - steps:            list of 3-7 short algebraic breakdown steps. Each step is
-                      one short string showing one move (e.g. "Step 1: Apply
-                      power rule: x³/3"). Use plain text — Unicode math symbols
-                      (∫, π, ∞, ²) are fine but avoid raw LaTeX backslash
-                      sequences. Keep each step under 80 chars.
+  - steps:            list of 3-7 short algebraic breakdown steps. Each step
+                      is one short string showing one move. Use LaTeX inside
+                      $...$ for any math expression — the renderer uses KaTeX
+                      to display it beautifully. Examples:
+                        "Step 1: Set up $\\int_0^4 x^2 \\, dx$"
+                        "Step 2: Apply power rule: $\\frac{x^3}{3}$"
+                        "Step 3: Evaluate $\\frac{64}{3} - 0 \\approx 21.33$"
+                      Plain prose is fine for the connective text outside the
+                      $...$. Keep each step under 100 chars.
+                      If the problem doesn't involve math notation, plain
+                      text is also fine.
   - alternatives:     0-2 alternative scene/algorithm combinations that ALSO
                       illustrate this problem from a DIFFERENT ANGLE. For each:
                         - scene:  a different catalog key (not the primary)
