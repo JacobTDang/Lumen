@@ -4356,7 +4356,16 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
   const [followUps, setFollowUps] = useState<FollowUpTurn[]>([]);
   const [followUpInput, setFollowUpInput] = useState("");
   const [shareCode, setShareCode] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  // Generation counters: incremented at the start of each long-running async
+  // handler. The handler captures the gen value, then on resolution checks
+  // it's still current before writing state. Prevents stale responses from
+  // clobbering newer ones when the user re-triggers mid-flight.
+  const compareGen = useRef(0);
+  const quizGen = useRef(0);
+  const shareGen = useRef(0);
+  const consumedShareRef = useRef<ParsedProblem | null>(null);
   const pyodide = usePyodide();   // lazy-loads on first Run click
 
   // Video playback control: speed + replay + scrub-by-chapter for lessons
@@ -4429,7 +4438,16 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
     synth.speak(utter);
   }, [state, narrating]);
 
-  // Cancel narration on unmount
+  // Cancel narration on unmount AND whenever the visible problem changes,
+  // so a fresh paste/follow-up doesn't keep talking about the previous one.
+  const parsedRef = state.kind === "ready" || state.kind === "rendering"
+    ? state.parsed : null;
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setNarrating(false);
+  }, [parsedRef]);
   useEffect(() => {
     return () => {
       if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -4442,7 +4460,9 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
   // copy a https://.../r/<code> link to the user's clipboard.
   const handleShare = useCallback(async () => {
     if (state.kind !== "ready" || sharing) return;
+    const myGen = ++shareGen.current;
     setSharing(true);
+    setShareError(null);
     try {
       const res = await fetch(`${flaskBase()}/api/share`, {
         method: "POST",
@@ -4454,41 +4474,64 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
         throw new Error(err.detail || err.error || `share failed (${res.status})`);
       }
       const { shareCode: code } = await res.json();
+      if (myGen !== shareGen.current) return;
       setShareCode(code);
       const url = `${window.location.origin}/r/${code}`;
       try { await navigator.clipboard.writeText(url); } catch {}
     } catch (e) {
+      if (myGen !== shareGen.current) return;
       setShareCode(null);
-      console.warn("share failed:", e);
+      setShareError(e instanceof Error ? e.message : "Share failed");
     } finally {
-      setSharing(false);
+      if (myGen === shareGen.current) setSharing(false);
     }
   }, [state, sharing]);
 
   // Replay a share: take the parsed payload, re-render its scene, and skip
   // the parse step entirely. Triggered when App routes us here with
-  // initialShare set (i.e. the URL was /r/<code>).
+  // initialShare set (i.e. the URL was /r/<code>). consumedShareRef stops
+  // the effect from re-firing if the user navigates away and back, since
+  // App holds onto the prop for the session.
   useEffect(() => {
     if (!initialShare) return;
+    if (consumedShareRef.current === initialShare) return;
+    consumedShareRef.current = initialShare;
     let cancelled = false;
     (async () => {
       setState({ kind: "rendering", parsed: initialShare, progress: 0 });
       const flaskUrl = flaskBase();
+      const isLesson = !!(initialShare.lesson_steps
+                           && initialShare.lesson_steps.length >= 2);
       try {
-        const renderRes = await fetch(`${flaskUrl}/render`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            scene: initialShare.scene,
-            params: {
-              caption: initialShare.title,
-              ...initialShare.params,
-              ...(initialShare.pseudocode ? { pseudocode: initialShare.pseudocode } : {}),
-              ...(initialShare.step_lines && Object.keys(initialShare.step_lines).length
-                ? { step_lines: initialShare.step_lines } : {}),
-            },
-          }),
-        });
+        let renderRes: Response;
+        if (isLesson) {
+          renderRes = await fetch(`${flaskUrl}/api/render-lesson`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              steps: initialShare.lesson_steps!.map((s) => ({
+                scene: s.scene,
+                params: s.params,
+                caption: s.caption || "",
+              })),
+            }),
+          });
+        } else {
+          renderRes = await fetch(`${flaskUrl}/render`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              scene: initialShare.scene,
+              params: {
+                caption: initialShare.title,
+                ...initialShare.params,
+                ...(initialShare.pseudocode ? { pseudocode: initialShare.pseudocode } : {}),
+                ...(initialShare.step_lines && Object.keys(initialShare.step_lines).length
+                  ? { step_lines: initialShare.step_lines } : {}),
+              },
+            }),
+          });
+        }
         if (!renderRes.ok) {
           const detail = await renderRes.text().catch(() => "");
           if (!cancelled) {
@@ -4521,6 +4564,7 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
 
   const handleStartQuiz = useCallback(async () => {
     if (state.kind !== "ready") return;
+    const myGen = ++quizGen.current;
     setQuiz({ kind: "loading" });
     try {
       const res = await fetch(`${flaskBase()}/api/quiz`, {
@@ -4533,10 +4577,21 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
         throw new Error(err.detail || err.error || `quiz failed (${res.status})`);
       }
       const data = await res.json();
-      const questions: QuizQuestion[] = data.questions || [];
+      const raw: QuizQuestion[] = data.questions || [];
+      // Validate + sanitize: skip malformed entries, clamp `correct` index
+      const questions: QuizQuestion[] = raw
+        .filter(q => q && typeof q.q === "string"
+                       && Array.isArray(q.options) && q.options.length >= 2)
+        .map(q => ({
+          ...q,
+          correct: Math.max(0, Math.min(q.options.length - 1,
+                                         typeof q.correct === "number" ? q.correct : 0)),
+          why: typeof q.why === "string" ? q.why : "",
+        }));
       if (questions.length === 0) {
-        throw new Error("no questions returned");
+        throw new Error("no valid questions returned");
       }
+      if (myGen !== quizGen.current) return;
       setQuiz({
         kind: "ready",
         questions,
@@ -4544,6 +4599,7 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
         submitted: false,
       });
     } catch (e) {
+      if (myGen !== quizGen.current) return;
       setQuiz({
         kind: "error",
         message: e instanceof Error ? e.message : "quiz failed",
@@ -4553,6 +4609,7 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
 
   const handleCompare = useCallback(async (alt: ParsedAlternative) => {
     if (state.kind !== "ready") return;
+    const myGen = ++compareGen.current;
     setComparison({
       kind: "rendering",
       left: { parsed: state.parsed },
@@ -4588,6 +4645,7 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
                   state.parsed.title),
         renderOne(alt.scene, alt.params, alt.label),
       ]);
+      if (myGen !== compareGen.current) return;
       setComparison({
         kind: "ready",
         leftUrl, rightUrl,
@@ -4596,6 +4654,7 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
         rightLabel: alt.label,
       });
     } catch (e) {
+      if (myGen !== compareGen.current) return;
       setComparison({
         kind: "error",
         message: e instanceof Error ? e.message : "Comparison failed",
@@ -4826,6 +4885,8 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
     setFollowUps([]);  // fresh paste clears any prior follow-up thread
     setComparison(null);  // and any prior side-by-side comparison
     setQuiz(null);  // and any prior quiz
+    setShareCode(null);  // and any stale share link
+    setShareError(null);
 
     let parsed: ParsedProblem;
     try {
@@ -5475,6 +5536,16 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
                       }}
                     >
                       Link copied: /r/{shareCode}
+                    </span>
+                  )}
+                  {shareError && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "#fca5a5",
+                      }}
+                    >
+                      {shareError}
                     </span>
                   )}
                 </div>
