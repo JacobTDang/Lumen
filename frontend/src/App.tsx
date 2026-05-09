@@ -4327,6 +4327,32 @@ const PasteProblemPage: React.FC = () => {
   const [followUpInput, setFollowUpInput] = useState("");
   const pyodide = usePyodide();   // lazy-loads on first Run click
 
+  // Video playback control: speed + replay + scrub-by-chapter for lessons
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  const setSpeed = useCallback((rate: number) => {
+    setPlaybackRate(rate);
+    if (videoRef.current) videoRef.current.playbackRate = rate;
+  }, []);
+
+  const replayVideo = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play();
+    }
+  }, []);
+
+  const scrubToChapter = useCallback((idx: number, totalChapters: number) => {
+    if (!videoRef.current) return;
+    const dur = videoRef.current.duration;
+    if (!dur || !isFinite(dur)) return;
+    // Even-split estimate — backend currently doesn't expose per-chapter
+    // start times, so we assume scenes are roughly equal length
+    videoRef.current.currentTime = (dur / totalChapters) * idx;
+    videoRef.current.play();
+  }, []);
+
   const isBusy = state.kind === "ocr" || state.kind === "parsing" || state.kind === "rendering";
   const isFollowingUp = followUps.some(
     (t) => t.kind === "parsing" || t.kind === "rendering"
@@ -4846,6 +4872,7 @@ const PasteProblemPage: React.FC = () => {
                 {state.kind === "ready" ? (
                   <motion.video
                     key="video"
+                    ref={videoRef}
                     autoPlay
                     controls
                     loop
@@ -4854,6 +4881,9 @@ const PasteProblemPage: React.FC = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.3 }}
+                    onLoadedMetadata={() => {
+                      if (videoRef.current) videoRef.current.playbackRate = playbackRate;
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
@@ -4875,7 +4905,49 @@ const PasteProblemPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Lesson chapters — visible only for multi-scene lessons */}
+              {/* Playback controls — speed dial + replay button */}
+              {state.kind === "ready" && (
+                <div className="mb-4 flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    <span style={{ fontSize: 11, color: C.textFaint, marginRight: 4 }}>
+                      Speed:
+                    </span>
+                    {[0.5, 1, 1.5, 2].map((rate) => (
+                      <button
+                        key={rate}
+                        onClick={() => setSpeed(rate)}
+                        className="px-2 py-1 rounded"
+                        style={{
+                          fontSize: 11,
+                          color: playbackRate === rate ? "#fff" : C.textMuted,
+                          background: playbackRate === rate ? C.accent : "transparent",
+                          border: `1px solid ${playbackRate === rate ? C.accent : C.borderAlt}`,
+                          cursor: "pointer",
+                          fontWeight: playbackRate === rate ? 600 : 400,
+                        }}
+                      >
+                        {rate}×
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={replayVideo}
+                    className="px-2.5 py-1 rounded flex items-center gap-1"
+                    style={{
+                      fontSize: 11,
+                      color: C.textMuted,
+                      background: "transparent",
+                      border: `1px solid ${C.borderAlt}`,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ↺ Replay
+                  </button>
+                </div>
+              )}
+
+              {/* Lesson chapters — clickable to scrub the video, visible only
+                  for multi-scene lessons */}
               {state.parsed.lesson_steps && state.parsed.lesson_steps.length > 0 && (
                 <div className="mb-4">
                   <div
@@ -4888,26 +4960,36 @@ const PasteProblemPage: React.FC = () => {
                       marginBottom: 8,
                     }}
                   >
-                    Lesson chapters
+                    Lesson chapters (click to jump)
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {state.parsed.lesson_steps.map((s, i) => (
-                      <span
+                      <button
                         key={i}
-                        className="px-2.5 py-1 rounded text-left"
+                        onClick={() => scrubToChapter(i, state.parsed.lesson_steps!.length)}
+                        disabled={state.kind !== "ready"}
+                        className="px-2.5 py-1 rounded text-left transition-colors"
                         style={{
                           fontSize: 12,
                           color: C.text,
                           background: C.surface,
                           border: `1px solid ${C.borderAlt}`,
                           maxWidth: 280,
+                          cursor: state.kind === "ready" ? "pointer" : "default",
+                          opacity: state.kind === "ready" ? 1 : 0.7,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (state.kind === "ready") e.currentTarget.style.borderColor = C.accent;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = C.borderAlt;
                         }}
                       >
                         <span style={{ color: C.textFaint, marginRight: 6, fontWeight: 600 }}>
                           {i + 1}
                         </span>
                         {s.caption || s.scene}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 </div>
