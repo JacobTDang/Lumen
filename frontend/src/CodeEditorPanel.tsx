@@ -1,0 +1,256 @@
+// LeetCode-style code editor with browser-side Python execution.
+//
+// Sits below a rendered visualization on PasteProblemPage. Pre-filled with
+// the parser's pseudocode wrapped in a runnable function stub. User edits,
+// clicks Run, code executes via Pyodide in the browser tab. Output panel
+// shows stdout / stderr / any exception traceback.
+
+import React, { useState, useCallback } from "react";
+import Editor from "@monaco-editor/react";
+import { motion } from "framer-motion";
+import { Loader2, Play, RotateCcw, Trash2 } from "lucide-react";
+import { runPython, RunResult } from "./lib/runPython";
+
+// Local copies of color/font constants from App.tsx — keeps this file
+// self-contained without import gymnastics.
+const C = {
+  bg: "#1a1a1a",
+  surface: "#252525",
+  text: "#e8e8e8",
+  textMuted: "#9ba3af",
+  textFaint: "#6b7280",
+  accent: "#2563eb",
+  borderAlt: "#2d2d2d",
+  success: "#10b981",
+  error: "#ef4444",
+};
+const BODY = "Inter, sans-serif";
+
+interface Props {
+  starterCode: string;
+  pyodide: any | null;
+  pyodideLoading: boolean;
+  pyodideError: string | null;
+  onPyodideLoad: () => void;
+}
+
+export const CodeEditorPanel: React.FC<Props> = ({
+  starterCode,
+  pyodide,
+  pyodideLoading,
+  pyodideError,
+  onPyodideLoad,
+}) => {
+  const [code, setCode] = useState(starterCode);
+  const [result, setResult] = useState<RunResult | null>(null);
+  const [running, setRunning] = useState(false);
+
+  const handleRun = useCallback(async () => {
+    if (!pyodide) {
+      // First click triggers lazy load; user clicks Run again once ready
+      onPyodideLoad();
+      return;
+    }
+    setRunning(true);
+    const r = await runPython(pyodide, code);
+    setResult(r);
+    setRunning(false);
+  }, [pyodide, code, onPyodideLoad]);
+
+  const handleReset = useCallback(() => {
+    setCode(starterCode);
+    setResult(null);
+  }, [starterCode]);
+
+  const handleClear = useCallback(() => {
+    setCode("");
+    setResult(null);
+  }, []);
+
+  const buttonLabel =
+    pyodideLoading ? "Loading Python…" :
+    !pyodide ? "Load Python" :
+    running ? "Running…" :
+    "Run";
+
+  return (
+    <div className="mt-8">
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 500,
+          letterSpacing: "0.05em",
+          color: C.textFaint,
+          textTransform: "uppercase",
+          marginBottom: 8,
+        }}
+      >
+        Try it yourself
+      </div>
+
+      <div
+        className="rounded-md overflow-hidden"
+        style={{ border: `1px solid ${C.borderAlt}` }}
+      >
+        <Editor
+          height="280px"
+          language="python"
+          value={code}
+          onChange={(v) => setCode(v ?? "")}
+          theme="vs-dark"
+          options={{
+            fontSize: 13,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            lineNumbers: "on",
+            renderLineHighlight: "gutter",
+            tabSize: 4,
+            insertSpaces: true,
+          }}
+        />
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <motion.button
+          onClick={handleRun}
+          disabled={running || pyodideLoading}
+          whileHover={running || pyodideLoading ? {} : { scale: 1.02 }}
+          whileTap={running || pyodideLoading ? {} : { scale: 0.97 }}
+          transition={{ duration: 0.15 }}
+          className="px-4 py-2 rounded-md flex items-center gap-2"
+          style={{
+            background: running || pyodideLoading ? C.borderAlt : C.accent,
+            color: "#fff",
+            fontFamily: BODY,
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: running || pyodideLoading ? "not-allowed" : "pointer",
+            opacity: running || pyodideLoading ? 0.7 : 1,
+          }}
+        >
+          {(running || pyodideLoading) ? (
+            <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+          ) : (
+            <Play size={14} strokeWidth={2} />
+          )}
+          {buttonLabel}
+        </motion.button>
+
+        <button
+          onClick={handleReset}
+          disabled={running}
+          className="px-3 py-2 rounded-md flex items-center gap-1.5"
+          style={{
+            background: "transparent",
+            color: C.textMuted,
+            border: `1px solid ${C.borderAlt}`,
+            fontSize: 12,
+            cursor: running ? "not-allowed" : "pointer",
+            opacity: running ? 0.5 : 1,
+          }}
+        >
+          <RotateCcw size={12} strokeWidth={2} />
+          Reset to starter
+        </button>
+
+        <button
+          onClick={handleClear}
+          disabled={running}
+          className="px-3 py-2 rounded-md flex items-center gap-1.5"
+          style={{
+            background: "transparent",
+            color: C.textMuted,
+            border: `1px solid ${C.borderAlt}`,
+            fontSize: 12,
+            cursor: running ? "not-allowed" : "pointer",
+            opacity: running ? 0.5 : 1,
+          }}
+        >
+          <Trash2 size={12} strokeWidth={2} />
+          Clear
+        </button>
+      </div>
+
+      {pyodideError && (
+        <div
+          className="mt-3 p-3 rounded-md"
+          style={{
+            background: "rgba(239, 68, 68, 0.10)",
+            border: "1px solid rgba(239, 68, 68, 0.35)",
+            color: "#fca5a5",
+            fontSize: 12,
+          }}
+        >
+          <strong style={{ color: "#fecaca" }}>Python failed to load:</strong>{" "}
+          {pyodideError}. Check your internet connection and try again.
+        </div>
+      )}
+
+      {result && (
+        <div
+          className="mt-3 rounded-md overflow-hidden"
+          style={{
+            background: "#0d1117",
+            border: `1px solid ${C.borderAlt}`,
+          }}
+        >
+          <div
+            className="px-3 py-2"
+            style={{
+              borderBottom: `1px solid ${C.borderAlt}`,
+              fontSize: 11,
+              color: C.textFaint,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>
+              {result.error ? (
+                <span style={{ color: C.error }}>✗ Error</span>
+              ) : (
+                <span style={{ color: C.success }}>✓ Ran successfully</span>
+              )}
+            </span>
+            <span>{result.durationMs}ms</span>
+          </div>
+          <pre
+            className="p-3 m-0 overflow-auto"
+            style={{
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: 12,
+              color: C.text,
+              background: "transparent",
+              maxHeight: 200,
+            }}
+          >
+            {result.stdout && (
+              <div>
+                <span style={{ color: C.textFaint }}>stdout:</span>{"\n"}
+                {result.stdout}
+              </div>
+            )}
+            {result.stderr && (
+              <div style={{ color: "#fbbf24", marginTop: 6 }}>
+                <span style={{ color: C.textFaint }}>stderr:</span>{"\n"}
+                {result.stderr}
+              </div>
+            )}
+            {result.error && (
+              <div style={{ color: "#fca5a5", marginTop: 6 }}>
+                <span style={{ color: C.textFaint }}>traceback:</span>{"\n"}
+                {result.error}
+              </div>
+            )}
+            {!result.stdout && !result.stderr && !result.error && (
+              <span style={{ color: C.textFaint }}>
+                (no output — your code ran but didn't print anything)
+              </span>
+            )}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+};

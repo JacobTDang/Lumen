@@ -37,6 +37,8 @@ import {
   Code as CodeIcon,
   Loader2,
 } from "lucide-react";
+import { usePyodide } from "./usePyodide";
+import { CodeEditorPanel } from "./CodeEditorPanel";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -4188,6 +4190,81 @@ type FollowUpTurn =
   | { kind: "ready"; text: string; parsed: ParsedProblem; videoUrl: string }
   | { kind: "error"; text: string; message: string };
 
+// Build runnable Python starter code from a parsed problem. The user edits
+// this in the Monaco editor, hits Run, and Pyodide executes it in-browser.
+//
+// Math problems → expose the expression as f(x) so the user can evaluate
+// it at points and explore.
+// DSA problems → wrap the parser's bespoke pseudocode in a `solve` function
+// stub and call it with the literal example inputs from the parsed params.
+function buildStarterCode(parsed: ParsedProblem): string {
+  if (parsed.domain === "math") {
+    const expr = (parsed.params.expression as string | undefined) || "x";
+    // Translate sympy-style operators that Pyodide might not understand
+    // out-of-the-box. ** stays the same; exp() / log() / etc. need math.
+    const pythonized = expr
+      .replace(/\bexp\(/g, "math.exp(")
+      .replace(/\blog\(/g, "math.log(")
+      .replace(/\bsqrt\(/g, "math.sqrt(")
+      .replace(/\bsin\(/g, "math.sin(")
+      .replace(/\bcos\(/g, "math.cos(")
+      .replace(/\btan\(/g, "math.tan(")
+      .replace(/\bpi\b/g, "math.pi")
+      .replace(/\bE\b/g, "math.e");
+    return (
+      "# Try evaluating the expression at different points.\n" +
+      "import math\n\n" +
+      `def f(x):\n    return ${pythonized}\n\n` +
+      "# Evaluate at a few points\n" +
+      "for x in [0, 1, 2, 3]:\n" +
+      "    print(f\"f({x}) = {f(x)}\")\n"
+    );
+  }
+
+  // DSA path
+  const arr =
+    (parsed.params.array as any[] | undefined) ||
+    (parsed.params.values as any[] | undefined) ||
+    [];
+  const target = parsed.params.target;
+  const k = parsed.params.k;
+  const pseudo = parsed.pseudocode || "    pass";
+  // Indent every non-empty line of pseudocode by 4 spaces so it sits
+  // inside the function body
+  const indented = pseudo
+    .split("\n")
+    .map((l) => (l.trim() ? "    " + l : l))
+    .join("\n");
+
+  // Pick a function signature based on what the parser extracted
+  const argParts: string[] = [];
+  const callArgs: string[] = [];
+  if (arr.length > 0) {
+    argParts.push("nums");
+    callArgs.push(`nums=${JSON.stringify(arr)}`);
+  }
+  if (target !== undefined && target !== null) {
+    argParts.push("target");
+    callArgs.push(`target=${target}`);
+  }
+  if (k !== undefined && k !== null) {
+    argParts.push("k");
+    callArgs.push(`k=${k}`);
+  }
+  if (argParts.length === 0) {
+    argParts.push("nums");
+    callArgs.push("nums=[]");
+  }
+
+  return (
+    "# Edit this function — code runs in YOUR browser via Pyodide.\n" +
+    "# The starter is the parser's pseudocode; modify it to your solution.\n\n" +
+    `def solve(${argParts.join(", ")}):\n${indented}\n\n` +
+    `result = solve(${callArgs.join(", ")})\n` +
+    'print(f"result = {result}")\n'
+  );
+}
+
 const FOLLOWUP_CHIPS: { label: string; text: string }[] = [
   { label: "Try different inputs", text: "Show me with a different example input" },
   { label: "Slower step-by-step", text: "Walk me through this step by step, slower" },
@@ -4232,6 +4309,7 @@ const PasteProblemPage: React.FC = () => {
   const [state, setState] = useState<PasteState>({ kind: "idle" });
   const [followUps, setFollowUps] = useState<FollowUpTurn[]>([]);
   const [followUpInput, setFollowUpInput] = useState("");
+  const pyodide = usePyodide();   // lazy-loads on first Run click
 
   const isBusy = state.kind === "ocr" || state.kind === "parsing" || state.kind === "rendering";
   const isFollowingUp = followUps.some(
@@ -4923,6 +5001,19 @@ const PasteProblemPage: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Code editor with Pyodide (browser-side Python) — visible once a
+            render is ready so the starter code uses the parser's pseudocode
+            and extracted inputs. */}
+        {state.kind === "ready" && (
+          <CodeEditorPanel
+            starterCode={buildStarterCode(state.parsed)}
+            pyodide={pyodide.pyodide}
+            pyodideLoading={pyodide.loading}
+            pyodideError={pyodide.error}
+            onPyodideLoad={pyodide.load}
+          />
+        )}
 
         {/* Conversational follow-up: input bar + suggested chips, only
             visible after the initial render is ready or rendering. */}
