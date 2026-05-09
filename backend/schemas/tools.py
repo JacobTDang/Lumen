@@ -407,21 +407,46 @@ VISUAL_TOOLS: list[dict] = [
 VALID_TOOL_NAMES: frozenset[str] = frozenset(t["name"] for t in VISUAL_TOOLS)
 
 
+_TOOL_GROUPS = {
+    "## Element creation (what to put on screen)": [
+        "show_array", "show_hashmap", "show_stack", "show_grid",
+        "show_code", "show_text", "show_equation",
+    ],
+    "## Pointer tools": ["add_pointer", "move_pointer"],
+    "## Cell / value operations": [
+        "highlight_cells", "swap_cells", "set_cell_value",
+    ],
+    "## Collection operations": [
+        "push_stack", "pop_stack",
+        "set_hashmap_entry", "delete_hashmap_entry",
+        "highlight_code_line",
+    ],
+    "## Narrative / pacing (use these liberally)": [
+        "set_caption", "add_annotation", "emphasize",
+        "show_result", "pause", "fade_out_element",
+    ],
+}
+
+
 def tool_catalog_prompt() -> str:
-    """Return a compact human-readable catalog for embedding in LLM prompts."""
-    lines = []
-    for t in VISUAL_TOOLS:
-        params = t.get("parameters", {})
-        required = t.get("required", [])
-        sig_parts = []
-        for pname, pdef in params.items():
-            default = pdef.get("default")
-            if pname in required:
-                sig_parts.append(pname)
-            else:
-                sig_parts.append(f"{pname}={repr(default)}")
-        sig = f"{t['name']}({', '.join(sig_parts)})"
-        lines.append(f"  {sig}")
-        lines.append(f"    {t['description'].split('.')[0]}.")
+    """Grouped human-readable catalog for LLM system prompts."""
+    by_name = {t["name"]: t for t in VISUAL_TOOLS}
+    lines: list[str] = []
+    for heading, names in _TOOL_GROUPS.items():
+        lines.append(heading)
+        for name in names:
+            t = by_name.get(name)
+            if not t:
+                continue
+            params = t.get("parameters", {})
+            required = t.get("required", [])
+            sig_parts = []
+            for pname, pdef in params.items():
+                default = pdef.get("default")
+                sig_parts.append(pname if pname in required else f"{pname}={repr(default)}")
+            sig = f"  {name}({', '.join(sig_parts)})"
+            desc = t["description"].split(".")[0]
+            lines.append(sig)
+            lines.append(f"    → {desc}.")
         lines.append("")
     return "\n".join(lines)

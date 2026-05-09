@@ -9,15 +9,14 @@ existing rendering pipeline (no new infrastructure required).
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
-import re
 from typing import List
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, ValidationError
 
+from agent.llm_client import build_llm, call_model, extract_json
 from schemas.types import LessonPlan, StepPlan
 from schemas.tools import VISUAL_TOOLS, VALID_TOOL_NAMES, tool_catalog_prompt
 
@@ -44,75 +43,10 @@ class ToolCall(BaseModel):
     args: dict = {}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LLM client (same stack as planner.py / leetcode_parser.py)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _build_llm() -> ChatOpenAI:
-    base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    if os.environ.get("OPENROUTER_GPT_OSS_120_KEY"):
-        return ChatOpenAI(
-            base_url=base_or,
-            api_key=os.environ["OPENROUTER_GPT_OSS_120_KEY"],
-            model=os.environ.get("OPENROUTER_GPT_OSS_120_MODEL", "openai/gpt-oss-120b"),
-            temperature=0,
-            extra_body={"reasoning": {"effort": "low"}},
-        )
-    if os.environ.get("GROQ_API_KEY"):
-        return ChatOpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=os.environ["GROQ_API_KEY"],
-            model=os.environ.get("GROQ_PLANNER_MODEL", "llama-3.3-70b-versatile"),
-            temperature=0,
-        )
-    return ChatOpenAI(
-        base_url=base_or,
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        model=os.environ.get("OPENROUTER_MODEL",
-                             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
-        temperature=0,
-    )
-
-
+# _call_model, extract_json imported from agent.llm_client
+# Tests mock agent.lesson_director._call_model — keep this thin alias
 def _call_model(system: str, user: str) -> str:
-    """Single seam tests can mock to avoid real LLM calls."""
-    llm = _build_llm()
-    response = llm.invoke([
-        SystemMessage(content=system),
-        HumanMessage(content=user),
-    ])
-    return response.content or ""
-
-
-def _clean_raw(raw: str) -> str:
-    raw = re.sub(r"<\|channel\|>analysis<\|message\|>.*?(?=<\|channel\|>final<\|message\|>|$)",
-                 "", raw, flags=re.DOTALL)
-    raw = re.sub(r"<\|channel\|>final<\|message\|>", "", raw)
-    raw = re.sub(r"<\|end\|>", "", raw)
-    raw = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL)
-    raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
-    raw = re.sub(r"\s*```$", "", raw)
-    raw = re.sub(r",(\s*[}\]])", r"\1", raw)
-    return raw.strip()
-
-
-def _parse_json(raw: str):
-    cleaned = _clean_raw(raw)
-    if not cleaned:
-        raise ValueError("model returned empty response")
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        # Try to find the outermost JSON object or array
-        for start_char, end_char in [('{', '}'), ('[', ']')]:
-            s = cleaned.find(start_char)
-            e = cleaned.rfind(end_char)
-            if s != -1 and e > s:
-                try:
-                    return json.loads(cleaned[s:e + 1])
-                except json.JSONDecodeError:
-                    continue
-        raise ValueError(f"could not parse JSON from model response: {cleaned[:200]}")
+    return call_model(system, user)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -155,7 +89,7 @@ def narrative_plan(question: str, max_retries: int = 2) -> NarrativePlan:
     for _ in range(max_retries):
         try:
             raw = _call_model(_NARRATIVE_SYSTEM, f"Topic or question:\n{question.strip()}")
-            data = _parse_json(raw)
+            data = extract_json(raw)
             plan = NarrativePlan(**data)
             if not 2 <= len(plan.scenes) <= 4:
                 raise ValueError(f"expected 2-4 scenes, got {len(plan.scenes)}")
@@ -236,7 +170,7 @@ def build_scene(
     for _ in range(max_retries):
         try:
             raw = _call_model(system, user)
-            data = _parse_json(raw)
+            data = extract_json(raw)
             if not isinstance(data, list):
                 raise ValueError("expected JSON array of tool calls")
             tool_calls = []
@@ -263,49 +197,72 @@ def build_scene(
 # Orchestrator — direct_lesson
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _build_scene_safe(
+    question: str,
+    scene_plan: ScenePlan,
+    core_insight: str,
+    prev_context: str,
+    max_retries: int,
+) -> list[ToolCall]:
+    """Wrapper that returns a minimal fallback instead of raising."""
+    try:
+        return build_scene(
+            question=question,
+            scene_plan=scene_plan,
+            core_insight=core_insight,
+            previous_scene_context=prev_context,
+            max_retries=max_retries,
+        )
+    except ValueError as exc:
+        print(f"[lesson_director] build_scene failed for '{scene_plan.title}': {exc}")
+        return [
+            ToolCall(tool="set_caption", args={"text": scene_plan.objective}),
+            ToolCall(tool="show_text",
+                     args={"content": scene_plan.title, "position": "CENTER"}),
+            ToolCall(tool="pause", args={"beats": 2}),
+        ]
+
+
 def direct_lesson(question: str, max_retries: int = 2) -> LessonPlan:
     """
-    Full pipeline: narrative plan → build each scene → return LessonPlan.
+    Full pipeline: narrative plan → build each scene in parallel → LessonPlan.
 
-    The returned LessonPlan feeds directly into submit_lesson() without
-    any changes to the rendering infrastructure.
+    Phase 2 (build_scene) calls are independent once the narrative is fixed,
+    so they run concurrently via a thread pool — reducing latency from ~N×4s
+    to ~4s regardless of scene count (N = 2-4 scenes).
     """
     narrative = narrative_plan(question, max_retries=max_retries)
 
-    steps: list[StepPlan] = []
-    prev_context = ""
+    # Pass sequential context hints (each scene's objective) for continuity.
+    # Even though builds run in parallel, the context is the planned objective
+    # from the narrative, not the runtime output — good enough for coherence.
+    contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
 
-    for scene_plan in narrative.scenes:
-        try:
-            tool_calls = build_scene(
-                question=question,
-                scene_plan=scene_plan,
-                core_insight=narrative.core_insight,
-                previous_scene_context=prev_context,
-                max_retries=max_retries,
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [
+            pool.submit(
+                _build_scene_safe,
+                question,
+                scene_plan,
+                narrative.core_insight,
+                contexts[i],
+                max_retries,
             )
-        except ValueError as exc:
-            # Log and produce a minimal fallback scene rather than aborting the lesson
-            print(f"[lesson_director] build_scene failed for '{scene_plan.title}': {exc}")
-            tool_calls = [
-                ToolCall(tool="set_caption", args={"text": scene_plan.objective}),
-                ToolCall(tool="show_text",
-                         args={"content": scene_plan.title, "position": "CENTER"}),
-                ToolCall(tool="pause", args={"beats": 2}),
-            ]
+            for i, scene_plan in enumerate(narrative.scenes)
+        ]
+        tool_call_lists = [f.result() for f in futures]
 
-        steps.append(StepPlan(
+    steps = [
+        StepPlan(
             tool="dynamic_lesson_step",
             params={
-                "title": scene_plan.title,
-                "tool_calls": [
-                    {"tool": tc.tool, "args": tc.args}
-                    for tc in tool_calls
-                ],
+                "title": sp.title,
+                "tool_calls": [{"tool": tc.tool, "args": tc.args} for tc in tcs],
             },
-            caption=scene_plan.objective,
-        ))
-        prev_context = scene_plan.objective
+            caption=sp.objective,
+        )
+        for sp, tcs in zip(narrative.scenes, tool_call_lists)
+    ]
 
     return LessonPlan(
         concept=narrative.lesson_title,

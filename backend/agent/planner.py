@@ -181,30 +181,7 @@ _VALID_TOOLS = {
 }
 
 
-def _build_llm() -> ChatOpenAI:
-    # Priority: gpt-oss-120b (primary) → Groq llama → generic OpenRouter
-    base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    if os.environ.get("OPENROUTER_GPT_OSS_120_KEY"):
-        return ChatOpenAI(
-            base_url=base_or,
-            api_key=os.environ["OPENROUTER_GPT_OSS_120_KEY"],
-            model=os.environ.get("OPENROUTER_GPT_OSS_120_MODEL", "openai/gpt-oss-120b"),
-            temperature=0,
-            extra_body={"reasoning": {"effort": "low"}},
-        )
-    if os.environ.get("GROQ_API_KEY"):
-        return ChatOpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=os.environ["GROQ_API_KEY"],
-            model=os.environ.get("GROQ_PLANNER_MODEL", "llama-3.3-70b-versatile"),
-            temperature=0,
-        )
-    return ChatOpenAI(
-        base_url=base_or,
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        model=os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
-        temperature=0,
-    )
+from agent.llm_client import build_llm as _build_llm  # noqa: E402 — after load_dotenv
 
 
 def plan(question: str, max_retries: int = 3) -> LessonPlan:

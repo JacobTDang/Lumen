@@ -34,7 +34,13 @@ Write-Host ""
 Write-Host "  Press any key to stop both servers and close windows." -ForegroundColor Yellow
 Write-Host ""
 
-$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+try {
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+} catch {
+    # Non-interactive shell (e.g. CI). Wait for Ctrl+C instead.
+    Write-Host "  (Non-interactive shell — waiting indefinitely. Ctrl+C to stop.)" -ForegroundColor DarkGray
+    while ($true) { Start-Sleep 60 }
+}
 
 Write-Host "  Stopping servers..." -ForegroundColor Red
 

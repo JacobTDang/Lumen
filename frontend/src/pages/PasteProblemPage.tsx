@@ -266,7 +266,12 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
     if (parsed.steps && parsed.steps.length) {
       parsed.steps.forEach((s, i) => lines.push(`Step ${i + 1}. ${s}`));
     }
-    const text = lines.join(" ").replace(/\$([^$]+)\$/g, "$1").trim();
+    const text = lines.join(" ")
+      .replace(/\$([^$]+)\$/g, "$1")    // strip $...$ delimiters, keep inner text
+      .replace(/\\[a-zA-Z]+\s*/g, " ")  // strip LaTeX commands (\frac, \int, \sqrt…)
+      .replace(/[{}^_]/g, " ")           // strip LaTeX structural chars
+      .replace(/\s+/g, " ")
+      .trim();
     if (!text) return;
     synth.cancel();
     const utter = new SpeechSynthesisUtterance(text);

@@ -433,11 +433,11 @@ class DynamicScene(Scene):
         tool_calls = params.get("tool_calls", [])
 
         # Cap tool calls to keep render time inside the 180s worker budget.
-        # Each call averages ~0.4-0.8s, so 20 calls ≈ 8-16s of animation.
-        MAX_CALLS = 20
-        if len(tool_calls) > MAX_CALLS:
-            print(f"[DynamicScene] capping {len(tool_calls)} → {MAX_CALLS} tool calls")
-            tool_calls = tool_calls[:MAX_CALLS]
+        # Override via LUMEN_MAX_TOOL_CALLS env var for testing.
+        max_calls = int(os.environ.get("LUMEN_MAX_TOOL_CALLS", "20"))
+        if len(tool_calls) > max_calls:
+            print(f"[DynamicScene] capping {len(tool_calls)} → {max_calls} tool calls")
+            tool_calls = tool_calls[:max_calls]
 
         if title:
             show_title_card(self, title)

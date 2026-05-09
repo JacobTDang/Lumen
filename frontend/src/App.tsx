@@ -788,9 +788,7 @@ function arrayOverrideFor(
 // ─────────────────────────────────────────────────────────────
 
 async function fetchTopics(): Promise<AnimatableTopic[]> {
-  const flaskUrl =
-    (import.meta.env.VITE_FLASK_URL as string | undefined) ||
-    "http://localhost:5000";
+  const flaskUrl = flaskBase();
   try {
     const res = await fetch(`${flaskUrl}/topics`);
     if (!res.ok) throw new Error(`/topics ${res.status}`);
@@ -926,9 +924,7 @@ async function explainProblem(
   problem: string,
   topic: AnimatableTopic
 ): Promise<BreakdownSection[]> {
-  const flaskUrl =
-    (import.meta.env.VITE_FLASK_URL as string | undefined) ||
-    "http://localhost:5000";
+  const flaskUrl = flaskBase();
   try {
     const res = await fetch(`${flaskUrl}/breakdown`, {
       method: "POST",
@@ -1075,6 +1071,15 @@ function findMatchingTopic(text: string, topics: AnimatableTopic[]): AnimatableT
 // ─────────────────────────────────────────────────────────────
 
 type CachedAnim = { videoUrl?: string; error?: string; sections: BreakdownSection[] };
+// LRU helpers — evict oldest entry when Maps exceed their cap.
+function lruSet<K, V>(map: Map<K, V>, key: K, value: V, maxSize: number) {
+  map.delete(key); // re-insert to bump to "most recent"
+  map.set(key, value);
+  if (map.size > maxSize) {
+    map.delete(map.keys().next().value as K);
+  }
+}
+
 const animCache = new Map<string, CachedAnim>();
 const cacheKey = (topicId: string, context: string) =>
   `${topicId}::${context.slice(0, 200).trim().toLowerCase()}`;
@@ -1513,7 +1518,7 @@ function decorateTopicHints(root: HTMLElement, topics: AnimatableTopic[]): void 
     // Collect expression matches
     for (const e of findExpressionMatches(text)) {
       const key = exprKey(e.hit);
-      exprHitCache.set(key, e.hit);
+      lruSet(exprHitCache, key, e.hit, 150);
       matches.push({ idx: e.idx, len: e.len, kind: "expr", key });
     }
 
@@ -2344,7 +2349,7 @@ const NoteEditor: React.FC<{
       error:    animResult.status === "error" ? animResult.error : undefined,
       sections,
     };
-    animCache.set(key, result);
+    lruSet(animCache, key, result, 50);
     setAnimating({
       topic,
       context: ctx,
@@ -3131,7 +3136,7 @@ const AnimationsPage: React.FC<{ topics: AnimatableTopic[] }> = ({ topics }) => 
       const videoUrl = res.status === "ready" ? res.videoUrl : undefined;
       const error    = res.status === "error" ? res.error    : undefined;
       // Only cache successes — let failures retry on the next click.
-      if (videoUrl) animCache.set(key, { videoUrl, sections: [] });
+      if (videoUrl) lruSet(animCache, key, { videoUrl, sections: [] }, 50);
       setPreview({ loading: false, videoUrl, error });
     });
     return () => { cancelled = true; };
@@ -4106,7 +4111,7 @@ export default function App() {
       <Sidebar route={route} onRoute={setRoute} onNewNote={() => createNote()} />
 
       <main className="flex-1 overflow-hidden">
-        <ErrorBoundary>
+        <ErrorBoundary key={route}>
         <AnimatePresence mode="wait">
           <motion.div
             key={route}

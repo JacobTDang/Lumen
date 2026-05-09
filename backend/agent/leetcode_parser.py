@@ -23,13 +23,12 @@ Output shape:
 """
 import json
 import os
-import re
 from typing import List, Type
 
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ValidationError
+
+from agent.llm_client import call_model as _llm_call, extract_json as _extract_json_lib
 
 from schemas.types import (
     BinarySearchAnswerSchema,
@@ -444,68 +443,13 @@ omit kinds (line highlighting will silently no-op for missing kinds).
 """
 
 
-def _build_llm() -> ChatOpenAI:
-    """Same model stack as dsa_planner.py: gpt-oss-120b → Groq llama → generic OpenRouter."""
-    base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    if os.environ.get("OPENROUTER_GPT_OSS_120_KEY"):
-        return ChatOpenAI(
-            base_url=base_or,
-            api_key=os.environ["OPENROUTER_GPT_OSS_120_KEY"],
-            model=os.environ.get("OPENROUTER_GPT_OSS_120_MODEL", "openai/gpt-oss-120b"),
-            temperature=0,
-            extra_body={"reasoning": {"effort": "low"}},
-        )
-    if os.environ.get("GROQ_API_KEY"):
-        return ChatOpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=os.environ["GROQ_API_KEY"],
-            model=os.environ.get("GROQ_PLANNER_MODEL", "llama-3.3-70b-versatile"),
-            temperature=0,
-        )
-    return ChatOpenAI(
-        base_url=base_or,
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        model=os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
-        temperature=0,
-    )
-
-
+# Tests mock agent.leetcode_parser._call_model — keep this thin alias
 def _call_model(system: str, user: str) -> str:
-    """Single seam tests can mock to stand in for the LLM call."""
-    llm = _build_llm()
-    response = llm.invoke([
-        SystemMessage(content=system),
-        HumanMessage(content=user),
-    ])
-    return response.content or ""
-
-
-def _clean_raw(raw: str) -> str:
-    """Strip reasoning-model artifacts and markdown fences."""
-    raw = re.sub(r"<\|channel\|>analysis<\|message\|>.*?(?=<\|channel\|>final<\|message\|>|$)",
-                 "", raw, flags=re.DOTALL)
-    raw = re.sub(r"<\|channel\|>final<\|message\|>", "", raw)
-    raw = re.sub(r"<\|end\|>", "", raw)
-    raw = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL)
-    raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
-    raw = re.sub(r"\s*```$", "", raw)
-    raw = re.sub(r",(\s*[}\]])", r"\1", raw)  # trailing commas
-    return raw.strip()
+    return _llm_call(system, user)
 
 
 def _extract_json(raw: str) -> dict:
-    """Parse JSON; on failure, fall back to the first balanced {...} block."""
-    cleaned = _clean_raw(raw)
-    if not cleaned:
-        raise ValueError("model returned empty response")
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        start = cleaned.find("{")
-        end   = cleaned.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise
-        return json.loads(cleaned[start:end + 1])
+    return _extract_json_lib(raw)
 
 
 def _validate(data: dict) -> ParsedLeetCode:

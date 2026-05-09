@@ -285,8 +285,10 @@ def _load_shares() -> dict:
 
 
 def _save_shares(shares: dict) -> None:
-    with open(_SHARES_PATH, "w", encoding="utf-8") as fh:
+    tmp = _SHARES_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(shares, fh)
+    os.replace(tmp, _SHARES_PATH)  # atomic on both POSIX and Windows
 
 
 def _new_share_code(existing: dict) -> str:

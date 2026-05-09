@@ -303,3 +303,50 @@ def test_dynamic_scene_renders(tmp_path):
         f"Manim output:\n{result.stderr[-1000:]}"
     )
     assert mp4_files[0].stat().st_size > 1000, "MP4 is suspiciously small"
+
+
+def _run_dynamic_scene(tmp_path, job_id: str, params: dict):
+    """Helper: write params JSON, invoke Manim, return subprocess result."""
+    import json, subprocess
+    params_path = tmp_path / f"{job_id}.json"
+    params_path.write_text(json.dumps(params))
+    backend_dir = os.path.dirname(os.path.dirname(__file__))
+    media_dir = str(tmp_path / "media")
+    os.makedirs(media_dir, exist_ok=True)
+    env = {**os.environ, "MANIM_JOB_ID": job_id, "MANIM_TEMP_DIR": str(tmp_path)}
+    return subprocess.run(
+        [sys.executable, "-m", "manim", "-ql",
+         "--media_dir", media_dir, "--disable_caching",
+         os.path.join(backend_dir, "scenes", "tool_executor.py"), "DynamicScene"],
+        capture_output=True, text=True, cwd=backend_dir, env=env, timeout=120,
+    )
+
+
+@pytest.mark.integration
+def test_dynamic_scene_hashmap_and_stack_render(tmp_path):
+    """Regression test for bugs A+B: show_hashmap and show_stack must render
+    without crashing (both had silent errors before the fix)."""
+    params = {
+        "title": "Hashmap + Stack smoke test",
+        "tool_calls": [
+            {"tool": "show_array",
+             "args": {"values": ["3", "1", "4", "1", "5"], "label": "nums", "element_id": "arr"}},
+            {"tool": "show_hashmap",
+             "args": {"title": "seen", "anchor": "UR", "element_id": "map"}},
+            {"tool": "show_stack",
+             "args": {"title": "mono_stack", "anchor": "DR", "element_id": "stk"}},
+            {"tool": "set_caption", "args": {"text": "Building frequency map and monotonic stack"}},
+            {"tool": "set_hashmap_entry", "args": {"element_id": "map", "key": "3", "value": "1"}},
+            {"tool": "push_stack", "args": {"element_id": "stk", "value": "3", "color": "YELLOW"}},
+            {"tool": "push_stack", "args": {"element_id": "stk", "value": "1", "color": "GREEN"}},
+            {"tool": "pop_stack", "args": {"element_id": "stk"}},
+            {"tool": "emphasize", "args": {"element_id": "map"}},
+            {"tool": "show_result", "args": {"value": "OK", "label": "test"}},
+        ],
+    }
+    result = _run_dynamic_scene(tmp_path, "test_hashmap_stack_001", params)
+    assert result.returncode == 0, (
+        f"Hashmap+Stack render failed:\n{result.stdout}\n{result.stderr}"
+    )
+    mp4_files = list(tmp_path.rglob("DynamicScene.mp4"))
+    assert mp4_files and mp4_files[0].stat().st_size > 1000

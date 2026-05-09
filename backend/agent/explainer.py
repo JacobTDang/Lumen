@@ -9,8 +9,8 @@ import os
 import re
 
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+
+from agent.llm_client import build_fast_llm
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
@@ -35,23 +35,6 @@ Each "body" should be 1-4 sentences. Use plain prose; no markdown, no LaTeX.
 Return ONLY the JSON array, no extra text, no markdown fences, no commentary."""
 
 
-def _build_llm() -> ChatOpenAI:
-    base_or = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    if os.environ.get("GROQ_API_KEY"):
-        return ChatOpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=os.environ["GROQ_API_KEY"],
-            model=os.environ.get("GROQ_PLANNER_MODEL", "llama-3.3-70b-versatile"),
-            temperature=0.3,
-            max_tokens=1024,
-        )
-    return ChatOpenAI(
-        base_url=base_or,
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        model=os.environ.get("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"),
-        temperature=0.3,
-        max_tokens=1024,
-    )
 
 
 _REQUIRED_LABELS = ("Formula", "Example", "Answer")
@@ -87,7 +70,7 @@ def explain_problem(problem: str, topic_name: str, topic_description: str) -> li
     given topic/problem. Falls back to topic-only placeholders if the LLM is
     unreachable or returns malformed output."""
     try:
-        llm = _build_llm()
+        llm = build_fast_llm()
         user_msg = (
             f"Topic: {topic_name}\n"
             f"Description: {topic_description}\n"
