@@ -4396,6 +4396,48 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
     };
   }, [comparison]);
 
+  // Voice narration via the browser's built-in SpeechSynthesis. Reads
+  // title + explanation + each step (math) or pseudocode summary (DSA).
+  // No backend dep, no API key — works fully offline.
+  const [narrating, setNarrating] = useState(false);
+  const handleToggleNarrate = useCallback(() => {
+    if (state.kind !== "ready") return;
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    if (narrating) {
+      synth.cancel();
+      setNarrating(false);
+      return;
+    }
+    const parsed = state.parsed;
+    const lines: string[] = [];
+    if (parsed.title) lines.push(parsed.title + ".");
+    if (parsed.why_this_pattern) lines.push(parsed.why_this_pattern);
+    if (parsed.explanation) lines.push(parsed.explanation);
+    if (parsed.steps && parsed.steps.length) {
+      parsed.steps.forEach((s, i) => lines.push(`Step ${i + 1}. ${s}`));
+    }
+    const text = lines.join(" ").replace(/\$([^$]+)\$/g, "$1").trim();
+    if (!text) return;
+    synth.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1.0;
+    utter.pitch = 1.0;
+    utter.onend = () => setNarrating(false);
+    utter.onerror = () => setNarrating(false);
+    setNarrating(true);
+    synth.speak(utter);
+  }, [state, narrating]);
+
+  // Cancel narration on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   // Generate a shareable short code for the current parsed problem and
   // copy a https://.../r/<code> link to the user's clipboard.
   const handleShare = useCallback(async () => {
@@ -5410,6 +5452,19 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({ initialShare }) => 
                     }}
                   >
                     {sharing ? "Generating link…" : "🔗 Share"}
+                  </button>
+                  <button
+                    onClick={handleToggleNarrate}
+                    className="px-3 py-1.5 rounded text-xs"
+                    style={{
+                      fontSize: 12,
+                      color: narrating ? C.accent : C.text,
+                      background: "transparent",
+                      border: `1px solid ${narrating ? C.accent : C.borderAlt}`,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {narrating ? "⏹ Stop narration" : "🔊 Narrate"}
                   </button>
                   {shareCode && (
                     <span
