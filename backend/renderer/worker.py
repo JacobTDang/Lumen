@@ -273,7 +273,8 @@ def cleanup_old_lessons(max_count: int = 200, min_age_seconds: int = 120) -> int
 
 def submit_render(scene_type: str, params: dict) -> str:
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "url": None, "error": None, "progress": 0.0}
+    _jobs[job_id] = {"status": "pending", "url": None, "error": None,
+                     "progress": 0.0, "stage": "queued"}
     threading.Thread(
         target=_run_render, args=(job_id, scene_type, params), daemon=True,
     ).start()
@@ -328,8 +329,14 @@ def _stream_progress(stderr, job_id: str, on_done: list):
 
 def _run_render(job_id: str, scene_type: str, params: dict):
     if scene_type not in SCENE_REGISTRY:
-        _jobs[job_id] = {"status": "error", "url": None, "error": f"unknown scene type: {scene_type}", "progress": 0.0}
+        _jobs[job_id] = {"status": "error", "url": None,
+                         "error": f"unknown scene type: {scene_type}",
+                         "progress": 0.0, "stage": "error"}
         return
+
+    # Mark this single-scene job as actively rendering.
+    if job_id in _jobs:
+        _jobs[job_id]["stage"] = "rendering"
 
     os.makedirs(_TEMP_DIR, exist_ok=True)
     params_path = os.path.join(_TEMP_DIR, f"{job_id}.json")
@@ -371,7 +378,10 @@ def _run_render(job_id: str, scene_type: str, params: dict):
             proc.wait(timeout=180)
         except subprocess.TimeoutExpired:
             proc.kill()
-            _jobs[job_id] = {"status": "error", "url": None, "error": "render timed out after 180s", "progress": _jobs[job_id].get("progress", 0.0)}
+            _jobs[job_id] = {"status": "error", "url": None,
+                             "error": "render timed out after 180s",
+                             "progress": _jobs[job_id].get("progress", 0.0),
+                             "stage": "error"}
             return
 
         # Drain remaining stderr
@@ -379,7 +389,10 @@ def _run_render(job_id: str, scene_type: str, params: dict):
         err_tail = err_capture[0] if err_capture else ""
 
         if proc.returncode != 0:
-            _jobs[job_id] = {"status": "error", "url": None, "error": err_tail[-500:] or f"exit {proc.returncode}", "progress": _jobs[job_id].get("progress", 0.0)}
+            _jobs[job_id] = {"status": "error", "url": None,
+                             "error": err_tail[-500:] or f"exit {proc.returncode}",
+                             "progress": _jobs[job_id].get("progress", 0.0),
+                             "stage": "error"}
             return
 
         scene_stem = os.path.splitext(os.path.basename(scene_file))[0]
@@ -387,16 +400,22 @@ def _run_render(job_id: str, scene_type: str, params: dict):
         full_path  = os.path.join(_MEDIA_DIR, video_rel)
 
         if not os.path.exists(full_path):
-            _jobs[job_id] = {"status": "error", "url": None, "error": "output file not found after render", "progress": _jobs[job_id].get("progress", 0.0)}
+            _jobs[job_id] = {"status": "error", "url": None,
+                             "error": "output file not found after render",
+                             "progress": _jobs[job_id].get("progress", 0.0),
+                             "stage": "error"}
             return
 
-        _jobs[job_id] = {"status": "done", "url": f"/media/{video_rel}", "error": None, "progress": 1.0}
+        _jobs[job_id] = {"status": "done", "url": f"/media/{video_rel}",
+                         "error": None, "progress": 1.0, "stage": "done"}
 
     except Exception as e:
         if proc is not None:
             try: proc.kill()
             except Exception: pass
-        _jobs[job_id] = {"status": "error", "url": None, "error": str(e), "progress": _jobs[job_id].get("progress", 0.0)}
+        _jobs[job_id] = {"status": "error", "url": None, "error": str(e),
+                         "progress": _jobs[job_id].get("progress", 0.0),
+                         "stage": "error"}
     finally:
         if os.path.exists(params_path):
             os.remove(params_path)
@@ -408,7 +427,8 @@ def _run_render(job_id: str, scene_type: str, params: dict):
 
 def submit_lesson(steps: list) -> str:
     lesson_id = str(uuid.uuid4())
-    _jobs[lesson_id] = {"status": "pending", "url": None, "error": None, "progress": 0.0}
+    _jobs[lesson_id] = {"status": "pending", "url": None, "error": None,
+                        "progress": 0.0, "stage": "queued"}
     threading.Thread(
         target=_run_lesson, args=(lesson_id, steps), daemon=True,
     ).start()
@@ -417,17 +437,29 @@ def submit_lesson(steps: list) -> str:
 
 def _aggregate_progress(lesson_id: str, step_job_ids: list, stop_event: threading.Event):
     """Background ticker that averages step progress into the lesson job's
-    progress field while the lesson is still rendering."""
+    progress field while the lesson is still rendering.
+
+    Also updates the lesson's stage to ``rendering_X_of_N`` based on how many
+    step jobs have completed so the frontend can show meaningful progress.
+    """
+    n = len(step_job_ids)
     while not stop_event.is_set():
         try:
             progresses = [
                 _jobs.get(sid, {}).get("progress", 0.0) for sid in step_job_ids
             ]
+            done_count = sum(
+                1 for sid in step_job_ids
+                if _jobs.get(sid, {}).get("status") == "done"
+            )
+            # "Currently rendering" is the (done_count+1)th, clamped to N.
+            current_idx = min(done_count + 1, n)
             if progresses:
                 avg = sum(progresses) / len(progresses)
                 cur = _jobs.get(lesson_id, {})
                 if cur.get("status") == "pending":
                     cur["progress"] = min(0.95, avg)
+                    cur["stage"] = f"rendering_{current_idx}_of_{n}"
         except Exception:
             pass
         stop_event.wait(0.25)
@@ -459,14 +491,16 @@ def _run_lesson(lesson_id: str, steps: list):
     cache_key   = _lesson_cache_key(steps)
     cached_url  = _cache_lookup(cache_key)
     if cached_url is not None:
-        _jobs[lesson_id] = {"status": "done", "url": cached_url, "error": None, "progress": 1.0}
+        _jobs[lesson_id] = {"status": "done", "url": cached_url, "error": None,
+                            "progress": 1.0, "stage": "done"}
         return
 
     # Pre-allocate step job IDs so the progress aggregator can track them
     # before each step actually starts running.
     step_job_ids = [str(uuid.uuid4()) for _ in steps]
     for sid in step_job_ids:
-        _jobs[sid] = {"status": "pending", "url": None, "error": None, "progress": 0.0}
+        _jobs[sid] = {"status": "pending", "url": None, "error": None,
+                      "progress": 0.0, "stage": "queued"}
 
     progress_stop = threading.Event()
     progress_thread = threading.Thread(
@@ -496,6 +530,7 @@ def _run_lesson(lesson_id: str, steps: list):
                 "status": "error", "url": None,
                 "error": f"Step failed: {_jobs[jid]['error']}",
                 "progress": _jobs[lesson_id].get("progress", 0.0),
+                "stage": "error",
             }
             return
 
@@ -512,10 +547,14 @@ def _run_lesson(lesson_id: str, steps: list):
         except OSError:
             # Fall back to the original URL if copy fails — caching skipped.
             final_url = src_url
-        _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None, "progress": 1.0}
+        _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None,
+                            "progress": 1.0, "stage": "done"}
         if final_url.startswith("/media/lessons/"):
             _cache_store(cache_key, final_url)
         return
+
+    # Multi-step: announce stitching stage before invoking ffmpeg
+    _jobs[lesson_id]["stage"] = "stitching"
 
     # Collect video paths in submission order then stitch
     video_paths = [
@@ -528,9 +567,13 @@ def _run_lesson(lesson_id: str, steps: list):
     try:
         stitch_videos(video_paths, output_path)
     except Exception as e:
-        _jobs[lesson_id] = {"status": "error", "url": None, "error": f"stitch failed: {e}", "progress": _jobs[lesson_id].get("progress", 0.95)}
+        _jobs[lesson_id] = {"status": "error", "url": None,
+                            "error": f"stitch failed: {e}",
+                            "progress": _jobs[lesson_id].get("progress", 0.95),
+                            "stage": "error"}
         return
 
     final_url = f"/media/lessons/{lesson_id}.mp4"
-    _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None}
+    _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None,
+                        "progress": 1.0, "stage": "done"}
     _cache_store(cache_key, final_url)
