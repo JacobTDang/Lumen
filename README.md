@@ -1,114 +1,160 @@
-# Annie
+# Lumen
 
-Editorial note-taking web app with Manim-style animations. Highlight a concept in your notes and watch it animate.
+AI-powered math + DSA visualization tool. Paste a problem, get an animated walkthrough.
+
+Highlight any concept in your notes → click **Analyze** → the agent picks a visualization, plans a multi-scene lesson, and renders it as a Manim animation. Run the algorithm yourself in a browser-side Python editor. Save lessons to your library for offline replay.
 
 ## Quick start
 
+Windows: double-click `start.bat` (launches backend + frontend in separate windows, press any key to stop both).
+
+Manual:
 ```bash
-npm install
-npm run dev
+# Backend (Python 3.11)
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
+cd backend && python app.py            # serves on :5000
+
+# Frontend (Node 18+)
+cd frontend && npm install && npm run dev   # serves on :5173
 ```
 
 Open http://localhost:5173.
 
 ## Stack
 
-- React 18 + TypeScript
-- Vite
-- Tailwind CSS
-- framer-motion (animations)
-- lucide-react (icons)
-- Cormorant Garamond + Inter (fonts, loaded from Google Fonts in `index.html`)
+**Backend:** Python 3.11, Flask, Manim (Community 0.20), LangChain + OpenRouter, Google Gemini (vision/OCR), ffmpeg (scene stitching)
 
-## What works out of the box
+**Frontend:** React 18, TypeScript, Vite, Tailwind, framer-motion, Monaco editor, Pyodide (browser Python), KaTeX, IndexedDB
 
-Everything renders and is interactive. All backend calls are mocked so you can demo the full UX without a server. Notes persist to `localStorage`.
+**LLM stack:** `openai/gpt-oss-120b` (OpenRouter, reasoning) → `llama-3.3-70b` (Groq) → free fallback
 
-- **Home** — placeholder page (per the brief)
-- **Notes** — rich-text editor with bold, italic, highlight, side notes, and "highlight to animate"
-- **Animations** — gallery of supported topics (calc, arithmetic, DSA, physics, linalg)
-- **Import notes** — upload a PDF/photo → mock OCR → mock Gemini Flash structures it into a titled note
-- **Import problem** — upload a textbook problem → mock OCR → mock Gemini Flash identifies the topic → animation + breakdown
+## Features
 
-## What's mocked (and where to swap in real calls)
-
-All mocks live at the top of `src/App.tsx`, prefixed `MOCK_`:
-
-| Mock function | Replace with |
+| Feature | What it does |
 |---|---|
-| `MOCK_fetchTopics` | `GET ${VITE_FLASK_URL}/api/topics` |
-| `MOCK_generateAnimation` | `POST ${VITE_FLASK_URL}/api/animate` |
-| `MOCK_ocrFile` | `POST ${VITE_BACKEND_URL}/api/ocr` (multipart) |
-| `MOCK_formatNoteFromText` | `POST ${VITE_BACKEND_URL}/api/format-note` |
-| `MOCK_parseProblem` | `POST ${VITE_BACKEND_URL}/api/parse-problem` |
-| `MOCK_explainProblem` | `POST ${VITE_BACKEND_URL}/api/breakdown` |
+| **Highlight-to-analyze** | Select any text in a note → "Analyze" → full visualization in a side panel |
+| **Lesson Director agent** | Two-phase agent: plans narrative arc → composes scenes from 24 visual tools |
+| **Stage timeline** | Live progress (`planning_narrative → building_scenes → rendering_X_of_N → stitching → done`) |
+| **Multi-scene lessons** | Parallel render of 2–4 scenes, stitched with ffmpeg, content-addressable cache |
+| **In-browser Python editor** | Monaco + Pyodide — run your own solution against the same inputs the agent used |
+| **Library** | Save renders to IndexedDB + pin on backend; survives both cleanup and offline use |
+| **Quiz mode** | Gemini-generated comprehension questions after each render |
+| **Voice narration** | Offline browser SpeechSynthesis reads the explanation aloud |
+| **Side-by-side comparison** | Render the primary + alternative approach concurrently with synced playback |
+| **Shareable links** | Save a render under a short code; `/r/<code>` deep-links into the analysis panel |
 
-## Gemini model policy
+## API surface
 
-| Tier | Model | Use case |
-|---|---|---|
-| Primary | `gemini-3-flash` | All Flash calls (OCR, formatting, problem parsing, breakdown) |
-| Fallback | `gemini-2.5-flash` | Retry on 429 / quota errors |
-| **Do not use** | `gemini-2.0-flash` | **Shutting down June 1, 2026** |
+Frontend polls `/status/<job_id>` and reads `{status, url, error, progress, stage}` on every tick.
 
-The fallback chain belongs in your Express backend, not the frontend. The frontend just hits `/api/<endpoint>` and trusts the response.
+```
+POST /ask                      → classify + plan + render (hardcoded scene path)
+POST /api/direct-lesson        → Lesson Director agent (tool-composed scenes)
+POST /api/render-lesson        → render N pre-built steps in parallel
+POST /render                   → render a single scene
+GET  /status/<job_id>          → poll job state (progress + stage)
 
-## Security note
+POST /api/parse-problem-v2     → universal math/DSA parser
+POST /api/parse-followup       → conversational refinement
+POST /api/fetch-leetcode       → fetch a problem by leetcode.com URL
 
-`VITE_*` env vars are **inlined into the production bundle** and visible to every user. Never put `GEMINI_API_KEY` (or any secret) in `.env` with a `VITE_` prefix. Secrets go in your Express backend's `.env` (no prefix), server-side only.
+POST /api/ocr                  → image/PDF → text (Gemini vision)
+POST /api/breakdown            → 3-section problem explanation
+POST /api/quiz                 → comprehension MCQs from a render
+POST /api/share                → save a parsed problem under a short code
+GET  /api/share/<code>         → retrieve a shared problem
+POST /api/pin / DELETE /api/pin/<id> → protect a render from cleanup
+```
 
 ## Project structure
 
 ```
-annie-app/
-├── index.html              Google Fonts + root mount
+backend/
+├── app.py                          Flask entry + all routes
+├── agent/
+│   ├── llm_client.py               Shared LLM stack (gpt-oss-120b → Groq → free)
+│   ├── classifier.py               math vs DSA routing
+│   ├── planner.py, dsa_planner.py  Hardcoded-scene planners (legacy /ask path)
+│   ├── math_parser.py              Pasted math → scene + steps + alternatives
+│   ├── leetcode_parser.py          Pasted LeetCode → scene + pseudocode
+│   ├── lesson_director.py          Tool-based agent (narrative_plan + build_scene)
+│   └── explainer.py, gemini_client.py
+├── scenes/
+│   ├── dsa_primitives.py           ArrayStrip, Pointer, HashMapPanel, … (visual tools)
+│   ├── tool_executor.py            DynamicScene + ToolExecutor for agent renders
+│   ├── calculus_scene.py           21 calculus scenes
+│   ├── dsa_pattern_scene.py        19 DSA pattern scenes (kadanes, dijkstra, …)
+│   ├── dsa_scene.py                7 legacy DSA scenes (array_pointer, sliding_window, …)
+│   ├── algebra_scene.py, arithmetic_scene.py, threed_scene.py, trig_scene.py
+│   └── array_scene.py              Sort scenes
+├── schemas/
+│   ├── types.py                    Pydantic schemas for every scene + LessonPlan
+│   └── tools.py                    24 visual tools for the Lesson Director
+├── renderer/worker.py              Job state, parallel render, ffmpeg stitch, cache, pin
+├── tests/                          286 unit tests (`pytest -m "not integration"`)
+└── media/                          Rendered videos (gitignored)
+
+frontend/
 ├── src/
-│   ├── main.tsx            React entry
-│   ├── App.tsx             Everything: routes, components, mocks
-│   └── index.css           Tailwind directives + resets
-├── public/
-│   └── favicon.svg         Sparkle mark
-├── .env.example            Env var template (copy to .env)
-├── .gitignore              Excludes .env explicitly
-└── package.json
+│   ├── App.tsx                     Router, sidebar, HomePage, NotesPage, NoteEditor, …
+│   ├── pages/
+│   │   ├── PasteProblemPage.tsx    Analysis panel (embedded in notes via highlight)
+│   │   └── LibraryPage.tsx         Saved videos grid + inline player
+│   ├── components/
+│   │   ├── StageTimeline.tsx       Live stage UI for renders
+│   │   └── ErrorBoundary.tsx
+│   ├── lib/
+│   │   ├── api.ts                  All backend HTTP + live progress/stage hooks
+│   │   ├── videoStore.ts           IndexedDB wrapper
+│   │   ├── savedVideos.ts          Library metadata + thumbnail generator
+│   │   └── runPython.ts            Pyodide execution wrapper
+│   ├── usePyodide.ts               Lazy CDN load of Python-in-browser
+│   ├── CodeEditorPanel.tsx         Monaco editor + run/output panel
+│   ├── MathContent.tsx             KaTeX with fallback
+│   ├── theme.ts, types.ts          Shared design tokens + interfaces
+│   └── react-katex.d.ts            Type shim
+└── vite.config.ts                  manualChunks for monaco + katex
+
+start.bat / start.ps1               Launch both servers, press any key to stop
 ```
 
-## Backend contracts
+## Environment
 
-Build these endpoints in your Express + Flask services. Frontend types are in `src/App.tsx`.
-
+`backend/.env`:
 ```
-GET  ${VITE_FLASK_URL}/api/topics
-     -> { topics: AnimatableTopic[] }
-
-POST ${VITE_FLASK_URL}/api/animate
-     body: { topic: AnimatableTopic, params?: object }
-     -> { videoUrl: string, status: "ready" | "generating" }
-
-POST ${VITE_BACKEND_URL}/api/ocr
-     body: multipart file
-     -> { text: string }
-     server: Gemini 3 Flash vision → fallback Gemini 2.5 Flash
-
-POST ${VITE_BACKEND_URL}/api/format-note
-     body: { rawText: string }
-     -> { title: string, html: string }
-     server: Gemini 3 Flash → fallback Gemini 2.5 Flash
-
-POST ${VITE_BACKEND_URL}/api/parse-problem
-     body: { rawText: string, topics: AnimatableTopic[] }
-     -> { problem: string, topicId: string | null }
-     server: Gemini 3 Flash → fallback Gemini 2.5 Flash
-
-POST ${VITE_BACKEND_URL}/api/breakdown
-     body: { problem: string, topic: AnimatableTopic }
-     -> { sections: { label: string, body: string }[] }
-     server: Gemini 3 Flash → fallback Gemini 2.5 Flash
+OPENROUTER_API_KEY=             # required — primary LLM
+OPENROUTER_GPT_OSS_120_KEY=     # optional — uses gpt-oss-120b with reasoning
+GROQ_API_KEY=                   # optional — fast fallback
+GEMINI_API_KEY=                 # optional — OCR + quiz generation
 ```
 
-## Build for production
+`frontend/.env` (copy from `.env.example`):
+```
+VITE_FLASK_URL=http://localhost:5000
+```
+
+## Testing
 
 ```bash
-npm run build
-npm run preview
+# Backend unit suite (~10s, no Manim or LLM calls)
+venv/Scripts/python.exe -m pytest backend/tests/ -m "not integration"
+
+# Integration: real Manim renders + real LLM calls (slow)
+venv/Scripts/python.exe -m pytest backend/tests/ -m integration
+
+# Frontend type check + production build
+cd frontend && npx tsc --noEmit && npm run build
 ```
+
+Current status: **286 unit tests passing**, frontend builds clean at ~345 kB initial JS (monaco + katex code-split into lazy chunks).
+
+## Adding a new scene type
+
+1. Implement the scene class in `backend/scenes/<file>.py`
+2. Register in `backend/renderer/worker.py::SCENE_REGISTRY`
+3. Add a Pydantic schema to `backend/schemas/types.py`
+4. (For LeetCode parser routing) add to `agent/leetcode_parser.py::_SCENE_SCHEMAS`
+
+For tool-composed scenes via the Lesson Director, you usually don't need a new scene class — extend `backend/schemas/tools.py` and `backend/scenes/tool_executor.py` instead.
