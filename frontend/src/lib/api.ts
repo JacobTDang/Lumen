@@ -15,12 +15,19 @@ export const flaskBase = (): string =>
 // ─────────────────────────────────────────────────────────────
 
 const _liveProgress = new Map<string, number>();
+const _liveStage = new Map<string, string>();
 const _liveListeners = new Set<() => void>();
 function _emitLive() { _liveListeners.forEach((cb) => cb()); }
 
 export function setLiveProgress(topicId: string, value: number | null) {
   if (value === null) _liveProgress.delete(topicId);
   else _liveProgress.set(topicId, value);
+  _emitLive();
+}
+
+export function setLiveStage(topicId: string, stage: string | null) {
+  if (stage === null) _liveStage.delete(topicId);
+  else _liveStage.set(topicId, stage);
   _emitLive();
 }
 
@@ -33,6 +40,17 @@ export function useLiveProgress(topicId: string | null): number | null {
   }, []);
   if (!topicId) return null;
   return _liveProgress.has(topicId) ? _liveProgress.get(topicId)! : null;
+}
+
+export function useLiveStage(topicId: string | null): string | null {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const cb = () => force((n) => n + 1);
+    _liveListeners.add(cb);
+    return () => { _liveListeners.delete(cb); };
+  }, []);
+  if (!topicId) return null;
+  return _liveStage.has(topicId) ? _liveStage.get(topicId)! : null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -74,6 +92,9 @@ export async function pollJob(
       if (typeof job.progress === "number") {
         setLiveProgress(topicId, job.progress);
       }
+      if (typeof job.stage === "string") {
+        setLiveStage(topicId, job.stage);
+      }
       if (job.status === "done" && job.url) {
         return { videoUrl: `${flaskUrl}${job.url}`, status: "ready" };
       }
@@ -92,6 +113,7 @@ export async function pollJob(
     };
   } finally {
     setLiveProgress(topicId, null);
+    setLiveStage(topicId, null);
   }
 }
 

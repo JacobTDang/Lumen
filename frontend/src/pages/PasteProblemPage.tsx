@@ -21,13 +21,16 @@ import {
   parseProblemV2,
   parseFollowUp,
   fetchLeetCodeProblem,
+  useLiveProgress,
+  useLiveStage,
 } from "../lib/api";
+import { StageTimeline } from "../components/StageTimeline";
 
 type PasteState =
   | { kind: "idle" }
   | { kind: "ocr" }
   | { kind: "parsing" }
-  | { kind: "rendering"; parsed: ParsedProblem; progress: number }
+  | { kind: "rendering"; parsed: ParsedProblem; progress: number; topicId?: string }
   | { kind: "ready"; parsed: ParsedProblem; videoUrl: string }
   | { kind: "error"; message: string };
 
@@ -211,6 +214,12 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
   // Video playback control: speed + replay + scrub-by-chapter for lessons
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
+
+  // Live stage + progress from the backend, keyed by the topicId stashed
+  // in the rendering state. Refresh on every backend poll tick.
+  const currentTopicId = state.kind === "rendering" ? (state.topicId ?? null) : null;
+  const liveProgress = useLiveProgress(currentTopicId);
+  const liveStage = useLiveStage(currentTopicId);
 
   // Side-by-side comparison state and refs (left/right videos with
   // synchronized play/pause).
@@ -804,7 +813,9 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
         return;
       }
       // Synthetic topicId so the live-progress map stays partitioned per paste.
-      const result = await pollJob(flaskUrl, jobId, `paste-${jobId}`);
+      const topicId = `paste-${jobId}`;
+      setState({ kind: "rendering", parsed, progress: 0, topicId });
+      const result = await pollJob(flaskUrl, jobId, topicId);
       if (result.status === "ready") {
         setState({ kind: "ready", parsed, videoUrl: result.videoUrl });
       } else {
@@ -1103,21 +1114,12 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
                     }}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <Loader2
-                        size={28}
-                        className="animate-spin"
-                        strokeWidth={1.5}
-                        color={C.textMuted}
-                      />
-                      <span style={{ color: C.textMuted, fontSize: 13 }}>
-                        Rendering animation…
-                      </span>
-                      <span style={{ color: C.textFaint, fontSize: 11 }}>
-                        ~25-40 seconds
-                      </span>
-                    </div>
+                  <div className="w-full h-full flex items-center justify-center p-4">
+                    <StageTimeline
+                      stage={liveStage}
+                      progress={liveProgress ?? 0}
+                      hasAgentPlanning={false}
+                    />
                   </div>
                 )}
               </div>
