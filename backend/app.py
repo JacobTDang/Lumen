@@ -18,7 +18,10 @@ from agent.gemini_client import call_gemini
 from agent.leetcode_parser import parse_problem as parse_leetcode_problem
 from agent.math_parser import parse_math
 from agent.planner import plan as plan_math
-from renderer.worker import get_job, submit_direct_lesson, submit_lesson, submit_render
+from renderer.worker import (
+    get_job, submit_direct_lesson, submit_lesson, submit_render,
+    pin_video, unpin_video,
+)
 from schemas.types import StepPlan
 
 _TOPICS = [
@@ -893,6 +896,32 @@ def create_app(testing: bool = False) -> Flask:
             return jsonify({"error": "question is required"}), 400
         job_id = submit_direct_lesson(question)
         return jsonify({"job_id": job_id}), 202
+
+    @app.post("/api/pin")
+    def api_pin():
+        """Protect a rendered video from LRU cleanup.
+
+        Request:  { "jobId": "uuid" }
+        Response: { "url": "/media/lessons/<id>.mp4" }
+        """
+        body = request.get_json(silent=True) or {}
+        job_id = (body.get("jobId") or "").strip()
+        if not job_id:
+            return jsonify({"error": "jobId required"}), 400
+        try:
+            url = pin_video(job_id)
+        except ValueError as exc:
+            msg = str(exc)
+            if "unknown" in msg:
+                return jsonify({"error": msg}), 404
+            return jsonify({"error": msg}), 409
+        return jsonify({"url": url}), 200
+
+    @app.delete("/api/pin/<job_id>")
+    def api_unpin(job_id: str):
+        """Remove pin protection. Idempotent."""
+        unpin_video(job_id)
+        return jsonify({"ok": True}), 200
 
     return app
 

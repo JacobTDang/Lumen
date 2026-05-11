@@ -1,3 +1,4 @@
+import os
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -121,3 +122,86 @@ def test_aggregate_progress_sets_rendering_x_of_n(tmp_path, monkeypatch):
     t.join(timeout=1.0)
 
     assert _jobs[lesson_id]["stage"] == "rendering_3_of_3"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase D — video pinning
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_pin_video_writes_to_index(tmp_path, monkeypatch):
+    monkeypatch.setattr("renderer.worker._PINNED_INDEX", str(tmp_path / "pinned_index.json"))
+    monkeypatch.setattr("renderer.worker._LESSONS_DIR", str(tmp_path))
+    from renderer.worker import pin_video, _load_pinned_index, _jobs
+
+    job_id = "test-pin-write"
+    _jobs[job_id] = {"status": "done", "url": "/media/lessons/test.mp4",
+                     "error": None, "progress": 1.0, "stage": "done"}
+    pin_video(job_id)
+    index = _load_pinned_index()
+    assert index.get(job_id) == "/media/lessons/test.mp4"
+
+
+def test_unpin_video_removes_from_index(tmp_path, monkeypatch):
+    monkeypatch.setattr("renderer.worker._PINNED_INDEX", str(tmp_path / "pinned_index.json"))
+    monkeypatch.setattr("renderer.worker._LESSONS_DIR", str(tmp_path))
+    from renderer.worker import pin_video, unpin_video, _load_pinned_index, _jobs
+
+    job_id = "test-pin-unpin"
+    _jobs[job_id] = {"status": "done", "url": "/media/lessons/abc.mp4",
+                     "error": None, "progress": 1.0, "stage": "done"}
+    pin_video(job_id)
+    assert job_id in _load_pinned_index()
+    assert unpin_video(job_id) is True
+    assert job_id not in _load_pinned_index()
+
+
+def test_unpin_video_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setattr("renderer.worker._PINNED_INDEX", str(tmp_path / "pinned_index.json"))
+    from renderer.worker import unpin_video
+    # Never pinned — should return False, not raise
+    assert unpin_video("never-pinned") is False
+    assert unpin_video("never-pinned") is False  # second call also safe
+
+
+def test_pin_video_unknown_job_raises():
+    from renderer.worker import pin_video
+    import pytest as _pt
+    with _pt.raises(ValueError, match="unknown job_id"):
+        pin_video("does-not-exist")
+
+
+def test_pin_video_pending_job_raises():
+    from renderer.worker import pin_video, _jobs
+    import pytest as _pt
+    _jobs["test-pending-pin"] = {"status": "pending", "url": None,
+                                  "error": None, "progress": 0.0, "stage": "queued"}
+    with _pt.raises(ValueError, match="status="):
+        pin_video("test-pending-pin")
+
+
+def test_cleanup_respects_pinned_index(tmp_path, monkeypatch):
+    """Files referenced in pinned_index survive cleanup even when over the count cap."""
+    lessons_dir = tmp_path / "lessons"
+    lessons_dir.mkdir()
+    monkeypatch.setattr("renderer.worker._LESSONS_DIR", str(lessons_dir))
+    monkeypatch.setattr("renderer.worker._MEDIA_DIR", str(tmp_path))
+    monkeypatch.setattr("renderer.worker._PINNED_INDEX", str(tmp_path / "pinned_index.json"))
+    monkeypatch.setattr("renderer.worker._CACHE_INDEX", str(tmp_path / "cache_index.json"))
+
+    # Create 5 lesson files, all old enough to be eligible for cleanup
+    import time
+    old = time.time() - 1000
+    for i in range(5):
+        f = lessons_dir / f"file_{i}.mp4"
+        f.write_bytes(b"x" * 100)
+        os.utime(f, (old, old))
+
+    # Pin file_2 explicitly
+    from renderer.worker import _save_pinned_index, cleanup_old_lessons
+    _save_pinned_index({"my-job": "/media/lessons/file_2.mp4"})
+
+    # Cap at 1 — should evict 4, but file_2 must survive
+    removed = cleanup_old_lessons(max_count=1, min_age_seconds=0)
+    remaining = sorted(p.name for p in lessons_dir.glob("*.mp4"))
+    assert "file_2.mp4" in remaining
+    assert removed >= 3   # 4 should have been removed, but 1 stays for the cap

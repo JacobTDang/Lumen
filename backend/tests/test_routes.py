@@ -414,3 +414,44 @@ def test_share_get_unknown_code_returns_404(client, mocker):
     mocker.patch("app._load_shares", return_value={})
     res = client.get("/api/share/aaaabbbb")
     assert res.status_code == 404
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase D — pin/unpin endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_pin_endpoint_missing_jobid(client):
+    res = client.post("/api/pin", json={})
+    assert res.status_code == 400
+
+
+def test_pin_endpoint_unknown_job_returns_404(client, mocker):
+    mocker.patch("app.pin_video", side_effect=ValueError("unknown job_id: x"))
+    res = client.post("/api/pin", json={"jobId": "x"})
+    assert res.status_code == 404
+
+
+def test_pin_endpoint_pending_job_returns_409(client, mocker):
+    mocker.patch("app.pin_video", side_effect=ValueError("cannot pin job in status='pending'"))
+    res = client.post("/api/pin", json={"jobId": "x"})
+    assert res.status_code == 409
+
+
+def test_pin_endpoint_happy_path(client, mocker):
+    mocker.patch("app.pin_video", return_value="/media/lessons/abc.mp4")
+    res = client.post("/api/pin", json={"jobId": "abc"})
+    assert res.status_code == 200
+    assert res.get_json()["url"] == "/media/lessons/abc.mp4"
+
+
+def test_unpin_endpoint_happy_path(client, mocker):
+    mocker.patch("app.unpin_video", return_value=True)
+    res = client.delete("/api/pin/abc")
+    assert res.status_code == 200
+    assert res.get_json()["ok"] is True
+
+
+def test_unpin_endpoint_idempotent(client, mocker):
+    mocker.patch("app.unpin_video", return_value=False)
+    res = client.delete("/api/pin/nonexistent")
+    assert res.status_code == 200  # idempotent: still 200 even if not pinned

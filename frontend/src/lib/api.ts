@@ -207,3 +207,31 @@ export async function parseFollowUp(
   }
   return res.json();
 }
+
+// ─────────────────────────────────────────────────────────────
+// Video pinning — protect a rendered video from server-side cleanup
+// when the user saves it to their library.
+// ─────────────────────────────────────────────────────────────
+
+export async function pinVideo(jobId: string): Promise<{ url: string }> {
+  const res = await fetch(`${flaskBase()}/api/pin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `pin failed (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
+export async function unpinVideo(jobId: string): Promise<void> {
+  const res = await fetch(`${flaskBase()}/api/pin/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `unpin failed (HTTP ${res.status})`);
+  }
+}

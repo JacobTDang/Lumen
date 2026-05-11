@@ -124,7 +124,9 @@ _MEDIA_DIR   = os.path.join(_BACKEND_DIR, "media")
 _TEMP_DIR    = os.path.join(_MEDIA_DIR,   "temp")
 _LESSONS_DIR = os.path.join(_MEDIA_DIR,   "lessons")
 _CACHE_INDEX = os.path.join(_LESSONS_DIR, "cache_index.json")
+_PINNED_INDEX = os.path.join(_LESSONS_DIR, "pinned_index.json")
 _CACHE_LOCK  = threading.Lock()
+_PIN_LOCK    = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +185,61 @@ def _cache_store(cache_key: str, url: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Video pinning — user-saved videos protected from LRU eviction
+# ---------------------------------------------------------------------------
+
+def _load_pinned_index() -> dict:
+    if not os.path.exists(_PINNED_INDEX):
+        return {}
+    try:
+        with open(_PINNED_INDEX) as fh:
+            data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_pinned_index(index: dict) -> None:
+    os.makedirs(_LESSONS_DIR, exist_ok=True)
+    tmp = _PINNED_INDEX + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(index, fh, indent=2, sort_keys=True)
+    os.replace(tmp, _PINNED_INDEX)
+
+
+def pin_video(job_id: str) -> str:
+    """Mark a completed job's video as protected from cleanup.
+
+    Returns the video URL. Raises ValueError if the job is unknown or not
+    yet done.
+    """
+    job = _jobs.get(job_id)
+    if job is None:
+        raise ValueError(f"unknown job_id: {job_id}")
+    if job.get("status") != "done":
+        raise ValueError(f"cannot pin job in status={job.get('status')!r}")
+    url = job.get("url")
+    if not url:
+        raise ValueError("job has no url")
+    with _PIN_LOCK:
+        index = _load_pinned_index()
+        index[job_id] = url
+        _save_pinned_index(index)
+    return url
+
+
+def unpin_video(job_id: str) -> bool:
+    """Remove protection. Idempotent — returns True if it was pinned, False otherwise."""
+    with _PIN_LOCK:
+        index = _load_pinned_index()
+        existed = job_id in index
+        if existed:
+            index.pop(job_id, None)
+            _save_pinned_index(index)
+    return existed
+
+
+# ---------------------------------------------------------------------------
 # Media cleanup
 # ---------------------------------------------------------------------------
 
@@ -229,11 +286,15 @@ def cleanup_old_lessons(max_count: int = 200, min_age_seconds: int = 120) -> int
     if not os.path.isdir(_LESSONS_DIR):
         return 0
 
-    # Collect cache-referenced file paths (these are sacred).
+    # Collect cache-referenced AND user-pinned file paths (sacred).
     with _CACHE_LOCK:
-        index = _load_cache_index()
-    pinned = {os.path.realpath(os.path.join(_MEDIA_DIR, url.removeprefix("/media/")))
-              for url in index.values()}
+        cache_index = _load_cache_index()
+    with _PIN_LOCK:
+        pin_index = _load_pinned_index()
+    pinned = {
+        os.path.realpath(os.path.join(_MEDIA_DIR, url.removeprefix("/media/")))
+        for url in list(cache_index.values()) + list(pin_index.values())
+    }
 
     files = []
     for entry in os.listdir(_LESSONS_DIR):
