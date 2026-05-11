@@ -577,3 +577,141 @@ def _run_lesson(lesson_id: str, steps: list):
     _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None,
                         "progress": 1.0, "stage": "done"}
     _cache_store(cache_key, final_url)
+
+
+# ---------------------------------------------------------------------------
+# Direct-lesson API — async LLM agent wrapper around submit_lesson
+# ---------------------------------------------------------------------------
+#
+# The Lesson Director makes 3-5 LLM calls before rendering can start. Doing
+# this synchronously inside the request thread blocks for ~10s with no UI
+# feedback. Instead we create the job up front, return its id immediately,
+# and run the agent + lesson submission on a daemon thread that mirrors the
+# inner lesson's state into the outer job for unified status polling.
+
+def submit_direct_lesson(question: str) -> str:
+    """Submit a Lesson Director lesson and return a job_id immediately.
+
+    Stage progression:
+        planning_narrative  → Phase 1 LLM call
+        building_scenes     → Phase 2 parallel LLM calls
+        queued              → handoff to submit_lesson
+        rendering_X_of_N    → per-scene renders
+        stitching           → ffmpeg concat
+        done                → final stitched MP4 URL
+    """
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "pending", "url": None, "error": None,
+                     "progress": 0.0, "stage": "planning_narrative"}
+    threading.Thread(
+        target=_run_direct_lesson, args=(job_id, question), daemon=True,
+    ).start()
+    return job_id
+
+
+def _run_direct_lesson(job_id: str, question: str):
+    """Background worker: agent planning + submit_lesson + state mirror.
+
+    Imports the agent lazily to avoid a circular import (lesson_director
+    imports from schemas which is fine, but keeping it lazy is defensive).
+    """
+    try:
+        # Phase 1: narrative plan
+        from agent.lesson_director import (
+            narrative_plan,
+            build_scene,
+            ToolCall,
+        )
+        from schemas.types import StepPlan
+        import concurrent.futures
+
+        narrative = narrative_plan(question)
+        if _jobs[job_id]["status"] != "pending":
+            return  # cancelled externally — abort
+
+        _jobs[job_id]["stage"] = "building_scenes"
+
+        # Phase 2: build scenes in parallel (matches lesson_director.direct_lesson)
+        contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [
+                pool.submit(
+                    _safe_build_scene,
+                    question, sp, narrative.core_insight, contexts[i],
+                )
+                for i, sp in enumerate(narrative.scenes)
+            ]
+            tool_call_lists = [f.result() for f in futures]
+
+        steps = [
+            StepPlan(
+                tool="dynamic_lesson_step",
+                params={
+                    "title": sp.title,
+                    "tool_calls": [
+                        {"tool": tc.tool, "args": tc.args} for tc in tcs
+                    ],
+                },
+                caption=sp.objective,
+            )
+            for sp, tcs in zip(narrative.scenes, tool_call_lists)
+        ]
+
+        # Phase 3: hand off to submit_lesson and mirror its state to ours
+        _jobs[job_id]["stage"] = "queued"
+        _jobs[job_id]["concept"] = narrative.lesson_title
+        _jobs[job_id]["scene_count"] = len(steps)
+
+        inner_id = submit_lesson(steps)
+        _jobs[job_id]["inner_job_id"] = inner_id
+
+        # Mirror loop — copy status/url/error/progress/stage from inner to outer
+        while True:
+            inner = _jobs.get(inner_id)
+            if inner is None:
+                time.sleep(0.2)
+                continue
+            outer = _jobs[job_id]
+            outer["progress"] = inner.get("progress", outer.get("progress", 0.0))
+            outer["stage"]    = inner.get("stage",    outer.get("stage", "queued"))
+            if inner["status"] == "done":
+                outer["status"] = "done"
+                outer["url"]    = inner["url"]
+                outer["stage"]  = "done"
+                outer["progress"] = 1.0
+                return
+            if inner["status"] == "error":
+                outer["status"] = "error"
+                outer["error"]  = inner.get("error", "render failed")
+                outer["stage"]  = "error"
+                return
+            time.sleep(0.25)
+
+    except Exception as e:
+        _jobs[job_id] = {"status": "error", "url": None,
+                         "error": f"lesson planning failed: {e}",
+                         "progress": _jobs[job_id].get("progress", 0.0),
+                         "stage": "error"}
+
+
+def _safe_build_scene(question, scene_plan, core_insight, prev_context):
+    """build_scene wrapper that returns a minimal fallback on failure.
+    Mirrors lesson_director._build_scene_safe so the async path has the same
+    resilience as the synchronous one."""
+    try:
+        from agent.lesson_director import build_scene
+        return build_scene(
+            question=question,
+            scene_plan=scene_plan,
+            core_insight=core_insight,
+            previous_scene_context=prev_context,
+        )
+    except Exception as exc:
+        print(f"[direct-lesson] build_scene failed for '{scene_plan.title}': {exc}")
+        from agent.lesson_director import ToolCall
+        return [
+            ToolCall(tool="set_caption", args={"text": scene_plan.objective}),
+            ToolCall(tool="show_text",
+                     args={"content": scene_plan.title, "position": "CENTER"}),
+            ToolCall(tool="pause", args={"beats": 2}),
+        ]

@@ -179,33 +179,108 @@ def test_direct_lesson_endpoint_blank_question(client):
 
 
 def test_direct_lesson_endpoint_happy_path(client, mocker):
-    call_count = {"n": 0}
-
-    def mock_call(system, user):
-        if call_count["n"] == 0:
-            call_count["n"] += 1
-            return json.dumps(MOCK_NARRATIVE)
-        call_count["n"] += 1
-        return json.dumps(MOCK_TOOL_CALLS)
-
-    mocker.patch("agent.lesson_director._call_model", side_effect=mock_call)
-    mocker.patch("app.submit_lesson", return_value="test-lesson-id")
-
+    """Endpoint returns a job_id immediately without waiting for the agent."""
+    mocker.patch("app.submit_direct_lesson", return_value="test-job-id")
     res = client.post("/api/direct-lesson",
                       json={"question": "Explain two-pointer palindrome"})
     assert res.status_code == 202
     data = res.get_json()
-    assert data["job_id"] == "test-lesson-id"
-    assert data["scene_count"] == 3
-    assert "concept" in data
+    assert data["job_id"] == "test-job-id"
 
 
-def test_direct_lesson_endpoint_llm_failure(client, mocker):
-    mocker.patch("agent.lesson_director._call_model",
+def test_direct_lesson_endpoint_returns_quickly(client, mocker):
+    """Even if the underlying submit_direct_lesson is slow, the endpoint
+    returns quickly because the agent runs in a background thread.
+    We assert by mocking submit_direct_lesson to a fast no-op."""
+    import time
+    mocker.patch("app.submit_direct_lesson", return_value="fast-job")
+    start = time.time()
+    res = client.post("/api/direct-lesson", json={"question": "anything"})
+    elapsed = time.time() - start
+    assert res.status_code == 202
+    assert elapsed < 1.0  # generous; real call is <50ms
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Async submit_direct_lesson — Phase B
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_submit_direct_lesson_returns_immediately(mocker):
+    """submit_direct_lesson must return a job_id without blocking on the agent."""
+    from renderer.worker import submit_direct_lesson, get_job
+    import time
+
+    # Mock the agent to sleep 1 second; submit_direct_lesson should still
+    # return in well under that.
+    def slow_narrative(*args, **kwargs):
+        time.sleep(1.0)
+        from agent.lesson_director import NarrativePlan, ScenePlan
+        return NarrativePlan(
+            lesson_title="x", core_insight="y", narrative_arc="z",
+            scenes=[ScenePlan(title="A", objective="o"),
+                    ScenePlan(title="B", objective="o")],
+        )
+
+    mocker.patch("agent.lesson_director.narrative_plan", side_effect=slow_narrative)
+
+    start = time.time()
+    job_id = submit_direct_lesson("test")
+    elapsed = time.time() - start
+
+    assert elapsed < 0.2  # must return immediately
+    job = get_job(job_id)
+    assert job is not None
+    assert job["status"] == "pending"
+    assert job["stage"] == "planning_narrative"
+
+
+def test_run_direct_lesson_stage_progression(mocker):
+    """As the agent advances, stage transitions through planning → building → mirror."""
+    from renderer.worker import _run_direct_lesson, _jobs
+    from agent.lesson_director import NarrativePlan, ScenePlan, ToolCall
+
+    fake_narrative = NarrativePlan(
+        lesson_title="T", core_insight="I", narrative_arc="A",
+        scenes=[ScenePlan(title="One", objective="o")],
+    )
+    mocker.patch("agent.lesson_director.narrative_plan", return_value=fake_narrative)
+    mocker.patch("agent.lesson_director.build_scene", return_value=[
+        ToolCall(tool="set_caption", args={"text": "test"}),
+    ])
+
+    # Stub submit_lesson — set inner job to done immediately
+    def stub_submit(steps):
+        from renderer.worker import _jobs
+        inner_id = "inner-test-job"
+        _jobs[inner_id] = {"status": "done", "url": "/media/lessons/x.mp4",
+                           "error": None, "progress": 1.0, "stage": "done"}
+        return inner_id
+    mocker.patch("renderer.worker.submit_lesson", side_effect=stub_submit)
+
+    outer_id = "outer-test"
+    _jobs[outer_id] = {"status": "pending", "url": None, "error": None,
+                       "progress": 0.0, "stage": "planning_narrative"}
+    _run_direct_lesson(outer_id, "test question")
+
+    assert _jobs[outer_id]["status"] == "done"
+    assert _jobs[outer_id]["stage"] == "done"
+    assert _jobs[outer_id]["url"] == "/media/lessons/x.mp4"
+
+
+def test_run_direct_lesson_agent_failure_records_error(mocker):
+    """If the agent raises, the outer job ends in error with stage='error'."""
+    from renderer.worker import _run_direct_lesson, _jobs
+    mocker.patch("agent.lesson_director.narrative_plan",
                  side_effect=ValueError("LLM down"))
-    res = client.post("/api/direct-lesson",
-                      json={"question": "anything"})
-    assert res.status_code == 422
+
+    outer_id = "outer-err-test"
+    _jobs[outer_id] = {"status": "pending", "url": None, "error": None,
+                       "progress": 0.0, "stage": "planning_narrative"}
+    _run_direct_lesson(outer_id, "anything")
+
+    assert _jobs[outer_id]["status"] == "error"
+    assert _jobs[outer_id]["stage"] == "error"
+    assert "LLM down" in _jobs[outer_id]["error"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
