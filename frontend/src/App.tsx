@@ -36,6 +36,7 @@ import {
   FileImage,
   Code as CodeIcon,
   Loader2,
+  Bookmark,
 } from "lucide-react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { C, SANS, BODY, EASE } from "./theme";
@@ -54,7 +55,7 @@ import {
 // Types
 // ─────────────────────────────────────────────────────────────
 
-type Route = "home" | "notes" | "animations" | "import-notes" | "import-animations";
+type Route = "home" | "notes" | "animations" | "library" | "import-notes" | "import-animations";
 
 interface SideNote {
   id: string;
@@ -1580,6 +1581,7 @@ const Sidebar: React.FC<{
     { key: "home", label: "Home", icon: <Home size={16} strokeWidth={1.5} /> },
     { key: "notes", label: "Notes", icon: <FileText size={16} strokeWidth={1.5} /> },
     { key: "animations", label: "Animations", icon: <Play size={16} strokeWidth={1.5} /> },
+    { key: "library", label: "Library", icon: <Bookmark size={16} strokeWidth={1.5} /> },
     { key: "import-notes", label: "Import notes", icon: <FileImage size={16} strokeWidth={1.5} /> },
     { key: "import-animations", label: "Import problem", icon: <Upload size={16} strokeWidth={1.5} /> },
   ];
@@ -3988,6 +3990,7 @@ const ImportError: React.FC<{ message: string; onRetry: () => void }> = ({ messa
 // PasteProblemPage — lazy-loaded so Monaco + KaTeX only ship in the
 // paste-problem chunk, not on first paint.
 const PasteProblemPage = lazy(() => import('./pages/PasteProblemPage'));
+const LibraryPage = lazy(() => import('./pages/LibraryPage').then(m => ({ default: m.LibraryPage })));
 
 // ─────────────────────────────────────────────────────────────
 // Root App
@@ -4147,6 +4150,15 @@ export default function App() {
               />
             )}
             {route === "animations" && <AnimationsPage topics={topics} />}
+            {route === "library" && (
+              <Suspense fallback={
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "#1A1A1A" }}>
+                  <Loader2 size={24} className="animate-spin" color="#A0A0A0" strokeWidth={1.5} />
+                </div>
+              }>
+                <LibraryPage />
+              </Suspense>
+            )}
             {route === "import-notes" && (
               <ImportNotesPage
                 onCreateNote={(title, content) => createNote(title, content)}

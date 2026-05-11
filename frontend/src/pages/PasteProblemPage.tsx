@@ -21,17 +21,19 @@ import {
   parseProblemV2,
   parseFollowUp,
   fetchLeetCodeProblem,
+  pinVideo,
   useLiveProgress,
   useLiveStage,
 } from "../lib/api";
 import { StageTimeline } from "../components/StageTimeline";
+import { saveVideoToLibrary } from "../lib/savedVideos";
 
 type PasteState =
   | { kind: "idle" }
   | { kind: "ocr" }
   | { kind: "parsing" }
   | { kind: "rendering"; parsed: ParsedProblem; progress: number; topicId?: string }
-  | { kind: "ready"; parsed: ParsedProblem; videoUrl: string }
+  | { kind: "ready"; parsed: ParsedProblem; videoUrl: string; jobId?: string }
   | { kind: "error"; message: string };
 
 // Conversational follow-up turn. After the initial render, the user can ask
@@ -220,6 +222,9 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
   const currentTopicId = state.kind === "rendering" ? (state.topicId ?? null) : null;
   const liveProgress = useLiveProgress(currentTopicId);
   const liveStage = useLiveStage(currentTopicId);
+
+  // Save-to-library status: 'idle' | 'saving' | 'saved' | error message
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | string>("idle");
 
   // Side-by-side comparison state and refs (left/right videos with
   // synchronized play/pause).
@@ -415,6 +420,37 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialShare]);
+
+  const handleSaveToLibrary = useCallback(async () => {
+    if (state.kind !== "ready") return;
+    if (!state.jobId) {
+      setSaveStatus("no job id available to pin");
+      return;
+    }
+    setSaveStatus("saving");
+    try {
+      // 1. Pin on the backend so the file survives cleanup
+      await pinVideo(state.jobId);
+      // 2. Download + IndexedDB + metadata
+      await saveVideoToLibrary({
+        jobId: state.jobId,
+        title: state.parsed.title || state.parsed.scene,
+        scene: state.parsed.scene,
+        domain: state.parsed.domain === "math" ? "math"
+              : state.parsed.domain === "dsa" ? "dsa"
+              : "unknown",
+        serverUrl: state.videoUrl,
+      });
+      setSaveStatus("saved");
+    } catch (e) {
+      setSaveStatus(e instanceof Error ? e.message : "save failed");
+    }
+  }, [state]);
+
+  // Reset save status when the underlying video changes
+  useEffect(() => {
+    if (state.kind === "ready") setSaveStatus("idle");
+  }, [state.kind === "ready" ? state.videoUrl : null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStartQuiz = useCallback(async () => {
     if (state.kind !== "ready") return;
@@ -817,7 +853,7 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
       setState({ kind: "rendering", parsed, progress: 0, topicId });
       const result = await pollJob(flaskUrl, jobId, topicId);
       if (result.status === "ready") {
-        setState({ kind: "ready", parsed, videoUrl: result.videoUrl });
+        setState({ kind: "ready", parsed, videoUrl: result.videoUrl, jobId });
       } else {
         setState({
           kind: "error",
@@ -1411,6 +1447,29 @@ const PasteProblemPage: React.FC<PasteProblemPageProps> = ({
                   >
                     {narrating ? "⏹ Stop narration" : "🔊 Narrate"}
                   </button>
+                  <button
+                    onClick={handleSaveToLibrary}
+                    disabled={saveStatus === "saving" || saveStatus === "saved"}
+                    className="px-3 py-1.5 rounded text-xs"
+                    style={{
+                      fontSize: 12,
+                      color: saveStatus === "saved" ? C.ok : C.text,
+                      background: "transparent",
+                      border: `1px solid ${saveStatus === "saved" ? C.ok : C.borderAlt}`,
+                      cursor: saveStatus === "saving" ? "not-allowed" : "pointer",
+                      opacity: saveStatus === "saving" ? 0.5 : 1,
+                    }}
+                  >
+                    {saveStatus === "saving" ? "Saving…"
+                      : saveStatus === "saved" ? "✓ Saved"
+                      : "💾 Save to Library"}
+                  </button>
+                  {typeof saveStatus === "string" &&
+                   saveStatus !== "idle" &&
+                   saveStatus !== "saving" &&
+                   saveStatus !== "saved" && (
+                    <span style={{ fontSize: 11, color: "#fca5a5" }}>{saveStatus}</span>
+                  )}
                   {shareCode && (
                     <span
                       style={{
