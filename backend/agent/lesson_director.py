@@ -79,6 +79,50 @@ Return ONLY valid JSON matching this schema:
     ...
   ]
 }
+
+EXAMPLES of strong lesson plans:
+
+Example 1 — DSA (two-pointer palindrome):
+{
+  "lesson_title": "Two Pointers for Palindrome",
+  "core_insight": "Opposite-end pointers check each character pair exactly once, replacing the inner loop.",
+  "narrative_arc": "hook: nested loops do redundant comparisons → insight: opposite-end convergence checks each pair once → resolution: O(n) palindrome check on 'racecar'",
+  "scenes": [
+    {"title": "Why Nested Loops Waste Work", "objective": "See that a naive palindrome check compares the same characters multiple times.", "is_aha_moment": false},
+    {"title": "The Convergence Insight", "objective": "Watch two pointers from opposite ends collapse the inner loop to a single sweep.", "is_aha_moment": true},
+    {"title": "The Algorithm in Action", "objective": "Verify 'racecar' is a palindrome in a single pass.", "is_aha_moment": false}
+  ]
+}
+
+Example 2 — Math (Riemann sums):
+{
+  "lesson_title": "Riemann Sums as Area",
+  "core_insight": "The definite integral is the limit of rectangle widths shrinking toward zero.",
+  "narrative_arc": "hook: how do we measure area under a curve? → insight: rectangles approximate, the limit is exact → resolution: ∫ x² from 0 to 4 = 64/3",
+  "scenes": [
+    {"title": "The Area Question", "objective": "Frame the problem: what is the area under y = x² between 0 and 4?", "is_aha_moment": false},
+    {"title": "Rectangles Get Tighter", "objective": "See how the approximation converges as n grows from 4 to 16 to 64.", "is_aha_moment": true},
+    {"title": "The Exact Answer", "objective": "Apply the power rule to confirm ∫ x² dx from 0 to 4 = 64/3.", "is_aha_moment": false}
+  ]
+}
+
+Example 3 — DSA (Kadane's):
+{
+  "lesson_title": "Kadane's Algorithm",
+  "core_insight": "At each index, the best subarray ending here either extends the previous one or restarts at this element — whichever is larger.",
+  "narrative_arc": "hook: brute force is O(n²) → insight: only running sum and best-so-far matter → resolution: single pass O(n)",
+  "scenes": [
+    {"title": "The Brute Force Cost", "objective": "Understand why checking every subarray is O(n²).", "is_aha_moment": false},
+    {"title": "The Reset Decision", "objective": "Discover that we only need two numbers — keep extending, or start fresh?", "is_aha_moment": true},
+    {"title": "One Pass Through the Array", "objective": "Walk [-2,1,-3,4,-1,2,1,-5,4] computing max_sum.", "is_aha_moment": false}
+  ]
+}
+
+Notice the patterns:
+- core_insight names the SINGLE moment that matters
+- narrative_arc traces emotion: confusion → realization → confidence
+- aha_moment scene always sits in the middle, never first or last
+- objectives describe what the viewer will UNDERSTAND, not what will appear on screen
 """
 
 
@@ -131,6 +175,24 @@ Return ONLY a valid JSON array of tool calls:
 ]
 
 No explanation. No markdown fences. Just the JSON array.
+
+EXAMPLE — a complete aha-moment scene for two-pointer palindrome on 'racecar'.
+Note the structure: caption sets the WHY → array + 2 pointers (3 elements max) →
+highlight the active pair → emphasize at the convergence → pause(2) lets it
+land → show_result for closure. Eight tool calls is plenty for a 30-second scene.
+
+[
+  {{"tool": "show_array", "args": {{"values": ["r","a","c","e","c","a","r"], "label": "s", "element_id": "arr"}}}},
+  {{"tool": "set_caption", "args": {{"text": "Two pointers converge from opposite ends — every check is exactly one comparison"}}}},
+  {{"tool": "add_pointer", "args": {{"name": "L", "element_id": "arr", "index": 0, "color": "GREEN"}}}},
+  {{"tool": "add_pointer", "args": {{"name": "R", "element_id": "arr", "index": 6, "color": "RED"}}}},
+  {{"tool": "highlight_cells", "args": {{"element_id": "arr", "indices": [0, 6], "color": "YELLOW"}}}},
+  {{"tool": "emphasize", "args": {{"element_id": "arr", "index": -1}}}},
+  {{"tool": "pause", "args": {{"beats": 2}}}},
+  {{"tool": "move_pointer", "args": {{"name": "L", "element_id": "arr", "to_index": 3}}}},
+  {{"tool": "move_pointer", "args": {{"name": "R", "element_id": "arr", "to_index": 3}}}},
+  {{"tool": "show_result", "args": {{"value": "True", "label": "is_palindrome"}}}}
+]
 """
 
 
