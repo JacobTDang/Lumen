@@ -346,7 +346,8 @@ VISUAL_TOOLS: list[dict] = [
         "description": (
             "Pulse-flash an element to draw the viewer's eye at a key insight moment. "
             "Use this exactly once per scene at the most important beat. "
-            "If index is -1, the whole element flashes."
+            "If index is -1, the whole element flashes. "
+            "Use pace='slow' for the aha moment (longer flash + built-in beat)."
         ),
         "parameters": {
             "element_id": {"type": "string"},
@@ -354,6 +355,12 @@ VISUAL_TOOLS: list[dict] = [
                 "type": "integer",
                 "description": "Cell index for arrays (use -1 for whole element).",
                 "default": -1,
+            },
+            "pace": {
+                "type": "string",
+                "enum": ["slow", "normal", "fast"],
+                "description": "Rhythm of the emphasis. 'slow' is the aha moment.",
+                "default": "normal",
             },
         },
         "required": ["element_id"],

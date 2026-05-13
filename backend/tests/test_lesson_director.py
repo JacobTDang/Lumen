@@ -232,6 +232,45 @@ def test_build_scene_without_previous_error_has_clean_prompt(mocker):
     assert "previous attempt" not in captured["user"].lower()
 
 
+def test_emphasize_supports_pace_arg():
+    """The pace arg is wired through the tool catalog."""
+    from schemas.tools import VISUAL_TOOLS
+    emp = next(t for t in VISUAL_TOOLS if t["name"] == "emphasize")
+    assert "pace" in emp["parameters"]
+    assert set(emp["parameters"]["pace"]["enum"]) == {"slow", "normal", "fast"}
+
+
+def test_tool_executor_emphasize_honors_pace():
+    """Calling emphasize with pace='slow' triggers a longer play + an extra wait."""
+    from scenes.tool_executor import ToolExecutor
+
+    class _Stub:
+        def __init__(self):
+            self.plays = []
+            self.waits = []
+        def play(self, *anims, **kwargs):
+            self.plays.append(kwargs.get("run_time"))
+        def wait(self, t=None):
+            self.waits.append(t)
+
+    # Seed an element to emphasize
+    sc = _Stub()
+    executor = ToolExecutor(sc)
+    from scenes.dsa_primitives import ArrayStrip
+    strip = ArrayStrip(["1", "2"], position=(0, 0, 0))
+    executor.state["arr"] = strip
+    executor.vgroups["arr"] = strip.vgroup
+
+    executor._tool_emphasize("arr", index=-1, pace="slow")
+    assert sc.plays == [1.0]
+    assert sc.waits == [0.6]    # slow includes the built-in hold
+
+    sc.plays.clear(); sc.waits.clear()
+    executor._tool_emphasize("arr", index=-1, pace="fast")
+    assert sc.plays == [0.3]
+    assert sc.waits == []        # fast has no hold
+
+
 def test_direct_lesson_produces_lesson_plan(mocker):
     call_count = {"n": 0}
 

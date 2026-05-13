@@ -161,11 +161,14 @@ QUALITY RULES (follow these strictly):
 2. Use set_caption() for WHY this step matters — not what's happening visually.
    The animation shows the WHAT. The caption explains the WHY.
 3. Call emphasize() exactly once — at the moment that IS the insight.
-4. Call pause(2) immediately after emphasize() to let the insight land.
+   For the AHA-MOMENT scene, use emphasize(pace="slow") — longer flash + built-in beat.
+4. Call pause(beats=2) immediately after emphasize() to let the insight land.
 5. Never have a stretch longer than 3 seconds without a tool call.
 6. End every scene with show_result() OR fade_out_element() before the next idea.
 7. Keep element_ids consistent: if you create "array_0", reference it as "array_0" later.
 8. Move pointers BEFORE highlighting — the pointer shows WHERE, the highlight shows WHAT.
+9. Rhythm matters: slow down at insights (pace="slow", pause(beats=2)), speed
+   through mechanical steps. Variable pacing turns a recap into a lesson.
 
 Return ONLY a valid JSON array of tool calls:
 [
@@ -187,7 +190,7 @@ land → show_result for closure. Eight tool calls is plenty for a 30-second sce
   {{"tool": "add_pointer", "args": {{"name": "L", "element_id": "arr", "index": 0, "color": "GREEN"}}}},
   {{"tool": "add_pointer", "args": {{"name": "R", "element_id": "arr", "index": 6, "color": "RED"}}}},
   {{"tool": "highlight_cells", "args": {{"element_id": "arr", "indices": [0, 6], "color": "YELLOW"}}}},
-  {{"tool": "emphasize", "args": {{"element_id": "arr", "index": -1}}}},
+  {{"tool": "emphasize", "args": {{"element_id": "arr", "index": -1, "pace": "slow"}}}},
   {{"tool": "pause", "args": {{"beats": 2}}}},
   {{"tool": "move_pointer", "args": {{"name": "L", "element_id": "arr", "to_index": 3}}}},
   {{"tool": "move_pointer", "args": {{"name": "R", "element_id": "arr", "to_index": 3}}}},

@@ -366,7 +366,8 @@ class ToolExecutor:
         self.state[annotation_id] = grp
         self.vgroups[annotation_id] = grp
 
-    def _tool_emphasize(self, element_id: str, index: int = -1):
+    def _tool_emphasize(self, element_id: str, index: int = -1,
+                         pace: str = "normal"):
         strip = self.state.get(element_id)
         mob = self.vgroups.get(element_id)
 
@@ -377,11 +378,21 @@ class ToolExecutor:
         else:
             return
 
+        # Rhythm: slow draws out the aha moment, fast is for minor beats.
+        if pace == "slow":
+            run_time, scale, hold = 1.0, 1.4, 0.6
+        elif pace == "fast":
+            run_time, scale, hold = 0.3, 1.15, 0.0
+        else:  # normal
+            run_time, scale, hold = 0.6, 1.25, 0.0
+
         self.scene.play(
-            Indicate(target, color=YELLOW, scale_factor=1.25),
-            run_time=0.6,
+            Indicate(target, color=YELLOW, scale_factor=scale),
+            run_time=run_time,
             rate_func=there_and_back,
         )
+        if hold > 0:
+            self.scene.wait(hold)
 
     def _tool_show_result(self, value: str, label: str = ""):
         text = f"{label}: {value}" if label else str(value)
