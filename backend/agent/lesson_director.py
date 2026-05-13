@@ -29,6 +29,12 @@ class ScenePlan(BaseModel):
     title: str
     objective: str          # one sentence: what the viewer should understand
     is_aha_moment: bool = False  # true for the scene with the key insight
+    # Item #2 — cross-scene continuity. The planner predicts element_ids this
+    # scene will introduce so the NEXT scene's prompt can reference them by
+    # name, letting later scenes build on (rather than recreate) earlier
+    # visuals. Predictions are advisory: scenes may also introduce ids not
+    # listed here, and the lint pass will still catch true broken refs.
+    key_elements: List[str] = []
 
 
 class NarrativePlan(BaseModel):
@@ -74,11 +80,22 @@ Return ONLY valid JSON matching this schema:
   "core_insight": "...",
   "narrative_arc": "...",
   "scenes": [
-    {"title": "...", "objective": "...", "is_aha_moment": false},
-    {"title": "...", "objective": "...", "is_aha_moment": true},
+    {"title": "...", "objective": "...", "is_aha_moment": false,
+     "key_elements": ["arr", "ptr_left"]},
+    {"title": "...", "objective": "...", "is_aha_moment": true,
+     "key_elements": ["arr"]},
     ...
   ]
 }
+
+CONTINUITY — predict element_ids per scene:
+- key_elements lists the element_ids each scene introduces (e.g. "arr",
+  "stack_0", "graph"). These are SHORT snake_case identifiers.
+- The next scene's builder will see these ids and can reference them by
+  name to continue the visual story instead of recreating the same array
+  or graph from scratch.
+- Aim for 1-3 ids per scene. If a scene introduces no persistent visual
+  (e.g. a pure caption scene), use [].
 
 EXAMPLES of strong lesson plans:
 
@@ -88,9 +105,9 @@ Example 1 — DSA (two-pointer palindrome):
   "core_insight": "Opposite-end pointers check each character pair exactly once, replacing the inner loop.",
   "narrative_arc": "hook: nested loops do redundant comparisons → insight: opposite-end convergence checks each pair once → resolution: O(n) palindrome check on 'racecar'",
   "scenes": [
-    {"title": "Why Nested Loops Waste Work", "objective": "See that a naive palindrome check compares the same characters multiple times.", "is_aha_moment": false},
-    {"title": "The Convergence Insight", "objective": "Watch two pointers from opposite ends collapse the inner loop to a single sweep.", "is_aha_moment": true},
-    {"title": "The Algorithm in Action", "objective": "Verify 'racecar' is a palindrome in a single pass.", "is_aha_moment": false}
+    {"title": "Why Nested Loops Waste Work", "objective": "See that a naive palindrome check compares the same characters multiple times.", "is_aha_moment": false, "key_elements": ["arr"]},
+    {"title": "The Convergence Insight", "objective": "Watch two pointers from opposite ends collapse the inner loop to a single sweep.", "is_aha_moment": true, "key_elements": ["arr", "ptr_L", "ptr_R"]},
+    {"title": "The Algorithm in Action", "objective": "Verify 'racecar' is a palindrome in a single pass.", "is_aha_moment": false, "key_elements": ["arr", "ptr_L", "ptr_R"]}
   ]
 }
 
@@ -100,9 +117,9 @@ Example 2 — Math (Riemann sums):
   "core_insight": "The definite integral is the limit of rectangle widths shrinking toward zero.",
   "narrative_arc": "hook: how do we measure area under a curve? → insight: rectangles approximate, the limit is exact → resolution: ∫ x² from 0 to 4 = 64/3",
   "scenes": [
-    {"title": "The Area Question", "objective": "Frame the problem: what is the area under y = x² between 0 and 4?", "is_aha_moment": false},
-    {"title": "Rectangles Get Tighter", "objective": "See how the approximation converges as n grows from 4 to 16 to 64.", "is_aha_moment": true},
-    {"title": "The Exact Answer", "objective": "Apply the power rule to confirm ∫ x² dx from 0 to 4 = 64/3.", "is_aha_moment": false}
+    {"title": "The Area Question", "objective": "Frame the problem: what is the area under y = x² between 0 and 4?", "is_aha_moment": false, "key_elements": ["axes", "curve"]},
+    {"title": "Rectangles Get Tighter", "objective": "See how the approximation converges as n grows from 4 to 16 to 64.", "is_aha_moment": true, "key_elements": ["axes", "curve", "rects"]},
+    {"title": "The Exact Answer", "objective": "Apply the power rule to confirm ∫ x² dx from 0 to 4 = 64/3.", "is_aha_moment": false, "key_elements": ["axes", "curve"]}
   ]
 }
 
@@ -112,9 +129,9 @@ Example 3 — DSA (Kadane's):
   "core_insight": "At each index, the best subarray ending here either extends the previous one or restarts at this element — whichever is larger.",
   "narrative_arc": "hook: brute force is O(n²) → insight: only running sum and best-so-far matter → resolution: single pass O(n)",
   "scenes": [
-    {"title": "The Brute Force Cost", "objective": "Understand why checking every subarray is O(n²).", "is_aha_moment": false},
-    {"title": "The Reset Decision", "objective": "Discover that we only need two numbers — keep extending, or start fresh?", "is_aha_moment": true},
-    {"title": "One Pass Through the Array", "objective": "Walk [-2,1,-3,4,-1,2,1,-5,4] computing max_sum.", "is_aha_moment": false}
+    {"title": "The Brute Force Cost", "objective": "Understand why checking every subarray is O(n²).", "is_aha_moment": false, "key_elements": ["arr"]},
+    {"title": "The Reset Decision", "objective": "Discover that we only need two numbers — keep extending, or start fresh?", "is_aha_moment": true, "key_elements": ["arr", "running", "best"]},
+    {"title": "One Pass Through the Array", "objective": "Walk [-2,1,-3,4,-1,2,1,-5,4] computing max_sum.", "is_aha_moment": false, "key_elements": ["arr", "running", "best"]}
   ]
 }
 
@@ -256,6 +273,7 @@ def build_scene(
     previous_scene_context: str = "",
     max_retries: int = 2,
     previous_error: str | None = None,
+    previous_scene_elements: list[str] | None = None,
 ) -> list[ToolCall]:
     catalog = tool_catalog_prompt()
     system = _SCENE_SYSTEM_TEMPLATE.format(tool_catalog=catalog)
@@ -263,6 +281,22 @@ def build_scene(
     context_block = ""
     if previous_scene_context:
         context_block = f"\nPrevious scene left the viewer with: {previous_scene_context}\n"
+
+    # Item #2 — surface element_ids carried over from prior scenes so the
+    # builder can REUSE them by referencing the same id rather than
+    # recreating the same array/graph/etc. The prompt instructs the model
+    # to prefer continuity over duplication.
+    continuity_block = ""
+    if previous_scene_elements:
+        ids_csv = ", ".join(previous_scene_elements)
+        continuity_block = (
+            f"\nCONTINUITY — previous scene(s) introduced these element_ids: "
+            f"{ids_csv}.\nWhen possible, REUSE these ids by referencing them in "
+            f"move_pointer / highlight_cells / emphasize / fade_out_element "
+            f"calls instead of recreating the same visual. If this scene's "
+            f"focus is a different concept, introduce fresh ids — don't force "
+            f"continuity that doesn't fit.\n"
+        )
 
     aha_note = ""
     if scene_plan.is_aha_moment:
@@ -290,6 +324,7 @@ def build_scene(
         f"Overall lesson question: {question}\n"
         f"Core insight of the lesson: {core_insight}\n"
         f"{context_block}"
+        f"{continuity_block}"
         f"{aha_note}"
         f"{error_note}"
         f"Build scene: \"{scene_plan.title}\"\n"
@@ -424,6 +459,24 @@ def _is_structurally_complete(calls: list[ToolCall]) -> bool:
 # Orchestrator — direct_lesson
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _accumulate_elements(scenes: list[ScenePlan]) -> list[list[str]]:
+    """Build the per-scene carryover list: scene N sees the union of
+    element_ids introduced in scenes [0, N-1].
+
+    Scene 0 gets []. Preserves insertion order; dedupes case-sensitively.
+    """
+    out: list[list[str]] = []
+    seen: list[str] = []
+    seen_set: set[str] = set()
+    for sp in scenes:
+        out.append(list(seen))  # carryover is everything seen so far
+        for el in sp.key_elements:
+            if el and el not in seen_set:
+                seen.append(el)
+                seen_set.add(el)
+    return out
+
+
 def _build_scene_safe(
     question: str,
     scene_plan: ScenePlan,
@@ -431,6 +484,7 @@ def _build_scene_safe(
     prev_context: str,
     max_retries: int,
     previous_error: str | None = None,
+    previous_scene_elements: list[str] | None = None,
 ) -> list[ToolCall]:
     """Wrapper that returns a minimal fallback instead of raising.
 
@@ -453,6 +507,7 @@ def _build_scene_safe(
             previous_scene_context=prev_context,
             max_retries=max_retries,
             previous_error=previous_error,
+            previous_scene_elements=previous_scene_elements,
         )
     except Exception as exc:
         # Catch broadly — ConnectionError, TimeoutError, anything from the LLM
@@ -484,6 +539,7 @@ def _build_scene_safe(
                 max_retries=1,
                 previous_error="Static validation found these issues:\n- " +
                                "\n- ".join(issues),
+                previous_scene_elements=previous_scene_elements,
             )
             # Only accept the repair if it removed all issues; otherwise keep
             # the (still imperfect) original — the executor silently skips bad
@@ -518,6 +574,11 @@ def direct_lesson(question: str, max_retries: int = 2,
     # from the narrative, not the runtime output — good enough for coherence.
     contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
 
+    # Item #2 — carryover element_ids predicted by the planner. Scene N gets
+    # the union of all element_ids introduced in scenes [0, N-1] so it can
+    # reference + reuse them. Scene 0 gets an empty list.
+    carryover = _accumulate_elements(narrative.scenes)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         futures = [
             pool.submit(
@@ -527,6 +588,8 @@ def direct_lesson(question: str, max_retries: int = 2,
                 narrative.core_insight,
                 contexts[i],
                 max_retries,
+                None,
+                carryover[i],
             )
             for i, scene_plan in enumerate(narrative.scenes)
         ]

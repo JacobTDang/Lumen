@@ -718,12 +718,17 @@ def _run_direct_lesson(job_id: str, question: str, style: str | None = None,
         stage_start = _t.perf_counter()
         contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
 
+        # Item #2 — element_id carryover per scene from the narrative plan.
+        from agent.lesson_director import _accumulate_elements
+        carryover = _accumulate_elements(narrative.scenes)
+
         def _worker(i, sp, prev_err: str | None = None):
             _trace_mod.set_current(render_trace)
             try:
                 return _safe_build_scene(
                     question, sp, narrative.core_insight, contexts[i],
                     previous_error=prev_err,
+                    previous_scene_elements=carryover[i],
                 )
             finally:
                 _trace_mod.set_current(None)
@@ -847,7 +852,8 @@ def _run_direct_lesson(job_id: str, question: str, style: str | None = None,
 
 
 def _safe_build_scene(question, scene_plan, core_insight, prev_context,
-                       previous_error: str | None = None):
+                       previous_error: str | None = None,
+                       previous_scene_elements: list[str] | None = None):
     """build_scene + critique + lint wrapper that returns a minimal fallback on failure.
 
     Delegates to lesson_director._build_scene_safe so the async path has the
@@ -861,4 +867,5 @@ def _safe_build_scene(question, scene_plan, core_insight, prev_context,
         prev_context=prev_context,
         max_retries=2,
         previous_error=previous_error,
+        previous_scene_elements=previous_scene_elements,
     )

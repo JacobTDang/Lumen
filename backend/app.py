@@ -993,6 +993,7 @@ def create_app(testing: bool = False) -> Flask:
         """
         from agent.lesson_director import (
             VALID_STYLES, narrative_plan as _np, _build_scene_safe,
+            _accumulate_elements,
         )
         from flask import Response
         import concurrent.futures
@@ -1020,12 +1021,14 @@ def create_app(testing: bool = False) -> Flask:
 
                 yield _sse("stage", "building_scenes")
                 contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
+                carryover = _accumulate_elements(narrative.scenes)
                 tool_call_lists = [None] * len(narrative.scenes)
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
                     fut_to_idx = {
                         pool.submit(_build_scene_safe, question, sp,
-                                    narrative.core_insight, contexts[i], 2): i
+                                    narrative.core_insight, contexts[i], 2,
+                                    None, carryover[i]): i
                         for i, sp in enumerate(narrative.scenes)
                     }
                     completed_events = []

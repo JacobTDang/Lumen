@@ -115,6 +115,56 @@ def test_narrative_plan_includes_length_hint_in_system(mocker):
     assert "long" in captured["system"].lower()
 
 
+def test_build_scene_includes_carryover_element_ids(mocker):
+    """Item #2 regression: previous_scene_elements must appear in the scene prompt."""
+    captured = {}
+
+    def fake_call(system, user, *args, **kwargs):
+        captured["user"] = user
+        return json.dumps(MOCK_TOOL_CALLS)
+
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=False)
+    build_scene("q", sp, "insight",
+                 previous_scene_elements=["arr_main", "ptr_left", "ptr_right"])
+    user_text = captured["user"]
+    assert "CONTINUITY" in user_text
+    assert "arr_main" in user_text
+    assert "ptr_left" in user_text
+    assert "ptr_right" in user_text
+
+
+def test_build_scene_no_continuity_block_when_no_prior_elements(mocker):
+    """First-scene case: empty list → no CONTINUITY block leaks into prompt."""
+    captured = {}
+
+    def fake_call(system, user, *args, **kwargs):
+        captured["user"] = user
+        return json.dumps(MOCK_TOOL_CALLS)
+
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=False)
+    build_scene("q", sp, "insight", previous_scene_elements=[])
+    assert "CONTINUITY" not in captured["user"]
+
+
+def test_accumulate_elements_carries_union_forward():
+    """Scene N sees union of element_ids from scenes [0, N-1]."""
+    from agent.lesson_director import _accumulate_elements
+    scenes = [
+        ScenePlan(title="a", objective="o", key_elements=["arr"]),
+        ScenePlan(title="b", objective="o", key_elements=["ptr_L", "ptr_R"]),
+        ScenePlan(title="c", objective="o", key_elements=["arr"]),  # dupe
+        ScenePlan(title="d", objective="o", key_elements=["result"]),
+    ]
+    carry = _accumulate_elements(scenes)
+    assert carry[0] == []
+    assert carry[1] == ["arr"]
+    assert carry[2] == ["arr", "ptr_L", "ptr_R"]
+    # arr was already seen — should not duplicate
+    assert carry[3] == ["arr", "ptr_L", "ptr_R"]
+
+
 def test_narrative_plan_default_target_minutes_is_short(mocker):
     """Default target_minutes (1.5) should produce the short/medium hint, not very-short or long."""
     captured = {}
