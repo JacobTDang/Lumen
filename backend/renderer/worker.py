@@ -707,23 +707,31 @@ def _run_direct_lesson(job_id: str, question: str, style: str | None = None):
 
         # Phase 2: build scenes in parallel (matches lesson_director.direct_lesson).
         # Each worker thread carries the same trace so its call_model invocations
-        # are recorded.
+        # are recorded. The same _worker is reused by the retry path below so
+        # the retry also gets parallelism (Bug 3 fix).
         stage_start = _t.perf_counter()
         contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
 
-        def _worker(i, sp):
+        def _worker(i, sp, prev_err: str | None = None):
             _trace_mod.set_current(render_trace)
             try:
-                return _safe_build_scene(question, sp, narrative.core_insight, contexts[i])
+                return _safe_build_scene(
+                    question, sp, narrative.core_insight, contexts[i],
+                    previous_error=prev_err,
+                )
             finally:
                 _trace_mod.set_current(None)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-            futures = [
-                pool.submit(_worker, i, sp)
-                for i, sp in enumerate(narrative.scenes)
-            ]
-            tool_call_lists = [f.result() for f in futures]
+        def _build_all(prev_err: str | None = None):
+            """Parallel build for all scenes. Used both initially and on retry."""
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                futures = [
+                    pool.submit(_worker, i, sp, prev_err)
+                    for i, sp in enumerate(narrative.scenes)
+                ]
+                return [f.result() for f in futures]
+
+        tool_call_lists = _build_all()
         render_trace.add_stage(
             "building_scenes",
             int((_t.perf_counter() - stage_start) * 1000),
@@ -777,23 +785,22 @@ def _run_direct_lesson(job_id: str, question: str, style: str | None = None):
                 return
             if inner["status"] == "error":
                 err_text = inner.get("error", "render failed")
-                # One retry: rebuild scenes with the error fed back, resubmit
+                # One retry: rebuild scenes with the error fed back, resubmit.
+                # Reuses _build_all() for parallelism (Bug 3 fix) and records a
+                # "building_scenes_retry" stage so the trace shows the cost
+                # (Bug 4 fix). _build_all() routes through _safe_build_scene
+                # which re-runs critique + lint, so the retry gets the full
+                # quality pass too (Bug 5 confirmed not an issue).
                 if not retry_used:
                     retry_used = True
                     render_trace.note(f"first render failed: {err_text}; retrying with error feedback")
                     outer["stage"] = "building_scenes"
-                    new_tool_call_lists = []
-                    for i, sp in enumerate(narrative.scenes):
-                        _trace_mod.set_current(render_trace)
-                        try:
-                            new_tool_call_lists.append(
-                                _safe_build_scene(
-                                    question, sp, narrative.core_insight,
-                                    contexts[i], previous_error=err_text,
-                                )
-                            )
-                        finally:
-                            _trace_mod.set_current(None)
+                    retry_start = _t.perf_counter()
+                    new_tool_call_lists = _build_all(prev_err=err_text)
+                    render_trace.add_stage(
+                        "building_scenes_retry",
+                        int((_t.perf_counter() - retry_start) * 1000),
+                    )
                     new_steps = [
                         StepPlan(
                             tool="dynamic_lesson_step",

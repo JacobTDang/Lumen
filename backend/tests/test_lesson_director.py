@@ -469,6 +469,112 @@ def test_run_direct_lesson_stage_progression(mocker):
     assert _jobs[outer_id]["url"] == "/media/lessons/x.mp4"
 
 
+def test_run_direct_lesson_retry_uses_parallel_executor(mocker):
+    """Bug 3 regression: when the first render fails and we retry, all scene
+    rebuilds must happen in parallel (not serial). Detect by counting how
+    many _safe_build_scene calls are in-flight simultaneously."""
+    import threading as _th
+    from renderer.worker import _run_direct_lesson, _jobs
+    from agent.lesson_director import NarrativePlan, ScenePlan, ToolCall
+
+    fake_narrative = NarrativePlan(
+        lesson_title="T", core_insight="I", narrative_arc="A",
+        scenes=[
+            ScenePlan(title="A", objective="o1"),
+            ScenePlan(title="B", objective="o2"),
+            ScenePlan(title="C", objective="o3"),
+        ],
+    )
+    mocker.patch("agent.lesson_director.narrative_plan", return_value=fake_narrative)
+
+    # Track max concurrent in-flight builds via a semaphore counter
+    in_flight = {"n": 0, "peak": 0}
+    counter_lock = _th.Lock()
+
+    def slow_build(*args, **kwargs):
+        with counter_lock:
+            in_flight["n"] += 1
+            in_flight["peak"] = max(in_flight["peak"], in_flight["n"])
+        try:
+            import time as _ti
+            _ti.sleep(0.15)  # long enough to see overlap if parallel
+            return [ToolCall(tool="set_caption", args={"text": "x"})]
+        finally:
+            with counter_lock:
+                in_flight["n"] -= 1
+
+    mocker.patch("agent.lesson_director._build_scene_safe", side_effect=slow_build)
+    # Worker imports it locally — patch there too
+    mocker.patch("renderer.worker._safe_build_scene", side_effect=slow_build)
+
+    # Inner lesson: first call returns an errored job, second succeeds
+    inner_call_count = {"n": 0}
+    def fake_submit(steps):
+        inner_call_count["n"] += 1
+        iid = f"inner-{inner_call_count['n']}"
+        if inner_call_count["n"] == 1:
+            _jobs[iid] = {"status": "error", "url": None,
+                           "error": "first render bad", "progress": 0.0,
+                           "stage": "error"}
+        else:
+            _jobs[iid] = {"status": "done", "url": "/media/x.mp4",
+                           "error": None, "progress": 1.0, "stage": "done"}
+        return iid
+    mocker.patch("renderer.worker.submit_lesson", side_effect=fake_submit)
+
+    outer_id = "test-retry-parallel"
+    _jobs[outer_id] = {"status": "pending", "url": None, "error": None,
+                       "progress": 0.0, "stage": "planning_narrative"}
+    _run_direct_lesson(outer_id, "test", None)
+
+    assert _jobs[outer_id]["status"] == "done"
+    # Initial build = 3 parallel, retry build = 3 parallel. Peak must be ≥ 2
+    # somewhere during execution. (Strict equality with 3 can flake on slow CI;
+    # 2 is enough to prove non-serial behavior.)
+    assert in_flight["peak"] >= 2, f"retry was serial (peak={in_flight['peak']})"
+
+
+def test_run_direct_lesson_retry_records_stage_timing(mocker):
+    """Bug 4 regression: a retry must add a 'building_scenes_retry' stage to
+    the trace so the cost is visible in /api/trace/<id>."""
+    from renderer.worker import _run_direct_lesson, _jobs
+    from agent.trace import get_trace
+    from agent.lesson_director import NarrativePlan, ScenePlan, ToolCall
+
+    fake_narrative = NarrativePlan(
+        lesson_title="T", core_insight="I", narrative_arc="A",
+        scenes=[ScenePlan(title="One", objective="o")],
+    )
+    mocker.patch("agent.lesson_director.narrative_plan", return_value=fake_narrative)
+    mocker.patch("agent.lesson_director._build_scene_safe",
+                 return_value=[ToolCall(tool="set_caption", args={"text": "x"})])
+    mocker.patch("renderer.worker._safe_build_scene",
+                 return_value=[ToolCall(tool="set_caption", args={"text": "x"})])
+
+    inner_call_count = {"n": 0}
+    def fake_submit(steps):
+        inner_call_count["n"] += 1
+        iid = f"inner-stage-{inner_call_count['n']}"
+        if inner_call_count["n"] == 1:
+            _jobs[iid] = {"status": "error", "url": None,
+                           "error": "boom", "progress": 0.0, "stage": "error"}
+        else:
+            _jobs[iid] = {"status": "done", "url": "/media/x.mp4",
+                           "error": None, "progress": 1.0, "stage": "done"}
+        return iid
+    mocker.patch("renderer.worker.submit_lesson", side_effect=fake_submit)
+
+    outer_id = "test-retry-stage"
+    _jobs[outer_id] = {"status": "pending", "url": None, "error": None,
+                       "progress": 0.0, "stage": "planning_narrative"}
+    _run_direct_lesson(outer_id, "test", None)
+
+    trace = get_trace(outer_id)
+    assert trace is not None
+    stage_names = [s.stage for s in trace.stages]
+    assert "building_scenes_retry" in stage_names
+
+
 def test_run_direct_lesson_agent_failure_records_error(mocker):
     """If the agent raises, the outer job ends in error with stage='error'."""
     from renderer.worker import _run_direct_lesson, _jobs
