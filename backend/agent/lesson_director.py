@@ -414,8 +414,12 @@ def _build_scene_safe(
             max_retries=max_retries,
             previous_error=previous_error,
         )
-    except ValueError as exc:
-        print(f"[lesson_director] build_scene failed for '{scene_plan.title}': {exc}")
+    except Exception as exc:
+        # Catch broadly — ConnectionError, TimeoutError, anything from the LLM
+        # SDK. Without this, the worker thread dies and the whole lesson errors
+        # opaquely instead of returning a minimal fallback scene.
+        print(f"[lesson_director] build_scene failed for '{scene_plan.title}': "
+              f"{type(exc).__name__}: {exc}")
         return [
             ToolCall(tool="set_caption", args={"text": scene_plan.objective}),
             ToolCall(tool="show_text",

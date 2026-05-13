@@ -123,3 +123,41 @@ def test_call_model_without_trace_does_not_record(mocker):
     mocker.patch("agent.llm_client.build_llm", return_value=FakeLLM())
     set_current(None)
     assert call_model("s", "u") == "fine"   # does not raise
+
+
+def test_trace_handles_concurrent_add_call(tmp_path, monkeypatch):
+    """Bug 1 regression: 10 threads × 5 add_calls each must not raise and must
+    end with all 50 calls present. Without the per-trace lock this fails with
+    RuntimeError: list changed size during iteration (intermittently).
+    """
+    import threading as _th
+    monkeypatch.setattr("agent.trace._TRACES_DIR", str(tmp_path))
+    trace = new_trace("test-concurrent-add")
+
+    N_THREADS = 10
+    CALLS_PER_THREAD = 5
+    barrier = _th.Barrier(N_THREADS)
+    errors: list[BaseException] = []
+    errors_lock = _th.Lock()
+
+    def worker(tid: int):
+        try:
+            barrier.wait()  # release all at once for max contention
+            for j in range(CALLS_PER_THREAD):
+                trace.add_call(LLMCall(
+                    label=f"t{tid}-c{j}",
+                    model="m",
+                    elapsed_ms=1,
+                    prompt_chars=10,
+                    response_chars=20,
+                ))
+        except BaseException as e:
+            with errors_lock:
+                errors.append(e)
+
+    threads = [_th.Thread(target=worker, args=(i,)) for i in range(N_THREADS)]
+    for t in threads: t.start()
+    for t in threads: t.join(timeout=5.0)
+
+    assert not errors, f"concurrent add_call raised: {errors[:3]}"
+    assert len(trace.calls) == N_THREADS * CALLS_PER_THREAD

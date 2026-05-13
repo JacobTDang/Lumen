@@ -53,44 +53,62 @@ class RenderTrace:
     calls: list[LLMCall] = field(default_factory=list)
     stages: list[StageTiming] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # Per-trace lock. The parallel build_scene workers all call add_call()
+    # concurrently — without this lock, `save()` iterating `self.calls` while
+    # another thread appends raises RuntimeError: list changed size.
+    # `repr=False, compare=False` keeps the dataclass machinery from trying
+    # to inspect the lock object (which would deadlock on repr).
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False,
+    )
 
     def add_call(self, call: LLMCall) -> None:
-        self.calls.append(call)
+        with self._lock:
+            self.calls.append(call)
         self.save()
 
     def add_stage(self, stage: str, elapsed_ms: int) -> None:
-        self.stages.append(StageTiming(stage=stage, elapsed_ms=elapsed_ms))
+        with self._lock:
+            self.stages.append(StageTiming(stage=stage, elapsed_ms=elapsed_ms))
         self.save()
 
     def note(self, text: str) -> None:
-        self.notes.append(text)
+        with self._lock:
+            self.notes.append(text)
         self.save()
 
     def finalize(self) -> None:
-        self.finished_at = time.time()
+        with self._lock:
+            self.finished_at = time.time()
         self.save()
 
     def save(self) -> None:
+        # Hold the lock for the entire snapshot + write. Concurrent saves would
+        # otherwise race on the tmp file — Windows fails os.replace with
+        # PermissionError when a sibling thread still has the tmp open.
+        # save() is fast (~ms) so the contention is acceptable.
         os.makedirs(_TRACES_DIR, exist_ok=True)
         path = os.path.join(_TRACES_DIR, f"{self.job_id}.json")
         tmp = path + ".tmp"
-        payload = {
-            "job_id": self.job_id,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "calls": [asdict(c) for c in self.calls],
-            "stages": [asdict(s) for s in self.stages],
-            "notes": list(self.notes),
-            "total_calls": len(self.calls),
-            "total_call_ms": sum(c.elapsed_ms for c in self.calls),
-        }
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, indent=2)
-        os.replace(tmp, path)
+        with self._lock:
+            payload = {
+                "job_id": self.job_id,
+                "started_at": self.started_at,
+                "finished_at": self.finished_at,
+                "calls": [asdict(c) for c in self.calls],
+                "stages": [asdict(s) for s in self.stages],
+                "notes": list(self.notes),
+                "total_calls": len(self.calls),
+                "total_call_ms": sum(c.elapsed_ms for c in self.calls),
+            }
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, indent=2)
+            os.replace(tmp, path)
 
     @property
     def total_call_ms(self) -> int:
-        return sum(c.elapsed_ms for c in self.calls)
+        with self._lock:
+            return sum(c.elapsed_ms for c in self.calls)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

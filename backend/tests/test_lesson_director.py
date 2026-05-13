@@ -187,6 +187,24 @@ def test_critique_scene_empty_input_returns_empty(mocker):
     mock.assert_not_called()
 
 
+def test_build_scene_safe_falls_back_on_connection_error(mocker):
+    """Bug 2 regression: ConnectionError (or any non-ValueError) from the LLM
+    must NOT propagate out of _build_scene_safe — it must return the minimal
+    fallback so the lesson can still render with a placeholder scene."""
+    from agent.lesson_director import _build_scene_safe
+
+    mocker.patch(
+        "agent.lesson_director.build_scene",
+        side_effect=ConnectionError("network down"),
+    )
+    sp = ScenePlan(title="title", objective="objective", is_aha_moment=False)
+    # Must not raise; must return the 3-call fallback
+    calls = _build_scene_safe("q", sp, "core_insight", "", max_retries=2)
+    assert len(calls) == 3
+    tools = [c.tool for c in calls]
+    assert tools == ["set_caption", "show_text", "pause"]
+
+
 def test_build_scene_safe_invokes_critique(mocker):
     """_build_scene_safe runs critique after a successful build_scene."""
     from agent.lesson_director import _build_scene_safe, ToolCall
