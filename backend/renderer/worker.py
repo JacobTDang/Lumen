@@ -650,8 +650,10 @@ def _run_lesson(lesson_id: str, steps: list):
 # and run the agent + lesson submission on a daemon thread that mirrors the
 # inner lesson's state into the outer job for unified status polling.
 
-def submit_direct_lesson(question: str) -> str:
+def submit_direct_lesson(question: str, style: str | None = None) -> str:
     """Submit a Lesson Director lesson and return a job_id immediately.
+
+    ``style`` (optional): one of intuition_first | rigor_first | socratic | speedrun.
 
     Stage progression:
         planning_narrative  → Phase 1 LLM call
@@ -665,12 +667,12 @@ def submit_direct_lesson(question: str) -> str:
     _jobs[job_id] = {"status": "pending", "url": None, "error": None,
                      "progress": 0.0, "stage": "planning_narrative"}
     threading.Thread(
-        target=_run_direct_lesson, args=(job_id, question), daemon=True,
+        target=_run_direct_lesson, args=(job_id, question, style), daemon=True,
     ).start()
     return job_id
 
 
-def _run_direct_lesson(job_id: str, question: str):
+def _run_direct_lesson(job_id: str, question: str, style: str | None = None):
     """Background worker: agent planning + submit_lesson + state mirror.
 
     Imports the agent lazily to avoid a circular import (lesson_director
@@ -693,7 +695,7 @@ def _run_direct_lesson(job_id: str, question: str):
         _trace_mod.set_current(render_trace)
 
         stage_start = _t.perf_counter()
-        narrative = narrative_plan(question)
+        narrative = narrative_plan(question, style=style)
         render_trace.add_stage(
             "planning_narrative",
             int((_t.perf_counter() - stage_start) * 1000),

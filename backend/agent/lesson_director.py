@@ -126,13 +126,45 @@ Notice the patterns:
 """
 
 
-def narrative_plan(question: str, max_retries: int = 2) -> NarrativePlan:
+# Narrative style presets — prepended to the system prompt to shape the agent's
+# voice without changing its core constraints. Pick one in direct_lesson / via
+# the /api/direct-lesson "style" param.
+NARRATIVE_STYLES: dict[str, str] = {
+    "intuition_first": (
+        "STYLE: Intuition-first. Lead with geometric or visual intuition. Build "
+        "feeling before formality. Save precise definitions for after the viewer "
+        "has the gut sense."
+    ),
+    "rigor_first": (
+        "STYLE: Rigor-first. State precise definitions and constraints in the "
+        "first scene. Build subsequent scenes on a foundation of formal notation."
+    ),
+    "socratic": (
+        "STYLE: Socratic. Frame each scene as a question the viewer should be "
+        "able to answer by its end. Each objective should read as a question, "
+        "not a statement."
+    ),
+    "speedrun": (
+        "STYLE: Speedrun. Minimum viable lesson. EXACTLY 2 scenes — hook and "
+        "resolution. No setup scenes, no callbacks. Hit only the essential insight."
+    ),
+}
+VALID_STYLES: frozenset[str] = frozenset(NARRATIVE_STYLES.keys())
+
+
+def narrative_plan(question: str, max_retries: int = 2,
+                    style: str | None = None) -> NarrativePlan:
     if not question.strip():
         raise ValueError("question is required")
+    system = _NARRATIVE_SYSTEM
+    if style:
+        style_hint = NARRATIVE_STYLES.get(style)
+        if style_hint:
+            system = f"{style_hint}\n\n{system}"
     last_error: Exception = ValueError("no attempts")
     for _ in range(max_retries):
         try:
-            raw = _call_model(_NARRATIVE_SYSTEM, f"Topic or question:\n{question.strip()}")
+            raw = _call_model(system, f"Topic or question:\n{question.strip()}")
             data = extract_json(raw)
             plan = NarrativePlan(**data)
             if not 2 <= len(plan.scenes) <= 4:
@@ -420,15 +452,19 @@ def _build_scene_safe(
     return tool_calls
 
 
-def direct_lesson(question: str, max_retries: int = 2) -> LessonPlan:
+def direct_lesson(question: str, max_retries: int = 2,
+                   style: str | None = None) -> LessonPlan:
     """
     Full pipeline: narrative plan → build each scene in parallel → LessonPlan.
+
+    ``style`` (optional) picks a narrative voice from NARRATIVE_STYLES:
+    intuition_first | rigor_first | socratic | speedrun.
 
     Phase 2 (build_scene) calls are independent once the narrative is fixed,
     so they run concurrently via a thread pool — reducing latency from ~N×4s
     to ~4s regardless of scene count (N = 2-4 scenes).
     """
-    narrative = narrative_plan(question, max_retries=max_retries)
+    narrative = narrative_plan(question, max_retries=max_retries, style=style)
 
     # Pass sequential context hints (each scene's objective) for continuity.
     # Even though builds run in parallel, the context is the planned objective

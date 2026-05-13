@@ -887,14 +887,25 @@ def create_app(testing: bool = False) -> Flask:
             planning_narrative → building_scenes → queued → rendering_X_of_N
                               → stitching → done
 
-        Request:  { "question": "Explain the sliding window technique" }
+        Request:  {
+            "question": "Explain the sliding window technique",
+            "style": "intuition_first"  # optional: intuition_first | rigor_first |
+                                        #           socratic | speedrun
+        }
         Response: { "job_id": "..." }   (202)
         """
+        from agent.lesson_director import VALID_STYLES
         body = request.get_json(silent=True) or {}
         question = (body.get("question") or "").strip()
         if not question:
             return jsonify({"error": "question is required"}), 400
-        job_id = submit_direct_lesson(question)
+        style = body.get("style")
+        if style is not None and style not in VALID_STYLES:
+            return jsonify({
+                "error": f"invalid style '{style}'",
+                "valid": sorted(VALID_STYLES),
+            }), 400
+        job_id = submit_direct_lesson(question, style=style)
         return jsonify({"job_id": job_id}), 202
 
     @app.post("/api/pin")

@@ -240,6 +240,44 @@ def test_emphasize_supports_pace_arg():
     assert set(emp["parameters"]["pace"]["enum"]) == {"slow", "normal", "fast"}
 
 
+def test_narrative_plan_accepts_known_style(mocker):
+    """When style is given, the system prompt is prefixed with the style hint."""
+    from agent.lesson_director import narrative_plan, NARRATIVE_STYLES
+    captured = {}
+    def fake_call(system, user):
+        captured["system"] = system
+        return json.dumps(MOCK_NARRATIVE)
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    narrative_plan("any question", style="socratic")
+    assert NARRATIVE_STYLES["socratic"] in captured["system"]
+
+
+def test_narrative_plan_ignores_unknown_style(mocker):
+    """Unknown style → fall back silently to default prompt (no crash)."""
+    from agent.lesson_director import narrative_plan
+    captured = {}
+    def fake_call(system, user):
+        captured["system"] = system
+        return json.dumps(MOCK_NARRATIVE)
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    narrative_plan("any question", style="not_a_real_style")
+    assert "STYLE:" not in captured["system"]
+
+
+def test_direct_lesson_endpoint_rejects_invalid_style(client):
+    res = client.post("/api/direct-lesson",
+                      json={"question": "x", "style": "bogus"})
+    assert res.status_code == 400
+    assert "valid" in res.get_json()
+
+
+def test_direct_lesson_endpoint_accepts_valid_style(client, mocker):
+    mocker.patch("app.submit_direct_lesson", return_value="job-123")
+    res = client.post("/api/direct-lesson",
+                      json={"question": "x", "style": "speedrun"})
+    assert res.status_code == 202
+
+
 def test_tool_executor_emphasize_honors_pace():
     """Calling emphasize with pace='slow' triggers a longer play + an extra wait."""
     from scenes.tool_executor import ToolExecutor
