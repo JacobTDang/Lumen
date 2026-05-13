@@ -125,6 +125,86 @@ def test_build_scene_skips_unknown_tools(mocker):
     assert all(c.tool in VALID_TOOL_NAMES for c in calls)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# critique_scene — self-critique pass
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_critique_scene_returns_revised_calls(mocker):
+    """When the critique LLM returns a valid revised array, those calls are returned."""
+    from agent.lesson_director import critique_scene, ToolCall
+    revised = [
+        {"tool": "set_caption", "args": {"text": "improved"}},
+        {"tool": "show_array", "args": {"values": ["a"], "element_id": "arr"}},
+        {"tool": "emphasize", "args": {"element_id": "arr"}},
+        {"tool": "pause", "args": {"beats": 2}},
+        {"tool": "show_result", "args": {"value": "ok"}},
+    ]
+    mocker.patch("agent.lesson_director._call_model", return_value=json.dumps(revised))
+    original = [ToolCall(tool="show_array", args={"values": ["a"]})]
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=True)
+    out = critique_scene(original, sp, "insight")
+    assert [c.tool for c in out] == [
+        "set_caption", "show_array", "emphasize", "pause", "show_result"
+    ]
+
+
+def test_critique_scene_falls_back_on_invalid_json(mocker):
+    """If the critique LLM returns garbage, original tool_calls survive."""
+    from agent.lesson_director import critique_scene, ToolCall
+    mocker.patch("agent.lesson_director._call_model", return_value="not json")
+    original = [
+        ToolCall(tool="show_array", args={"values": ["a"]}),
+        ToolCall(tool="emphasize", args={"element_id": "arr"}),
+        ToolCall(tool="show_result", args={"value": "x"}),
+    ]
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=True)
+    out = critique_scene(original, sp, "insight")
+    assert out == original
+
+
+def test_critique_scene_falls_back_on_too_few_calls(mocker):
+    """If critique returns suspiciously few calls (parse partial fail), keep original."""
+    from agent.lesson_director import critique_scene, ToolCall
+    # Returns only 1 call, but original had 5 — likely partial parse, reject
+    mocker.patch(
+        "agent.lesson_director._call_model",
+        return_value=json.dumps([{"tool": "pause", "args": {}}]),
+    )
+    original = [ToolCall(tool=t, args={}) for t in
+                ["show_array", "set_caption", "emphasize", "pause", "show_result"]]
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=True)
+    out = critique_scene(original, sp, "insight")
+    assert len(out) == 5
+
+
+def test_critique_scene_empty_input_returns_empty(mocker):
+    """If build_scene returned no calls, critique short-circuits."""
+    from agent.lesson_director import critique_scene
+    mock = mocker.patch("agent.lesson_director._call_model")
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=False)
+    out = critique_scene([], sp, "insight")
+    assert out == []
+    mock.assert_not_called()
+
+
+def test_build_scene_safe_invokes_critique(mocker):
+    """_build_scene_safe runs critique after a successful build_scene."""
+    from agent.lesson_director import _build_scene_safe, ToolCall
+
+    built = [
+        ToolCall(tool="set_caption", args={"text": "x"}),
+        ToolCall(tool="show_array", args={"values": ["a"]}),
+        ToolCall(tool="emphasize", args={"element_id": "arr"}),
+        ToolCall(tool="show_result", args={"value": "y"}),
+    ]
+    mocker.patch("agent.lesson_director.build_scene", return_value=built)
+    critique = mocker.patch("agent.lesson_director.critique_scene", return_value=built)
+
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=False)
+    _build_scene_safe("q", sp, "insight", "", max_retries=2)
+    critique.assert_called_once()
+
+
 def test_direct_lesson_produces_lesson_plan(mocker):
     call_count = {"n": 0}
 

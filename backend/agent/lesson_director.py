@@ -256,6 +256,80 @@ def build_scene(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase 2.5 — self-critique pass
+# ─────────────────────────────────────────────────────────────────────────────
+
+_CRITIQUE_SYSTEM = """\
+You are a strict reviewer of educational animation scenes. You are given a
+sequence of visual tool calls produced by a planner. Your job is to spot common
+weaknesses and REVISE the calls so the scene is genuinely good.
+
+CHECKLIST (revise the scene if ANY of these fail):
+1. Exactly ONE emphasize() at the insight moment — not zero, not three.
+2. A pause(beats=2 or more) IMMEDIATELY after that emphasize().
+3. At most 3 visual elements created (show_array, show_hashmap, show_stack,
+   show_grid, show_code, show_text, show_equation). Pointers, captions, and
+   highlights do NOT count toward this limit.
+4. The scene starts with a set_caption() explaining WHY (not what).
+5. The scene ends with show_result() OR fade_out_element() — not a hanging frame.
+6. No long stretches without movement: ≤4 consecutive tool calls without any
+   animation (move_pointer, highlight_cells, emphasize, push_stack, etc.).
+7. Every element_id referenced by a later tool call must have been created
+   earlier by a show_* tool. No forward references, no typos.
+
+If the scene is already strong, return it unchanged.
+If it needs fixing, return the REVISED list with all fixes applied.
+
+Return ONLY a valid JSON array of tool calls. No prose, no markdown fences.
+"""
+
+
+def critique_scene(
+    tool_calls: list[ToolCall],
+    scene_plan: ScenePlan,
+    core_insight: str,
+) -> list[ToolCall]:
+    """Run one LLM pass over the generated tool calls to fix common weaknesses.
+
+    Falls back to the original tool_calls if the LLM produces something invalid.
+    Adds ~3 seconds per scene but materially improves output quality.
+    """
+    if not tool_calls:
+        return tool_calls
+
+    serialized = [{"tool": tc.tool, "args": tc.args} for tc in tool_calls]
+    user = (
+        f"Scene title: {scene_plan.title}\n"
+        f"Scene objective: {scene_plan.objective}\n"
+        f"Is aha-moment scene: {scene_plan.is_aha_moment}\n"
+        f"Lesson core insight: {core_insight}\n\n"
+        f"Current tool calls:\n{json.dumps(serialized, indent=2)}\n\n"
+        f"Review against the checklist. Return the revised JSON array."
+    )
+
+    try:
+        raw = _call_model(_CRITIQUE_SYSTEM, user)
+        data = extract_json(raw)
+        if not isinstance(data, list):
+            return tool_calls
+        revised: list[ToolCall] = []
+        for item in data:
+            if not isinstance(item, dict) or "tool" not in item:
+                continue
+            tool_name = item["tool"]
+            if tool_name not in VALID_TOOL_NAMES:
+                continue
+            revised.append(ToolCall(tool=tool_name, args=item.get("args", {})))
+        if len(revised) >= max(3, len(tool_calls) // 2):
+            return revised
+        # Critique returned too few calls — likely a parse failure. Keep original.
+        return tool_calls
+    except Exception as exc:
+        print(f"[lesson_director] critique_scene failed for '{scene_plan.title}': {exc}")
+        return tool_calls
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Orchestrator — direct_lesson
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -266,9 +340,14 @@ def _build_scene_safe(
     prev_context: str,
     max_retries: int,
 ) -> list[ToolCall]:
-    """Wrapper that returns a minimal fallback instead of raising."""
+    """Wrapper that returns a minimal fallback instead of raising.
+
+    Runs the optional self-critique pass after a successful build_scene so the
+    output is checked for the common weaknesses (missing emphasize, too many
+    elements, no result_box).
+    """
     try:
-        return build_scene(
+        tool_calls = build_scene(
             question=question,
             scene_plan=scene_plan,
             core_insight=core_insight,
@@ -283,6 +362,8 @@ def _build_scene_safe(
                      args={"content": scene_plan.title, "position": "CENTER"}),
             ToolCall(tool="pause", args={"beats": 2}),
         ]
+    # Self-critique pass — falls back to original tool_calls if the LLM fails.
+    return critique_scene(tool_calls, scene_plan, core_insight)
 
 
 def direct_lesson(question: str, max_retries: int = 2) -> LessonPlan:

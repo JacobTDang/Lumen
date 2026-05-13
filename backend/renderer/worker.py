@@ -756,12 +756,12 @@ def _run_direct_lesson(job_id: str, question: str):
 
 
 def _safe_build_scene(question, scene_plan, core_insight, prev_context):
-    """build_scene wrapper that returns a minimal fallback on failure.
+    """build_scene + critique wrapper that returns a minimal fallback on failure.
     Mirrors lesson_director._build_scene_safe so the async path has the same
-    resilience as the synchronous one."""
+    resilience and quality pass as the synchronous one."""
+    from agent.lesson_director import build_scene, critique_scene, ToolCall
     try:
-        from agent.lesson_director import build_scene
-        return build_scene(
+        tool_calls = build_scene(
             question=question,
             scene_plan=scene_plan,
             core_insight=core_insight,
@@ -769,10 +769,10 @@ def _safe_build_scene(question, scene_plan, core_insight, prev_context):
         )
     except Exception as exc:
         print(f"[direct-lesson] build_scene failed for '{scene_plan.title}': {exc}")
-        from agent.lesson_director import ToolCall
         return [
             ToolCall(tool="set_caption", args={"text": scene_plan.objective}),
             ToolCall(tool="show_text",
                      args={"content": scene_plan.title, "position": "CENTER"}),
             ToolCall(tool="pause", args={"beats": 2}),
         ]
+    return critique_scene(tool_calls, scene_plan, core_insight)
