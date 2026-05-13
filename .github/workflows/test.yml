@@ -59,17 +59,48 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Enforce bundle-size budget (main chunk < 500 kB)
+      - name: Enforce bundle-size budgets
+        # Budgets in kB (raw size). Adjust intentionally — every increase
+        # should be reviewed in the PR. Current production state (Phase F
+        # build): main JS ~345, main CSS ~12. Headroom of ~150 kB on JS.
+        env:
+          MAIN_JS_BUDGET_KB: 500
+          MAIN_CSS_BUDGET_KB: 50
+          MAIN_JS_GZIP_BUDGET_KB: 150
         run: |
-          # Largest chunk filename starts with "index-" by Vite default
-          MAIN_BYTES=$(find dist/assets -name 'index-*.js' -type f -exec stat -c '%s' {} \; | sort -nr | head -1)
-          if [ -z "$MAIN_BYTES" ]; then
-            echo "Could not find dist/assets/index-*.js — build may have changed"
+          set -euo pipefail
+          # Largest "index-*" chunk is the main entry by Vite default
+          MAIN_JS=$(find dist/assets -name 'index-*.js' -type f | head -1)
+          MAIN_CSS=$(find dist/assets -name 'index-*.css' -type f | head -1)
+          if [ -z "$MAIN_JS" ] || [ -z "$MAIN_CSS" ]; then
+            echo "::error::Could not find main JS or CSS chunk in dist/assets/"
+            ls -la dist/assets/ | head -20
             exit 1
           fi
-          MAIN_KB=$((MAIN_BYTES / 1024))
-          echo "Main chunk: ${MAIN_KB} kB"
-          if [ "$MAIN_KB" -gt 500 ]; then
-            echo "::error::Main chunk exceeded 500 kB budget (got ${MAIN_KB} kB)"
-            exit 1
+
+          JS_BYTES=$(stat -c '%s' "$MAIN_JS")
+          CSS_BYTES=$(stat -c '%s' "$MAIN_CSS")
+          GZIP_BYTES=$(gzip -c "$MAIN_JS" | wc -c)
+
+          JS_KB=$((JS_BYTES / 1024))
+          CSS_KB=$((CSS_BYTES / 1024))
+          GZIP_KB=$((GZIP_BYTES / 1024))
+
+          echo "Main JS:        ${JS_KB} kB (raw) / ${GZIP_KB} kB (gzip)"
+          echo "Main CSS:       ${CSS_KB} kB"
+          echo "Budgets:        JS=${MAIN_JS_BUDGET_KB} kB  CSS=${MAIN_CSS_BUDGET_KB} kB  JS gzip=${MAIN_JS_GZIP_BUDGET_KB} kB"
+
+          FAIL=0
+          if [ "$JS_KB" -gt "$MAIN_JS_BUDGET_KB" ]; then
+            echo "::error::Main JS exceeded ${MAIN_JS_BUDGET_KB} kB raw budget (got ${JS_KB} kB)"
+            FAIL=1
           fi
+          if [ "$GZIP_KB" -gt "$MAIN_JS_GZIP_BUDGET_KB" ]; then
+            echo "::error::Main JS exceeded ${MAIN_JS_GZIP_BUDGET_KB} kB gzip budget (got ${GZIP_KB} kB)"
+            FAIL=1
+          fi
+          if [ "$CSS_KB" -gt "$MAIN_CSS_BUDGET_KB" ]; then
+            echo "::error::Main CSS exceeded ${MAIN_CSS_BUDGET_KB} kB budget (got ${CSS_KB} kB)"
+            FAIL=1
+          fi
+          exit $FAIL
