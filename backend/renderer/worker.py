@@ -833,28 +833,17 @@ def _run_direct_lesson(job_id: str, question: str):
 
 def _safe_build_scene(question, scene_plan, core_insight, prev_context,
                        previous_error: str | None = None):
-    """build_scene + critique wrapper that returns a minimal fallback on failure.
-    Mirrors lesson_director._build_scene_safe so the async path has the same
-    resilience and quality pass as the synchronous one.
+    """build_scene + critique + lint wrapper that returns a minimal fallback on failure.
 
-    ``previous_error`` is forwarded so a retry after a render failure tells the
-    LLM what went wrong on the previous attempt.
+    Delegates to lesson_director._build_scene_safe so the async path has the
+    same resilience + quality + static-validation as the synchronous one.
     """
-    from agent.lesson_director import build_scene, critique_scene, ToolCall
-    try:
-        tool_calls = build_scene(
-            question=question,
-            scene_plan=scene_plan,
-            core_insight=core_insight,
-            previous_scene_context=prev_context,
-            previous_error=previous_error,
-        )
-    except Exception as exc:
-        print(f"[direct-lesson] build_scene failed for '{scene_plan.title}': {exc}")
-        return [
-            ToolCall(tool="set_caption", args={"text": scene_plan.objective}),
-            ToolCall(tool="show_text",
-                     args={"content": scene_plan.title, "position": "CENTER"}),
-            ToolCall(tool="pause", args={"beats": 2}),
-        ]
-    return critique_scene(tool_calls, scene_plan, core_insight)
+    from agent.lesson_director import _build_scene_safe as _delegate
+    return _delegate(
+        question=question,
+        scene_plan=scene_plan,
+        core_insight=core_insight,
+        prev_context=prev_context,
+        max_retries=2,
+        previous_error=previous_error,
+    )

@@ -361,11 +361,15 @@ def _build_scene_safe(
 
     Runs the optional self-critique pass after a successful build_scene so the
     output is checked for the common weaknesses (missing emphasize, too many
-    elements, no result_box).
+    elements, no result_box). Then statically lints the calls — if any
+    element_id references are broken, one repair pass is attempted before
+    giving up.
 
     ``previous_error`` is forwarded into build_scene so the LLM knows to avoid
     whatever caused the prior render to fail.
     """
+    from agent.tool_linter import lint_tool_calls
+
     try:
         tool_calls = build_scene(
             question=question,
@@ -383,8 +387,34 @@ def _build_scene_safe(
                      args={"content": scene_plan.title, "position": "CENTER"}),
             ToolCall(tool="pause", args={"beats": 2}),
         ]
+
     # Self-critique pass — falls back to original tool_calls if the LLM fails.
-    return critique_scene(tool_calls, scene_plan, core_insight)
+    tool_calls = critique_scene(tool_calls, scene_plan, core_insight)
+
+    # Static lint — if broken references, one repair pass with the issues fed back.
+    issues = lint_tool_calls(tool_calls)
+    if issues:
+        print(f"[lesson_director] static lint flagged {len(issues)} issue(s) in "
+              f"'{scene_plan.title}'; attempting repair pass")
+        try:
+            repaired = build_scene(
+                question=question,
+                scene_plan=scene_plan,
+                core_insight=core_insight,
+                previous_scene_context=prev_context,
+                max_retries=1,
+                previous_error="Static validation found these issues:\n- " +
+                               "\n- ".join(issues),
+            )
+            # Only accept the repair if it removed all issues; otherwise keep
+            # the (still imperfect) original — the executor silently skips bad
+            # calls so the scene still renders something.
+            if not lint_tool_calls(repaired):
+                tool_calls = repaired
+        except Exception as exc:
+            print(f"[lesson_director] repair pass failed: {exc}")
+
+    return tool_calls
 
 
 def direct_lesson(question: str, max_retries: int = 2) -> LessonPlan:
