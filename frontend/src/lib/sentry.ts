@@ -13,8 +13,17 @@ export async function initSentry(): Promise<void> {
 
   try {
     // Dynamic import so the package is only required when DSN is set.
-    // @vite-ignore + string-built path keeps Vite from statically resolving
-    // an optional peer dep that isn't in package.json.
+    //
+    // The string-built path + /* @vite-ignore */ comment together prevent
+    // Vite's static analysis from trying to resolve "@sentry/react" at build
+    // time. Without both tricks, Rollup throws "Failed to resolve import"
+    // because the package isn't in package.json by default.
+    //
+    // PORTABILITY WARNING: if this project ever migrates off Vite (Webpack,
+    // Parcel, esbuild direct), the @vite-ignore magic comment is silently
+    // ignored and you'll get the same "Failed to resolve" error. Two fixes:
+    //   1. Mark "@sentry/react" as external in the new bundler's config, or
+    //   2. Add @sentry/react to package.json (defeats the opt-in design).
     const sentryModule = ["@sentry", "react"].join("/");
     const Sentry: any = await import(/* @vite-ignore */ sentryModule);
     Sentry.init({

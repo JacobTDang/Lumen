@@ -371,13 +371,35 @@ def critique_scene(
             if tool_name not in VALID_TOOL_NAMES:
                 continue
             revised.append(ToolCall(tool=tool_name, args=item.get("args", {})))
-        if len(revised) >= max(3, len(tool_calls) // 2):
+        # Accept the revision if it's STRUCTURALLY complete — not just based on
+        # length. A legitimately tight 4-call scene with all the right pieces
+        # should win over a bloated 10-call original.
+        if _is_structurally_complete(revised):
             return revised
-        # Critique returned too few calls — likely a parse failure. Keep original.
+        # Otherwise the critique probably mangled it (partial parse, missing
+        # emphasize, missing result, etc.). Keep the original.
         return tool_calls
     except Exception as exc:
         print(f"[lesson_director] critique_scene failed for '{scene_plan.title}': {exc}")
         return tool_calls
+
+
+def _is_structurally_complete(calls: list[ToolCall]) -> bool:
+    """A scene is structurally complete when it has a caption, at least one
+    element on screen, exactly one emphasize, and a terminator. Used to gate
+    the self-critique pass — accept only revisions that don't drop key beats.
+    """
+    if not calls:
+        return False
+    tools = [c.tool for c in calls]
+    has_caption = "set_caption" in tools
+    has_element = any(
+        t.startswith("show_") and t != "show_result"
+        for t in tools
+    )
+    has_terminator = "show_result" in tools or "fade_out_element" in tools
+    emphasize_count = sum(1 for t in tools if t == "emphasize")
+    return has_caption and has_element and has_terminator and emphasize_count == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────

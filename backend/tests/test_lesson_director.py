@@ -163,18 +163,61 @@ def test_critique_scene_falls_back_on_invalid_json(mocker):
 
 
 def test_critique_scene_falls_back_on_too_few_calls(mocker):
-    """If critique returns suspiciously few calls (parse partial fail), keep original."""
+    """If critique returns a list missing the structural pieces, keep original."""
     from agent.lesson_director import critique_scene, ToolCall
-    # Returns only 1 call, but original had 5 — likely partial parse, reject
+    # Returns only 1 call (no caption, no element, no emphasize, no result)
     mocker.patch(
         "agent.lesson_director._call_model",
         return_value=json.dumps([{"tool": "pause", "args": {}}]),
     )
     original = [ToolCall(tool=t, args={}) for t in
-                ["show_array", "set_caption", "emphasize", "pause", "show_result"]]
+                ["set_caption", "show_array", "emphasize", "pause", "show_result"]]
     sp = ScenePlan(title="t", objective="o", is_aha_moment=True)
     out = critique_scene(original, sp, "insight")
-    assert len(out) == 5
+    assert len(out) == 5  # original kept because revision is structurally broken
+
+
+def test_critique_accepts_structurally_complete_simplification(mocker):
+    """Bug 6 regression: a tight 4-call scene with all structural pieces should
+    BEAT a bloated 10-call original. Old code rejected by length floor."""
+    from agent.lesson_director import critique_scene, ToolCall
+    # 4-call revision: has caption, element, exactly 1 emphasize, terminator
+    revised = [
+        {"tool": "set_caption", "args": {"text": "why"}},
+        {"tool": "show_array", "args": {"values": ["1"], "element_id": "arr"}},
+        {"tool": "emphasize", "args": {"element_id": "arr"}},
+        {"tool": "show_result", "args": {"value": "done"}},
+    ]
+    mocker.patch("agent.lesson_director._call_model",
+                 return_value=json.dumps(revised))
+    # Original is bloated 10 calls
+    original = [ToolCall(tool=t, args={}) for t in
+                ["set_caption", "show_array", "highlight_cells", "pause",
+                 "move_pointer", "highlight_cells", "pause", "emphasize",
+                 "pause", "show_result"]]
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=True)
+    out = critique_scene(original, sp, "insight")
+    assert len(out) == 4  # accepted the tight revision
+
+
+def test_critique_rejects_structurally_incomplete(mocker):
+    """A revision missing 'emphasize' is rejected — keep original even if longer."""
+    from agent.lesson_director import critique_scene, ToolCall
+    # Missing emphasize, missing terminator
+    revised = [
+        {"tool": "set_caption", "args": {"text": "x"}},
+        {"tool": "show_array", "args": {"values": ["1"], "element_id": "arr"}},
+        {"tool": "highlight_cells", "args": {"element_id": "arr", "indices": [0]}},
+        {"tool": "pause", "args": {}},
+        {"tool": "pause", "args": {}},
+    ]
+    mocker.patch("agent.lesson_director._call_model",
+                 return_value=json.dumps(revised))
+    original = [ToolCall(tool=t, args={}) for t in
+                ["set_caption", "show_array", "emphasize", "show_result"]]
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=True)
+    out = critique_scene(original, sp, "insight")
+    assert len(out) == 4   # original kept
 
 
 def test_critique_scene_empty_input_returns_empty(mocker):
