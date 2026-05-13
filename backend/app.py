@@ -363,6 +363,12 @@ def create_app(testing: bool = False) -> Flask:
     def health():
         return jsonify({"status": "ok"})
 
+    @app.get("/openapi.json")
+    def openapi_json():
+        """OpenAPI 3.1 schema — feed to `openapi-typescript` for typed clients."""
+        from openapi_spec import build_openapi_spec
+        return jsonify(build_openapi_spec())
+
     @app.get("/topics")
     def topics():
         return jsonify({"topics": _TOPICS})
