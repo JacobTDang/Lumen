@@ -418,12 +418,61 @@ class ToolExecutor:
         self.state.pop(element_id, None)
         self.vgroups.pop(element_id, None)
 
+    # ── camera (Item #7) ──────────────────────────────────────────────────────
+    # These require MovingCameraScene. DynamicScene inherits from it so
+    # self.scene.camera.frame exists. If the scene is a plain Scene (e.g.
+    # called from another scene class), these silently no-op.
+
+    def _camera_frame(self):
+        cam = getattr(self.scene, "camera", None)
+        return getattr(cam, "frame", None) if cam is not None else None
+
+    def _resolve_mobject(self, element_id: str):
+        mob = self.vgroups.get(element_id) or self.state.get(element_id)
+        if mob is not None and hasattr(mob, "vgroup"):
+            mob = mob.vgroup
+        return mob
+
+    def _tool_pan_to(self, element_id: str):
+        frame = self._camera_frame()
+        target = self._resolve_mobject(element_id)
+        if frame is None or target is None:
+            return
+        self.scene.play(frame.animate.move_to(target.get_center()), run_time=0.6)
+
+    def _tool_zoom_to(self, element_id: str, level: float = 1.5):
+        frame = self._camera_frame()
+        target = self._resolve_mobject(element_id)
+        if frame is None or target is None:
+            return
+        # Clamp to a sane range so the LLM can't accidentally produce a render
+        # zoomed to a single pixel or zoomed infinitely out.
+        try:
+            level = float(level)
+        except (TypeError, ValueError):
+            level = 1.5
+        level = max(1.05, min(level, 2.5))
+        self.scene.play(
+            frame.animate.move_to(target.get_center()).scale(1.0 / level),
+            run_time=0.7,
+        )
+
+    def _tool_zoom_out(self):
+        frame = self._camera_frame()
+        if frame is None:
+            return
+        # Reset to default viewport: 14 × 8 unit camera frame at origin.
+        self.scene.play(
+            frame.animate.move_to(ORIGIN).set(width=config.frame_width),
+            run_time=0.6,
+        )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DynamicScene — the Manim scene class registered in SCENE_REGISTRY
 # ─────────────────────────────────────────────────────────────────────────────
 
-class DynamicScene(Scene):
+class DynamicScene(MovingCameraScene):
     """
     Manim scene driven entirely by tool calls from the Lesson Director agent.
 

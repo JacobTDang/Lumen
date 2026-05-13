@@ -423,6 +423,92 @@ def test_direct_lesson_endpoint_accepts_valid_style(client, mocker):
     assert res.status_code == 202
 
 
+def test_camera_tools_registered_in_catalog():
+    """Item #7 regression: pan_to, zoom_to, zoom_out exposed to the LLM."""
+    from schemas.tools import VALID_TOOL_NAMES, VISUAL_TOOLS
+    assert "pan_to" in VALID_TOOL_NAMES
+    assert "zoom_to" in VALID_TOOL_NAMES
+    assert "zoom_out" in VALID_TOOL_NAMES
+    by_name = {t["name"]: t for t in VISUAL_TOOLS}
+    assert "element_id" in by_name["pan_to"]["parameters"]
+    assert "level" in by_name["zoom_to"]["parameters"]
+    assert by_name["zoom_out"]["required"] == []
+
+
+def test_camera_tools_handlers_exist_on_executor():
+    """The executor must have _tool_pan_to / _tool_zoom_to / _tool_zoom_out methods."""
+    from scenes.tool_executor import ToolExecutor
+    assert callable(getattr(ToolExecutor, "_tool_pan_to", None))
+    assert callable(getattr(ToolExecutor, "_tool_zoom_to", None))
+    assert callable(getattr(ToolExecutor, "_tool_zoom_out", None))
+
+
+def test_camera_tools_noop_when_camera_lacks_frame():
+    """Camera tools must silently no-op on a plain Scene that has no .frame.
+
+    The LLM should be allowed to emit camera calls; if the scene doesn't
+    support them, we drop the call rather than crashing.
+    """
+    from scenes.tool_executor import ToolExecutor
+
+    class _PlainScene:
+        class _Cam:
+            pass
+
+        def __init__(self):
+            self.camera = self._Cam()  # no .frame
+            self.plays = []
+
+        def play(self, *args, **kwargs):
+            self.plays.append(kwargs.get("run_time"))
+
+    sc = _PlainScene()
+    ex = ToolExecutor(sc)
+    ex.state["whatever"] = object()
+    ex._tool_pan_to("whatever")
+    ex._tool_zoom_to("whatever", level=1.5)
+    ex._tool_zoom_out()
+    assert sc.plays == []  # nothing rendered, nothing crashed
+
+
+def test_zoom_to_clamps_level():
+    """zoom_to clamps level to [1.05, 2.5] so the LLM can't break the scene."""
+    from scenes.tool_executor import ToolExecutor
+
+    captured: dict = {}
+
+    class _Frame:
+        def __init__(self):
+            self.animate = self  # chainable mock
+        def move_to(self, *args, **kwargs):
+            return self
+        def scale(self, factor):
+            captured["scale"] = factor
+            return self
+
+    class _SceneStub:
+        def __init__(self, frame):
+            self.camera = type("C", (), {"frame": frame})()
+        def play(self, *args, **kwargs):
+            pass
+
+    target = type("M", (), {"get_center": lambda self: (0, 0, 0)})()
+    sc = _SceneStub(_Frame())
+    ex = ToolExecutor(sc)
+    ex.state["t"] = target
+
+    ex._tool_zoom_to("t", level=100.0)
+    # 100 clamps to 2.5 → scale factor is 1/2.5 = 0.4
+    assert abs(captured["scale"] - 0.4) < 1e-6
+
+    ex._tool_zoom_to("t", level=0.01)
+    # 0.01 clamps to 1.05 → scale factor is 1/1.05
+    assert abs(captured["scale"] - (1.0 / 1.05)) < 1e-6
+
+    ex._tool_zoom_to("t", level="not a number")  # bad input → default 1.5
+    assert abs(captured["scale"] - (1.0 / 1.5)) < 1e-6
+
+
 def test_tool_executor_emphasize_honors_pace():
     """Calling emphasize with pace='slow' triggers a longer play + an extra wait."""
     from scenes.tool_executor import ToolExecutor

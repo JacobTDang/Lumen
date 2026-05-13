@@ -408,6 +408,50 @@ VISUAL_TOOLS: list[dict] = [
         "required": ["element_id"],
     },
 
+    # ── Camera tools (Item #7) ────────────────────────────────────────────────
+    # Move the viewport without changing scene content. Use sparingly — over-zooming
+    # makes lessons feel fidgety. Use pan_to to focus on a single visual when
+    # multiple are on screen, zoom_to for the aha moment, zoom_out to re-establish.
+
+    {
+        "name": "pan_to",
+        "description": (
+            "Pan the camera so the named element is centered. "
+            "Use to direct attention without changing scene content."
+        ),
+        "parameters": {
+            "element_id": {"type": "string", "description": "Element to center on."},
+        },
+        "required": ["element_id"],
+    },
+
+    {
+        "name": "zoom_to",
+        "description": (
+            "Zoom the camera in on a specific element. "
+            "Use ONCE per scene, at the moment a detail matters."
+        ),
+        "parameters": {
+            "element_id": {"type": "string", "description": "Element to zoom toward."},
+            "level": {
+                "type": "number",
+                "description": "Zoom factor >1 zooms in (1.5 = 1.5×). Keep ≤ 2.0.",
+                "default": 1.5,
+            },
+        },
+        "required": ["element_id"],
+    },
+
+    {
+        "name": "zoom_out",
+        "description": (
+            "Reset zoom + camera position. "
+            "Use after a zoom_to to re-establish the wider context."
+        ),
+        "parameters": {},
+        "required": [],
+    },
+
 ]
 
 # Lookup for validation
@@ -431,6 +475,9 @@ _TOOL_GROUPS = {
     "## Narrative / pacing (use these liberally)": [
         "set_caption", "add_annotation", "emphasize",
         "show_result", "pause", "fade_out_element",
+    ],
+    "## Camera (use sparingly — at most one zoom per scene)": [
+        "pan_to", "zoom_to", "zoom_out",
     ],
 }
 
