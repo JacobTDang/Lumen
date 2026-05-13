@@ -634,10 +634,59 @@ def _run_lesson(lesson_id: str, steps: list):
                             "stage": "error"}
         return
 
+    # Item #8 — optional TTS narration. Gated by LUMEN_TTS_ENABLED so default
+    # behavior is unchanged. Any failure (no provider, ffmpeg error, etc.) falls
+    # back to the silent stitched video — never blocks the response.
+    try:
+        _maybe_apply_tts(lesson_id, steps, output_path)
+    except Exception as exc:
+        print(f"[worker] TTS pipeline raised (continuing without audio): {exc}")
+
     final_url = f"/media/lessons/{lesson_id}.mp4"
     _jobs[lesson_id] = {"status": "done", "url": final_url, "error": None,
                         "progress": 1.0, "stage": "done"}
     _cache_store(cache_key, final_url)
+
+
+def _maybe_apply_tts(lesson_id: str, steps: list, stitched_path: str) -> None:
+    """Generate TTS per step caption, concat, then mux into ``stitched_path``.
+
+    Replaces the stitched video in place on success. No-op when
+    LUMEN_TTS_ENABLED is unset. Never raises.
+    """
+    from agent import tts
+    if not tts.is_enabled():
+        return
+
+    captions = [getattr(s, "caption", "") or "" for s in steps]
+    if not any(captions):
+        return
+
+    work_dir = os.path.join(_MEDIA_DIR, "tts", lesson_id)
+    os.makedirs(work_dir, exist_ok=True)
+
+    audio_paths: list[str] = []
+    for i, caption in enumerate(captions):
+        path = os.path.join(work_dir, f"scene_{i}.wav")
+        tts.synthesize(caption, path)
+        if os.path.exists(path):
+            audio_paths.append(path)
+
+    if not audio_paths:
+        return
+
+    concat_path = os.path.join(work_dir, "narration.wav")
+    if not tts.concat_audio_tracks(audio_paths, concat_path):
+        return
+
+    muxed_path = stitched_path + ".muxed.mp4"
+    if not tts.mux_audio_into_video(stitched_path, concat_path, muxed_path):
+        return
+
+    try:
+        os.replace(muxed_path, stitched_path)
+    except OSError as exc:
+        print(f"[tts] replace failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
