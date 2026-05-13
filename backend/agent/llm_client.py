@@ -74,15 +74,63 @@ def build_fast_llm() -> ChatOpenAI:
     )
 
 
-def call_model(system: str, user: str, llm: ChatOpenAI | None = None) -> str:
-    """Invoke the LLM. Tests mock this function to avoid real API calls."""
+def call_model(
+    system: str,
+    user: str,
+    llm: ChatOpenAI | None = None,
+    label: str = "llm_call",
+) -> str:
+    """Invoke the LLM. Tests mock this function to avoid real API calls.
+
+    If a RenderTrace is bound to the current thread (via agent.trace.use_trace),
+    this records the call's model name, elapsed time, and prompt/response sizes
+    so the frontend can show a cost/latency breakdown.
+    """
+    import time as _time
+    from agent import trace as _trace_mod
+
     if llm is None:
         llm = build_llm()
-    response = llm.invoke([
-        SystemMessage(content=system),
-        HumanMessage(content=user),
-    ])
-    return response.content or ""
+
+    active = _trace_mod.get_current()
+    start = _time.perf_counter()
+    error_msg: str | None = None
+    try:
+        response = llm.invoke([
+            SystemMessage(content=system),
+            HumanMessage(content=user),
+        ])
+        content = response.content or ""
+    except Exception as exc:
+        error_msg = str(exc)[:300]
+        content = ""
+        if active is not None:
+            elapsed_ms = int((_time.perf_counter() - start) * 1000)
+            active.add_call(_trace_mod.LLMCall(
+                label=label,
+                model=getattr(llm, "model_name", "unknown"),
+                elapsed_ms=elapsed_ms,
+                prompt_chars=len(system) + len(user),
+                response_chars=0,
+                error=error_msg,
+            ))
+        raise
+
+    if active is not None:
+        elapsed_ms = int((_time.perf_counter() - start) * 1000)
+        # Try to extract token usage if the response carries it (some providers do)
+        usage = getattr(response, "response_metadata", {}) or {}
+        token_usage = usage.get("token_usage", {}) if isinstance(usage, dict) else {}
+        active.add_call(_trace_mod.LLMCall(
+            label=label,
+            model=getattr(llm, "model_name", "unknown"),
+            elapsed_ms=elapsed_ms,
+            prompt_chars=len(system) + len(user),
+            response_chars=len(content),
+            prompt_tokens=token_usage.get("prompt_tokens") if isinstance(token_usage, dict) else None,
+            completion_tokens=token_usage.get("completion_tokens") if isinstance(token_usage, dict) else None,
+        ))
+    return content
 
 
 def clean_raw(raw: str) -> str:

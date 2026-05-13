@@ -683,26 +683,49 @@ def _run_direct_lesson(job_id: str, question: str):
             build_scene,
             ToolCall,
         )
+        from agent import trace as _trace_mod
         from schemas.types import StepPlan
         import concurrent.futures
+        import time as _t
 
+        # Start a render trace so LLM calls + stage timings are recorded.
+        render_trace = _trace_mod.new_trace(job_id)
+        _trace_mod.set_current(render_trace)
+
+        stage_start = _t.perf_counter()
         narrative = narrative_plan(question)
+        render_trace.add_stage(
+            "planning_narrative",
+            int((_t.perf_counter() - stage_start) * 1000),
+        )
         if _jobs[job_id]["status"] != "pending":
             return  # cancelled externally — abort
 
         _jobs[job_id]["stage"] = "building_scenes"
 
-        # Phase 2: build scenes in parallel (matches lesson_director.direct_lesson)
+        # Phase 2: build scenes in parallel (matches lesson_director.direct_lesson).
+        # Each worker thread carries the same trace so its call_model invocations
+        # are recorded.
+        stage_start = _t.perf_counter()
         contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
+
+        def _worker(i, sp):
+            _trace_mod.set_current(render_trace)
+            try:
+                return _safe_build_scene(question, sp, narrative.core_insight, contexts[i])
+            finally:
+                _trace_mod.set_current(None)
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
             futures = [
-                pool.submit(
-                    _safe_build_scene,
-                    question, sp, narrative.core_insight, contexts[i],
-                )
+                pool.submit(_worker, i, sp)
                 for i, sp in enumerate(narrative.scenes)
             ]
             tool_call_lists = [f.result() for f in futures]
+        render_trace.add_stage(
+            "building_scenes",
+            int((_t.perf_counter() - stage_start) * 1000),
+        )
 
         steps = [
             StepPlan(
@@ -727,6 +750,7 @@ def _run_direct_lesson(job_id: str, question: str):
         _jobs[job_id]["inner_job_id"] = inner_id
 
         # Mirror loop — copy status/url/error/progress/stage from inner to outer
+        render_start = _t.perf_counter()
         while True:
             inner = _jobs.get(inner_id)
             if inner is None:
@@ -740,11 +764,18 @@ def _run_direct_lesson(job_id: str, question: str):
                 outer["url"]    = inner["url"]
                 outer["stage"]  = "done"
                 outer["progress"] = 1.0
+                render_trace.add_stage(
+                    "render_and_stitch",
+                    int((_t.perf_counter() - render_start) * 1000),
+                )
+                render_trace.finalize()
                 return
             if inner["status"] == "error":
                 outer["status"] = "error"
                 outer["error"]  = inner.get("error", "render failed")
                 outer["stage"]  = "error"
+                render_trace.note(f"inner job errored: {inner.get('error')}")
+                render_trace.finalize()
                 return
             time.sleep(0.25)
 
@@ -753,6 +784,11 @@ def _run_direct_lesson(job_id: str, question: str):
                          "error": f"lesson planning failed: {e}",
                          "progress": _jobs[job_id].get("progress", 0.0),
                          "stage": "error"}
+        try:
+            render_trace.note(f"agent exception: {e}")
+            render_trace.finalize()
+        except Exception:
+            pass
 
 
 def _safe_build_scene(question, scene_plan, core_insight, prev_context):

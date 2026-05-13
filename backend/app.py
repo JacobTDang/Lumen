@@ -923,6 +923,41 @@ def create_app(testing: bool = False) -> Flask:
         unpin_video(job_id)
         return jsonify({"ok": True}), 200
 
+    @app.get("/api/trace/<job_id>")
+    def api_trace(job_id: str):
+        """Return the render trace (LLM calls + stage timings) for a job."""
+        from agent.trace import get_trace, load_trace
+        active = get_trace(job_id)
+        if active is not None:
+            return jsonify({
+                "job_id": active.job_id,
+                "started_at": active.started_at,
+                "finished_at": active.finished_at,
+                "calls": [
+                    {
+                        "label": c.label, "model": c.model,
+                        "elapsed_ms": c.elapsed_ms,
+                        "prompt_chars": c.prompt_chars,
+                        "response_chars": c.response_chars,
+                        "prompt_tokens": c.prompt_tokens,
+                        "completion_tokens": c.completion_tokens,
+                        "error": c.error,
+                    } for c in active.calls
+                ],
+                "stages": [
+                    {"stage": s.stage, "elapsed_ms": s.elapsed_ms}
+                    for s in active.stages
+                ],
+                "notes": list(active.notes),
+                "total_calls": len(active.calls),
+                "total_call_ms": active.total_call_ms,
+            })
+        # Fall back to disk
+        on_disk = load_trace(job_id)
+        if on_disk is None:
+            return jsonify({"error": "trace not found"}), 404
+        return jsonify(on_disk)
+
     return app
 
 

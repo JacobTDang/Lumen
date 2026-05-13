@@ -455,3 +455,29 @@ def test_unpin_endpoint_idempotent(client, mocker):
     mocker.patch("app.unpin_video", return_value=False)
     res = client.delete("/api/pin/nonexistent")
     assert res.status_code == 200  # idempotent: still 200 even if not pinned
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/trace/<job_id> — render trace endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_trace_endpoint_not_found(client):
+    res = client.get("/api/trace/nonexistent-job")
+    assert res.status_code == 404
+
+
+def test_trace_endpoint_returns_active_trace(client):
+    """An in-memory trace is served directly from the registry."""
+    from agent.trace import new_trace, LLMCall
+
+    trace = new_trace("test-trace-active")
+    trace.add_call(LLMCall(
+        label="narrative_plan", model="gpt-oss-120b",
+        elapsed_ms=1234, prompt_chars=500, response_chars=800,
+    ))
+    res = client.get("/api/trace/test-trace-active")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["job_id"] == "test-trace-active"
+    assert body["total_calls"] == 1
+    assert body["calls"][0]["label"] == "narrative_plan"
