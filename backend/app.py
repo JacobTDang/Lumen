@@ -437,7 +437,18 @@ def create_app(testing: bool = False) -> Flask:
         target = os.path.realpath(os.path.join(media_dir, filename))
         if not target.startswith(media_dir + os.sep):
             return jsonify({"error": "forbidden"}), 403
-        return send_from_directory(media_dir, filename)
+        response = send_from_directory(media_dir, filename)
+        # Lesson MP4s are content-addressable (uuid in filename) — they never
+        # change once written, so we can mark them immutable for a year. This
+        # lets any CDN in front (Cloudflare etc.) cache them aggressively. Job
+        # temp files under /jobs/ are short-lived; just don't cache.
+        if filename.startswith("lessons/"):
+            response.headers["Cache-Control"] = (
+                "public, max-age=31536000, immutable"
+            )
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     # ── Gemini-backed /api/* endpoints ───────────────────────────
 

@@ -497,3 +497,52 @@ def test_trace_endpoint_returns_active_trace(client):
     assert body["job_id"] == "test-trace-active"
     assert body["total_calls"] == 1
     assert body["calls"][0]["label"] == "narrative_plan"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /media/<path> — CDN cache headers (item #23)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_media_lesson_has_immutable_cache_header(client, tmp_path, monkeypatch):
+    """Item #23 regression: /media/lessons/*.mp4 must respond with a long
+    max-age + immutable Cache-Control so a CDN can cache aggressively."""
+    import os as _os
+    # Build a fake media dir with a lesson file
+    media_dir = _os.path.realpath(_os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "media",
+    ))
+    lessons_dir = _os.path.join(media_dir, "lessons")
+    _os.makedirs(lessons_dir, exist_ok=True)
+    test_path = _os.path.join(lessons_dir, "test_cdn_header.mp4")
+    with open(test_path, "wb") as fh:
+        fh.write(b"\x00\x00\x00\x18ftypmp42")   # minimal mp4 magic
+    try:
+        res = client.get("/media/lessons/test_cdn_header.mp4")
+        assert res.status_code == 200
+        cc = res.headers.get("Cache-Control", "")
+        assert "immutable" in cc, f"expected immutable in Cache-Control, got: {cc}"
+        assert "max-age=31536000" in cc, f"expected year-long max-age, got: {cc}"
+    finally:
+        try: _os.remove(test_path)
+        except OSError: pass
+
+
+def test_media_job_does_not_have_immutable_header(client, tmp_path):
+    """Non-lessons paths (job temp output) must NOT be marked immutable."""
+    import os as _os
+    media_dir = _os.path.realpath(_os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "media",
+    ))
+    jobs_dir = _os.path.join(media_dir, "jobs", "test_job_no_cdn")
+    _os.makedirs(jobs_dir, exist_ok=True)
+    test_path = _os.path.join(jobs_dir, "x.mp4")
+    with open(test_path, "wb") as fh:
+        fh.write(b"\x00\x00\x00\x18ftypmp42")
+    try:
+        res = client.get("/media/jobs/test_job_no_cdn/x.mp4")
+        assert res.status_code == 200
+        cc = res.headers.get("Cache-Control", "")
+        assert "immutable" not in cc, f"job files should NOT be immutable: {cc}"
+    finally:
+        try: _os.remove(test_path)
+        except OSError: pass
