@@ -466,6 +466,22 @@ def test_trace_endpoint_not_found(client):
     assert res.status_code == 404
 
 
+def test_init_sentry_noop_when_dsn_unset(monkeypatch):
+    """No-op (does not raise) when SENTRY_DSN is absent."""
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    from app import _init_sentry
+    _init_sentry()  # must not raise
+
+
+def test_init_sentry_handles_missing_sdk_gracefully(monkeypatch):
+    """When SENTRY_DSN is set but sentry-sdk isn't installed, log + skip."""
+    monkeypatch.setenv("SENTRY_DSN", "https://fake@example.com/0")
+    from app import _init_sentry
+    # sentry_sdk almost certainly isn't installed in this env, so ImportError
+    # path triggers. Either way: must not raise.
+    _init_sentry()
+
+
 def test_trace_endpoint_returns_active_trace(client):
     """An in-memory trace is served directly from the registry."""
     from agent.trace import new_trace, LLMCall

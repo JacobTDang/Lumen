@@ -300,9 +300,38 @@ def _new_share_code(existing: dict) -> str:
             return code
 
 
+def _init_sentry() -> None:
+    """Initialize Sentry if SENTRY_DSN is set AND sentry-sdk is installed.
+
+    Both conditions must hold — keeps Sentry strictly opt-in: dev runs and CI
+    don't need the package, prod opts in by setting the env var.
+    """
+    dsn = os.environ.get("SENTRY_DSN")
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.flask import FlaskIntegration
+    except ImportError:
+        print("[sentry] SENTRY_DSN set but sentry-sdk not installed; skipping init")
+        return
+    try:
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[FlaskIntegration()],
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_RATE", "0.1")),
+            environment=os.environ.get("LUMEN_ENV", "dev"),
+            send_default_pii=False,
+        )
+        print("[sentry] initialized backend SDK")
+    except Exception as exc:
+        print(f"[sentry] init failed: {exc}")
+
+
 def create_app(testing: bool = False) -> Flask:
     app = Flask(__name__)
     app.config["TESTING"] = testing
+    _init_sentry()
     CORS(app)
 
     # ── existing endpoints ────────────────────────────────────────
