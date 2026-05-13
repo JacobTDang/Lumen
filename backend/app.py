@@ -948,6 +948,93 @@ def create_app(testing: bool = False) -> Flask:
         job_id = submit_direct_lesson(question, style=style)
         return jsonify({"job_id": job_id}), 202
 
+    @app.post("/api/direct-lesson-stream")
+    def api_direct_lesson_stream():
+        """SSE variant of /api/direct-lesson: streams progress events while
+        the agent plans, then hands off to submit_lesson and returns a job_id
+        for the frontend to poll /status on for the actual render.
+
+        Item #11 regression target. Events emitted (text/event-stream):
+            event: stage      data: planning_narrative
+            event: narrative  data: <NarrativePlan JSON>
+            event: stage      data: building_scenes
+            event: scene_done data: {"index": N, "title": "..."}   (per scene)
+            event: stage      data: queued
+            event: job_id     data: <lesson_id>
+            event: done       data: {}
+            event: error      data: {"error": "..."}                 (on failure)
+        """
+        from agent.lesson_director import (
+            VALID_STYLES, narrative_plan as _np, _build_scene_safe,
+        )
+        from flask import Response
+        import concurrent.futures
+        body = request.get_json(silent=True) or {}
+        question = (body.get("question") or "").strip()
+        if not question:
+            return jsonify({"error": "question is required"}), 400
+        style = body.get("style")
+        if style is not None and style not in VALID_STYLES:
+            return jsonify({"error": "invalid style"}), 400
+
+        def _sse(event: str, data) -> str:
+            payload = data if isinstance(data, str) else json.dumps(data)
+            return f"event: {event}\ndata: {payload}\n\n"
+
+        def generate():
+            try:
+                yield _sse("stage", "planning_narrative")
+                narrative = _np(question, style=style)
+                yield _sse("narrative", narrative.model_dump())
+
+                yield _sse("stage", "building_scenes")
+                contexts = [""] + [sp.objective for sp in narrative.scenes[:-1]]
+                tool_call_lists = [None] * len(narrative.scenes)
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                    fut_to_idx = {
+                        pool.submit(_build_scene_safe, question, sp,
+                                    narrative.core_insight, contexts[i], 2): i
+                        for i, sp in enumerate(narrative.scenes)
+                    }
+                    completed_events = []
+                    for fut in concurrent.futures.as_completed(fut_to_idx):
+                        i = fut_to_idx[fut]
+                        tool_call_lists[i] = fut.result()
+                        completed_events.append(_sse("scene_done", {
+                            "index": i,
+                            "title": narrative.scenes[i].title,
+                        }))
+                    for ev in completed_events:
+                        yield ev
+
+                yield _sse("stage", "queued")
+
+                steps = [
+                    StepPlan(
+                        tool="dynamic_lesson_step",
+                        params={
+                            "title": sp.title,
+                            "tool_calls": [
+                                {"tool": tc.tool, "args": tc.args} for tc in tcs
+                            ],
+                        },
+                        caption=sp.objective,
+                    )
+                    for sp, tcs in zip(narrative.scenes, tool_call_lists)
+                ]
+                job_id = submit_lesson(steps)
+                yield _sse("job_id", job_id)
+                yield _sse("done", {})
+            except Exception as exc:
+                app.logger.exception("direct-lesson-stream failed")
+                yield _sse("error", {"error": str(exc)})
+
+        return Response(generate(), mimetype="text/event-stream", headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering if reversed
+        })
+
     @app.post("/api/pin")
     def api_pin():
         """Protect a rendered video from LRU cleanup.

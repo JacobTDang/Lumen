@@ -527,6 +527,48 @@ def test_media_lesson_has_immutable_cache_header(client, tmp_path, monkeypatch):
         except OSError: pass
 
 
+def test_direct_lesson_stream_requires_question(client):
+    res = client.post("/api/direct-lesson-stream", json={})
+    assert res.status_code == 400
+
+
+def test_direct_lesson_stream_rejects_invalid_style(client):
+    res = client.post("/api/direct-lesson-stream",
+                       json={"question": "x", "style": "bogus"})
+    assert res.status_code == 400
+
+
+def test_direct_lesson_stream_returns_event_stream(client, mocker):
+    """Item #11 regression: endpoint must emit text/event-stream and deliver
+    the expected progression of SSE events."""
+    from agent.lesson_director import NarrativePlan, ScenePlan, ToolCall
+
+    fake_narrative = NarrativePlan(
+        lesson_title="t", core_insight="i", narrative_arc="a",
+        scenes=[ScenePlan(title="One", objective="o", is_aha_moment=True),
+                ScenePlan(title="Two", objective="o2")],
+    )
+    mocker.patch("agent.lesson_director.narrative_plan", return_value=fake_narrative)
+    mocker.patch("agent.lesson_director._build_scene_safe",
+                 return_value=[ToolCall(tool="set_caption", args={"text": "x"})])
+    mocker.patch("app.submit_lesson", return_value="lesson-from-sse")
+
+    res = client.post("/api/direct-lesson-stream",
+                       json={"question": "anything"})
+    assert res.status_code == 200
+    assert res.headers["Content-Type"].startswith("text/event-stream")
+    body = res.get_data(as_text=True)
+    # Must contain at least the stage transitions, scene_done events, and job_id
+    assert "event: stage" in body
+    assert "planning_narrative" in body
+    assert "building_scenes" in body
+    assert "queued" in body
+    assert "event: scene_done" in body
+    assert "event: job_id" in body
+    assert "lesson-from-sse" in body
+    assert "event: done" in body
+
+
 def test_media_job_does_not_have_immutable_header(client, tmp_path):
     """Non-lessons paths (job temp output) must NOT be marked immutable."""
     import os as _os
