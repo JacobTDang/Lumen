@@ -1,0 +1,75 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Some unit tests transitively import manim through scene modules.
+          # Install the full requirements; integration tests are still skipped.
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-mock
+
+      - name: Run unit tests (no integration)
+        env:
+          PYTHONPATH: backend
+        run: |
+          pytest backend/tests/ -m "not integration" -q
+
+  frontend:
+    name: Frontend type-check + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+      - name: Enforce bundle-size budget (main chunk < 500 kB)
+        run: |
+          # Largest chunk filename starts with "index-" by Vite default
+          MAIN_BYTES=$(find dist/assets -name 'index-*.js' -type f -exec stat -c '%s' {} \; | sort -nr | head -1)
+          if [ -z "$MAIN_BYTES" ]; then
+            echo "Could not find dist/assets/index-*.js — build may have changed"
+            exit 1
+          fi
+          MAIN_KB=$((MAIN_BYTES / 1024))
+          echo "Main chunk: ${MAIN_KB} kB"
+          if [ "$MAIN_KB" -gt 500 ]; then
+            echo "::error::Main chunk exceeded 500 kB budget (got ${MAIN_KB} kB)"
+            exit 1
+          fi
