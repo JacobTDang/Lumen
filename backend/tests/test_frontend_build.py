@@ -49,6 +49,16 @@ def test_service_worker_emitted():
     assert found, f"No service worker emitted; looked for {sw_candidates}"
 
 
+@pytest.mark.skipif(not _dist_exists(),
+                    reason="frontend/dist not present; run npm run build first")
+def test_embed_page_chunk_emitted():
+    """Item #32 regression: EmbedPage must be lazy-loaded as a separate chunk
+    so the embed iframe doesn't pull the whole main bundle."""
+    assets = os.path.join(_FRONTEND_DIST, "assets")
+    chunks = [f for f in os.listdir(assets) if f.startswith("EmbedPage-") and f.endswith(".js")]
+    assert chunks, f"No EmbedPage-*.js chunk found in {assets}"
+
+
 def test_pwa_plugin_listed_in_package_json():
     """Sanity check the plugin is committed to package.json devDependencies."""
     pkg_path = os.path.join(

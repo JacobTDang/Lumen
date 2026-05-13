@@ -3991,12 +3991,39 @@ const ImportError: React.FC<{ message: string; onRetry: () => void }> = ({ messa
 // paste-problem chunk, not on first paint.
 const PasteProblemPage = lazy(() => import('./pages/PasteProblemPage'));
 const LibraryPage = lazy(() => import('./pages/LibraryPage').then(m => ({ default: m.LibraryPage })));
+const EmbedPage = lazy(() => import('./pages/EmbedPage'));
 
 // ─────────────────────────────────────────────────────────────
 // Root App
 // ─────────────────────────────────────────────────────────────
 
+// Detect embed mode synchronously at module load — it never changes during
+// a session. Doing it outside the component avoids the hooks-rules trap of
+// returning early before the useState calls in App.
+const EMBED_MATCH = typeof window !== "undefined"
+  ? window.location.pathname.match(/^\/embed\/([A-Za-z0-9]{1,32})$/)
+  : null;
+
+function AppEmbed({ shareCode }: { shareCode: string }) {
+  return (
+    <Suspense fallback={
+      <div style={{
+        width: "100vw", height: "100vh", background: "#1A1A1A",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Loader2 size={20} className="animate-spin" color="#A0A0A0" strokeWidth={1.5} />
+      </div>
+    }>
+      <EmbedPage shareCode={shareCode} />
+    </Suspense>
+  );
+}
+
 export default function App() {
+  // Item #32: when URL is /embed/<code>, render a stripped-down iframe-friendly
+  // page. Early return is safe here because EMBED_MATCH is module-level.
+  if (EMBED_MATCH) return <AppEmbed shareCode={EMBED_MATCH[1]} />;
+
   const [route, setRoute] = useState<Route>("home");
   const [notes, setNotes] = useState<Note[]>(() => loadNotes());
   const [topics, setTopics] = useState<AnimatableTopic[]>([]);
