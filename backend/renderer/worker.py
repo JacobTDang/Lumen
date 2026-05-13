@@ -749,8 +749,11 @@ def _run_direct_lesson(job_id: str, question: str):
         inner_id = submit_lesson(steps)
         _jobs[job_id]["inner_job_id"] = inner_id
 
-        # Mirror loop — copy status/url/error/progress/stage from inner to outer
+        # Mirror loop — copy status/url/error/progress/stage from inner to outer.
+        # On error, retry once: rebuild scenes with the stderr fed back so the
+        # agent has a chance to avoid whatever broke the first render.
         render_start = _t.perf_counter()
+        retry_used = False
         while True:
             inner = _jobs.get(inner_id)
             if inner is None:
@@ -771,10 +774,47 @@ def _run_direct_lesson(job_id: str, question: str):
                 render_trace.finalize()
                 return
             if inner["status"] == "error":
+                err_text = inner.get("error", "render failed")
+                # One retry: rebuild scenes with the error fed back, resubmit
+                if not retry_used:
+                    retry_used = True
+                    render_trace.note(f"first render failed: {err_text}; retrying with error feedback")
+                    outer["stage"] = "building_scenes"
+                    new_tool_call_lists = []
+                    for i, sp in enumerate(narrative.scenes):
+                        _trace_mod.set_current(render_trace)
+                        try:
+                            new_tool_call_lists.append(
+                                _safe_build_scene(
+                                    question, sp, narrative.core_insight,
+                                    contexts[i], previous_error=err_text,
+                                )
+                            )
+                        finally:
+                            _trace_mod.set_current(None)
+                    new_steps = [
+                        StepPlan(
+                            tool="dynamic_lesson_step",
+                            params={
+                                "title": sp.title,
+                                "tool_calls": [
+                                    {"tool": tc.tool, "args": tc.args} for tc in tcs
+                                ],
+                            },
+                            caption=sp.objective,
+                        )
+                        for sp, tcs in zip(narrative.scenes, new_tool_call_lists)
+                    ]
+                    outer["stage"] = "queued"
+                    inner_id = submit_lesson(new_steps)
+                    outer["inner_job_id"] = inner_id
+                    render_start = _t.perf_counter()
+                    continue
+                # Retry already used → propagate the failure to the outer job
                 outer["status"] = "error"
-                outer["error"]  = inner.get("error", "render failed")
+                outer["error"]  = err_text
                 outer["stage"]  = "error"
-                render_trace.note(f"inner job errored: {inner.get('error')}")
+                render_trace.note(f"retry also failed: {err_text}")
                 render_trace.finalize()
                 return
             time.sleep(0.25)
@@ -791,10 +831,15 @@ def _run_direct_lesson(job_id: str, question: str):
             pass
 
 
-def _safe_build_scene(question, scene_plan, core_insight, prev_context):
+def _safe_build_scene(question, scene_plan, core_insight, prev_context,
+                       previous_error: str | None = None):
     """build_scene + critique wrapper that returns a minimal fallback on failure.
     Mirrors lesson_director._build_scene_safe so the async path has the same
-    resilience and quality pass as the synchronous one."""
+    resilience and quality pass as the synchronous one.
+
+    ``previous_error`` is forwarded so a retry after a render failure tells the
+    LLM what went wrong on the previous attempt.
+    """
     from agent.lesson_director import build_scene, critique_scene, ToolCall
     try:
         tool_calls = build_scene(
@@ -802,6 +847,7 @@ def _safe_build_scene(question, scene_plan, core_insight, prev_context):
             scene_plan=scene_plan,
             core_insight=core_insight,
             previous_scene_context=prev_context,
+            previous_error=previous_error,
         )
     except Exception as exc:
         print(f"[direct-lesson] build_scene failed for '{scene_plan.title}': {exc}")

@@ -202,6 +202,7 @@ def build_scene(
     core_insight: str,
     previous_scene_context: str = "",
     max_retries: int = 2,
+    previous_error: str | None = None,
 ) -> list[ToolCall]:
     catalog = tool_catalog_prompt()
     system = _SCENE_SYSTEM_TEMPLATE.format(tool_catalog=catalog)
@@ -218,11 +219,26 @@ def build_scene(
             "Use emphasize() + pause(2) at the exact beat where it clicks.\n"
         )
 
+    error_note = ""
+    if previous_error:
+        # Truncate noisy stderr — only the last few lines tend to matter
+        snippet = previous_error.strip().split("\n")
+        snippet = "\n".join(snippet[-8:])[:600]
+        error_note = (
+            "\n⚠️ Your previous attempt produced a render that FAILED with this error:\n"
+            f"```\n{snippet}\n```\n"
+            "Common causes: invalid index, referencing an element_id that was never "
+            "created, malformed args, conflicting tool sequence. Generate a NEW "
+            "tool-call sequence that avoids this failure. Be conservative — use "
+            "fewer elements, simpler indices, only well-formed args.\n"
+        )
+
     user = (
         f"Overall lesson question: {question}\n"
         f"Core insight of the lesson: {core_insight}\n"
         f"{context_block}"
         f"{aha_note}"
+        f"{error_note}"
         f"Build scene: \"{scene_plan.title}\"\n"
         f"Scene objective: {scene_plan.objective}\n"
         f"\nOutput a JSON array of tool calls for this scene."
@@ -339,12 +355,16 @@ def _build_scene_safe(
     core_insight: str,
     prev_context: str,
     max_retries: int,
+    previous_error: str | None = None,
 ) -> list[ToolCall]:
     """Wrapper that returns a minimal fallback instead of raising.
 
     Runs the optional self-critique pass after a successful build_scene so the
     output is checked for the common weaknesses (missing emphasize, too many
     elements, no result_box).
+
+    ``previous_error`` is forwarded into build_scene so the LLM knows to avoid
+    whatever caused the prior render to fail.
     """
     try:
         tool_calls = build_scene(
@@ -353,6 +373,7 @@ def _build_scene_safe(
             core_insight=core_insight,
             previous_scene_context=prev_context,
             max_retries=max_retries,
+            previous_error=previous_error,
         )
     except ValueError as exc:
         print(f"[lesson_director] build_scene failed for '{scene_plan.title}': {exc}")

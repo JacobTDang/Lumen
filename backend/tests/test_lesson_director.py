@@ -205,6 +205,33 @@ def test_build_scene_safe_invokes_critique(mocker):
     critique.assert_called_once()
 
 
+def test_build_scene_includes_previous_error_in_prompt(mocker):
+    """When previous_error is given, the user message embeds it as guidance."""
+    from agent.lesson_director import build_scene
+    captured = {}
+    def fake_call(system, user):
+        captured["user"] = user
+        return json.dumps(MOCK_TOOL_CALLS)
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=False)
+    build_scene("q", sp, "core", previous_error="IndexError: 5 out of range")
+    assert "previous attempt" in captured["user"].lower()
+    assert "IndexError" in captured["user"]
+
+
+def test_build_scene_without_previous_error_has_clean_prompt(mocker):
+    """Default path: no error-recovery note in the user message."""
+    from agent.lesson_director import build_scene
+    captured = {}
+    def fake_call(system, user):
+        captured["user"] = user
+        return json.dumps(MOCK_TOOL_CALLS)
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    sp = ScenePlan(title="t", objective="o", is_aha_moment=False)
+    build_scene("q", sp, "core")
+    assert "previous attempt" not in captured["user"].lower()
+
+
 def test_direct_lesson_produces_lesson_plan(mocker):
     call_count = {"n": 0}
 
