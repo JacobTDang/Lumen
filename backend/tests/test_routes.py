@@ -538,6 +538,22 @@ def test_direct_lesson_stream_rejects_invalid_style(client):
     assert res.status_code == 400
 
 
+def test_direct_lesson_rejects_out_of_range_target_minutes(client):
+    """Item #10 regression: target_minutes must be in [0.5, 10.0]."""
+    res = client.post("/api/direct-lesson",
+                       json={"question": "x", "target_minutes": 99})
+    assert res.status_code == 400
+    res = client.post("/api/direct-lesson",
+                       json={"question": "x", "target_minutes": 0.1})
+    assert res.status_code == 400
+
+
+def test_direct_lesson_rejects_non_numeric_target_minutes(client):
+    res = client.post("/api/direct-lesson",
+                       json={"question": "x", "target_minutes": "not a number"})
+    assert res.status_code == 400
+
+
 def test_direct_lesson_stream_returns_event_stream(client, mocker):
     """Item #11 regression: endpoint must emit text/event-stream and deliver
     the expected progression of SSE events."""

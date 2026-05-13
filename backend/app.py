@@ -300,6 +300,29 @@ def _new_share_code(existing: dict) -> str:
             return code
 
 
+_TARGET_MINUTES_MIN = 0.5
+_TARGET_MINUTES_MAX = 10.0
+_TARGET_MINUTES_DEFAULT = 1.5
+
+
+def _parse_target_minutes(body: dict):
+    """Read body['target_minutes'] with default + bounds.
+
+    Returns the float on success, or a (jsonify, status) tuple on validation
+    failure so the caller can `return` it directly.
+    """
+    raw = body.get("target_minutes", _TARGET_MINUTES_DEFAULT)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "target_minutes must be a number"}), 400
+    if not (_TARGET_MINUTES_MIN <= value <= _TARGET_MINUTES_MAX):
+        return jsonify({
+            "error": f"target_minutes must be in [{_TARGET_MINUTES_MIN}, {_TARGET_MINUTES_MAX}]"
+        }), 400
+    return value
+
+
 def _init_sentry() -> None:
     """Initialize Sentry if SENTRY_DSN is set AND sentry-sdk is installed.
 
@@ -945,7 +968,11 @@ def create_app(testing: bool = False) -> Flask:
                 "error": f"invalid style '{style}'",
                 "valid": sorted(VALID_STYLES),
             }), 400
-        job_id = submit_direct_lesson(question, style=style)
+        target_minutes = _parse_target_minutes(body)
+        if isinstance(target_minutes, tuple):
+            return target_minutes  # (jsonify, status)
+        job_id = submit_direct_lesson(question, style=style,
+                                       target_minutes=target_minutes)
         return jsonify({"job_id": job_id}), 202
 
     @app.post("/api/direct-lesson-stream")
@@ -976,6 +1003,9 @@ def create_app(testing: bool = False) -> Flask:
         style = body.get("style")
         if style is not None and style not in VALID_STYLES:
             return jsonify({"error": "invalid style"}), 400
+        target_minutes = _parse_target_minutes(body)
+        if isinstance(target_minutes, tuple):
+            return target_minutes
 
         def _sse(event: str, data) -> str:
             payload = data if isinstance(data, str) else json.dumps(data)
@@ -984,7 +1014,8 @@ def create_app(testing: bool = False) -> Flask:
         def generate():
             try:
                 yield _sse("stage", "planning_narrative")
-                narrative = _np(question, style=style)
+                narrative = _np(question, style=style,
+                                 target_minutes=target_minutes)
                 yield _sse("narrative", narrative.model_dump())
 
                 yield _sse("stage", "building_scenes")

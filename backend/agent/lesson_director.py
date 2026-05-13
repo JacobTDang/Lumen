@@ -152,8 +152,24 @@ NARRATIVE_STYLES: dict[str, str] = {
 VALID_STYLES: frozenset[str] = frozenset(NARRATIVE_STYLES.keys())
 
 
+def _length_hint(target_minutes: float) -> str:
+    """Map a target duration to a scene-count + density guidance string."""
+    if target_minutes < 1.0:
+        return ("TARGET LENGTH: very short (<1 min). Plan EXACTLY 2 scenes. "
+                "Each scene 4-6 tool calls. Skip context-setting, jump to the insight.")
+    if target_minutes < 2.5:
+        return ("TARGET LENGTH: short (~1.5 min). Plan 2-3 scenes. "
+                "Each scene 5-8 tool calls. Keep each scene tightly focused.")
+    if target_minutes < 4.0:
+        return ("TARGET LENGTH: medium (~3 min). Plan 3-4 scenes. "
+                "Each scene 6-10 tool calls. Room for setup, insight, and resolution.")
+    return ("TARGET LENGTH: long (>4 min). Plan 4 scenes (max). "
+            "Each scene 8-12 tool calls. Detailed walk-through with worked examples.")
+
+
 def narrative_plan(question: str, max_retries: int = 2,
-                    style: str | None = None) -> NarrativePlan:
+                    style: str | None = None,
+                    target_minutes: float = 1.5) -> NarrativePlan:
     if not question.strip():
         raise ValueError("question is required")
     system = _NARRATIVE_SYSTEM
@@ -161,6 +177,8 @@ def narrative_plan(question: str, max_retries: int = 2,
         style_hint = NARRATIVE_STYLES.get(style)
         if style_hint:
             system = f"{style_hint}\n\n{system}"
+    # Length hint always prepended — defaults bias toward the ~1.5min sweet spot.
+    system = f"{_length_hint(target_minutes)}\n\n{system}"
     last_error: Exception = ValueError("no attempts")
     for _ in range(max_retries):
         try:
@@ -479,18 +497,21 @@ def _build_scene_safe(
 
 
 def direct_lesson(question: str, max_retries: int = 2,
-                   style: str | None = None) -> LessonPlan:
+                   style: str | None = None,
+                   target_minutes: float = 1.5) -> LessonPlan:
     """
     Full pipeline: narrative plan → build each scene in parallel → LessonPlan.
 
-    ``style`` (optional) picks a narrative voice from NARRATIVE_STYLES:
-    intuition_first | rigor_first | socratic | speedrun.
+    ``style`` (optional) picks a narrative voice from NARRATIVE_STYLES.
+    ``target_minutes`` (default 1.5) tunes the overall lesson length —
+    the agent scales scene count and per-scene density to match.
 
     Phase 2 (build_scene) calls are independent once the narrative is fixed,
     so they run concurrently via a thread pool — reducing latency from ~N×4s
     to ~4s regardless of scene count (N = 2-4 scenes).
     """
-    narrative = narrative_plan(question, max_retries=max_retries, style=style)
+    narrative = narrative_plan(question, max_retries=max_retries, style=style,
+                                target_minutes=target_minutes)
 
     # Pass sequential context hints (each scene's objective) for continuity.
     # Even though builds run in parallel, the context is the planned objective

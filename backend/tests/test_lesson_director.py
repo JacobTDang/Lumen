@@ -97,6 +97,40 @@ def test_narrative_plan_enforces_2_to_4_scenes(mocker):
         narrative_plan("anything")
 
 
+def test_narrative_plan_includes_length_hint_in_system(mocker):
+    """Item #10 regression: target_minutes must shape the prompt sent to the LLM."""
+    captured = {}
+
+    def fake_call(system, user, *args, **kwargs):
+        captured["system"] = system
+        return json.dumps(MOCK_NARRATIVE)
+
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    narrative_plan("any question", target_minutes=0.5)
+    assert "very short" in captured["system"].lower()
+    assert "target length" in captured["system"].lower()
+
+    captured.clear()
+    narrative_plan("any question", target_minutes=5.0)
+    assert "long" in captured["system"].lower()
+
+
+def test_narrative_plan_default_target_minutes_is_short(mocker):
+    """Default target_minutes (1.5) should produce the short/medium hint, not very-short or long."""
+    captured = {}
+
+    def fake_call(system, user, *args, **kwargs):
+        captured["system"] = system
+        return json.dumps(MOCK_NARRATIVE)
+
+    mocker.patch("agent.lesson_director._call_model", side_effect=fake_call)
+    narrative_plan("any question")  # default target_minutes=1.5
+    sys_text = captured["system"].lower()
+    assert "target length" in sys_text
+    # default 1.5 falls in the "short" bucket (1.0 ≤ x < 2.5)
+    assert "short" in sys_text
+
+
 def test_build_scene_returns_valid_tool_calls(mocker):
     mocker.patch(
         "agent.lesson_director._call_model",
